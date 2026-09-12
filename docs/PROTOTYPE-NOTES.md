@@ -72,9 +72,21 @@ Node 26 自带 Undici 全局 `WebSocket` 客户端。stub 只做客户端，用�
 → 副作用：zod v4 对「泛型 body 成员的对象输出 + transform」推断不足（body 键在回调参数上丢失），SSOT 助手内用结构断言收拢（`frame as { header: …; body: z.output<B> }`），断言被限制在两个助手函数内。
 → 放弃的方案：①每分支二次 safeParse（重复解析、运行时多一次全量校验）；②把 type 提到线格式顶层（违背 draft 已定稿帧结构）。
 
+### D-12 embedded 单文件打包需 createRequire banner
+
+esbuild `--format=esm` 打包 CJS 依赖（ws）时产物内 `require("events")` 报 Dynamic require not supported。
+→ 构建脚本加 `--banner:js="import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);"`。
+放弃方案：`--external:ws`（产物不再单文件，运行期依赖 node_modules 布局，违背 JAR 内嵌目标）。
+
+### D-13 IpcChannel 事件改为多播
+
+Relay 与引导层都要订阅 IPC onClose（前者结算在途请求，后者杀孙进程退出），单 handler 语义会互相覆盖。
+→ 传输接口文档明确 onXxx 可多次注册、实现方需回调全部（StdioIpcChannel 用数组实现）。WS 侧单注册即可（core 是唯一订阅方）。
+
 ## 架构发现（随做随记）
 
 - **TS 生态摩擦**：嵌套判别不可收窄 + zod v4 泛型 transform 推断缺陷，是 SSOT「线格式=消费格式」设计的直接代价；D-11 的扁平 transform 层把它吸收在 protocol 包内，消费方零感知。正式版若消息变多，这个 transform 层就是「协议解析层」的雏形。
+- **TS 链路烟囱（2026-09-12，sandbox/ts-smoke.mjs）已全通**：ready（动态端口 59398）→ stub 孙进程拉起 → hello/hello_ack 握手 → stub 平台消息 → broadcast 请求-响应 → 游戏聊天送达 stub → shutdown 级联退出（node code=0，无孤儿进程）。IPC onClose 多播（D-13）与「stdout 只出 JSON-lines、日志全走 stderr」的纪律在真进程模型下验证成立。
 
 - （待补）
 

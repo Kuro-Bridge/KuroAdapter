@@ -1,7 +1,7 @@
 {
     "name": "@kurobot/bridge-embedded",
     "version": "0.0.0",
-    "description": "嵌入式瘦身对端：内嵌 napukettoqq 协议端，esbuild 单文件打进 JAR",
+    "description": "\u5d4c\u5165\u5f0f\u7626\u8eab\u5bf9\u7aef\uff1a\u5185\u5d4c napukettoqq \u534f\u8bae\u7aef\uff0cesbuild \u5355\u6587\u4ef6\u6253\u8fdb JAR",
     "type": "module",
     "files": [
         "dist"
@@ -15,15 +15,17 @@
         }
     },
     "scripts": {
-        "build": "esbuild src/index.ts --bundle --format=esm --platform=node --target=es2020 --outfile=dist/index.mjs"
+        "build": "esbuild src/index.ts --bundle --format=esm --platform=node --target=es2020 --outfile=dist/index.mjs --banner:js=\"import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);\""
     },
     "dependencies": {
         "@kurobot/bridge-core": "workspace:*",
-        "@kurobot/protocol": "workspace:*"
+        "@kurobot/protocol": "workspace:*",
+        "ws": "^8.18.0"
     },
     "devDependencies": {
         "esbuild": "^0.25.0",
-        "typescript": "^7.0.2"
+        "typescript": "^7.0.2",
+        "@types/ws": "^8.18.0"
     },
     "license": "MIT"
 }

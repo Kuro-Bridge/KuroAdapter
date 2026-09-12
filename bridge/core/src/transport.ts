@@ -2,8 +2,8 @@
  * 传输层接口（ADR-007：core 平台无关）
  *
  * core 只依赖这里的抽象；Node 具体实现（ws 库 / stdin/stdout）只出现在引导层
- * （bridge/embedded）。事件订阅语义：每个接口的 onXxx 仅支持一个 handler，
- * 由组装方负责唯一注册。
+ * （bridge/embedded）。事件订阅语义：onXxx 可多次注册，实现方需回调全部 handler
+ * （Relay 与引导层可能各自订阅同一事件，如 IPC onClose）。
  */
 
 /** 日志接口（依赖注入，core 不绑定具体实现） */
