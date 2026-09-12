@@ -39,6 +39,11 @@ public final class KuroBotPlugin extends JavaPlugin {
     private static final String ENV_BUNDLE = "KUROBOT_BUNDLE";
     private static final String ENV_STUB_PEER = "KUROBOT_STUB_PEER";
     private static final String DEFAULT_NODE = "node";
+    /**
+     * 相对 bundle 父目录（dist/）的 stub 位置：dist/../stub/peer.mjs → embedded/stub/peer.mjs。
+     * 注意 Java 的 Path.resolve 是纯字符串拼接，必须以 getParent() 为基准，否则
+     * 「index.mjs/..」会消掉文件名而不是 dist 目录（sandbox 实测踩坑）。
+     */
     private static final String DEFAULT_STUB_RELATIVE = "../stub/peer.mjs";
 
     /** volatile：AsyncChat 事件线程 / IPC 回调线程会跨线程读取；null = 开发模式或已 disable。 */
@@ -75,7 +80,8 @@ public final class KuroBotPlugin extends JavaPlugin {
         Path bundle = Path.of(bundleEnv);
         String nodeExecutable = envOrDefault(ENV_NODE, DEFAULT_NODE);
         String stub = envOrDefault(
-                ENV_STUB_PEER, bundle.resolve(DEFAULT_STUB_RELATIVE).normalize().toString());
+                ENV_STUB_PEER,
+                bundle.getParent().resolve(DEFAULT_STUB_RELATIVE).normalize().toString());
         NodeIpc created = new NodeIpc(
                 nodeExecutable,
                 bundle,

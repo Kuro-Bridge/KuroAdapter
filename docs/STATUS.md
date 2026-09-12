@@ -55,3 +55,24 @@
 5. koishi-plugin-kurobot：独立仓库（ADR-018），复用 `@kurobot/protocol` 发布版本
 6. platforms/be：lse（LSE TS 适配，复用 bridge/core）→ endstone（C++ 薄壳）另行评估
 ```
+
+## 原型机结论（2026-09-13，spike 分支 prototype/spike）
+
+> 任务书见 `docs/PROTOTYPE-PROMPT.md`，全部决策与发现见 `docs/PROTOTYPE-NOTES.md`。
+
+**命题「Paper → Java 薄壳 → Node 子进程（IPC）→ bridge/core（WS 服务端）→ 协议端」端到端跑通——成立。** 真实 Paper 1.21.4-232 沙盒验收全过：
+
+- 插件加载 → node 拉起 → IPC ready（stdin/stdout JSON-lines，WS 动态端口）→ stub 孙进程连入 → hello/hello_ack 握手 → 心跳协议（单测+集成验证）。
+- 双向消息：`/kurobot send` → stub 收到并打印；stub 握手后消息 → 服务器 broadcast。
+- 生命周期：`stop` → shutdown 帧 → Node 自杀 → 无孤儿进程；**node 被强杀 → 服务器不崩、主线程不卡**（IPC 永不阻塞主线程的关键架构性质验证通过）。
+- 门禁：`pnpm check` / `pnpm test`（33+17 用例）/ `pnpm -r build` / `gradlew :core:test`（30 用例 + 真管道集成测试）/ `:paper:shadowJar` 全绿。
+
+原型落地的最小实现（分支 prototype/spike）：
+
+- `bridge/protocol`：WS+IPC 最小 schema 集（hello/hello_ack/ping/pong/chat ×2 + ready/game_chat/broadcast/execute_command/shutdown + *_result），解析层扁平化 transform（D-11）。
+- `bridge/core`：传输接口（WsServer/IpcChannel/Logger 注入）+ CoreContext + KurobotServer 握手状态机 + Relay 假转发。
+- `bridge/embedded`：Node 引导层（ws 适配器 / stdio IPC / stderr logger / stub 孙进程拉起）+ stub 协议端（零依赖）。
+- `platforms/je`：`:core`（NodeIpc 客户端 + Jackson 帧编解码 + 进程管理，JUnit）+ `:paper`（薄壳 4 类）。
+- `scripts/paper-start.sh|paper-stop.sh`：沙盒启停（Windows 踩坑全记录于 NOTES）。
+
+**留给正式版的 5 个 ADR 候选**（详见 NOTES）：A 孙进程协议端模型（已验证）、B 单程握手、C 协议解析层常驻、D 帧格式统一规则、E IPC 断连的降级语义。**MVP 债务 12 项**（心跳超时/重连/Watchdog/业务空壳等）详见 NOTES 债务清单。

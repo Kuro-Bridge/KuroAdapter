@@ -101,14 +101,36 @@ subagent 产出整体合格，复核发现三处并亲手修复：
 
 - **TS 生态摩擦**：嵌套判别不可收窄 + zod v4 泛型 transform 推断缺陷，是 SSOT「线格式=消费格式」设计的直接代价；D-11 的扁平 transform 层把它吸收在 protocol 包内，消费方零感知。正式版若消息变多，这个 transform 层就是「协议解析层」的雏形。
 - **TS 链路烟囱（2026-09-12，sandbox/ts-smoke.mjs）已全通**：ready（动态端口 59398）→ stub 孙进程拉起 → hello/hello_ack 握手 → stub 平台消息 → broadcast 请求-响应 → 游戏聊天送达 stub → shutdown 级联退出（node code=0，无孤儿进程）。IPC onClose 多播（D-13）与「stdout 只出 JSON-lines、日志全走 stderr」的纪律在真进程模型下验证成立。
-
-- （待补）
+- **端到端全链路成立（2026-09-13，sandbox Paper 1.21.4-232）**：插件加载 → node 拉起 → IPC ready（动态端口）→ stub 孙进程 → 握手 → 双向消息 → 优雅关机级联，全部按架构书预期工作。「一个 JAR、两个进程、一条消息双向跑通」的原型命题成立。
+- **Java Path.resolve 的目录段语义坑（实测踩中）**：`bundle.resolve("../stub/peer.mjs").normalize()` 会把文件名当目录段消掉，得到 `dist/stub/peer.mjs` 而非 `embedded/stub/peer.mjs`。必须以 `getParent()` 为基准推导兄弟路径（已修 `KuroBotPlugin`）。
+- **mise 的 PATH 不传导到 Java ProcessBuilder 的可执行文件搜索**：即便服务端经 `mise exec` 启动，Java 里 `ProcessBuilder("node", ...)` 解析到的仍是系统 PATH 的 node v24。必须显式传 node 绝对路径（`KUROBOT_NODE=$(mise which node)`，已写进 scripts/paper-start.sh）。
+- **MSYS pid 跨 bash 会话不可靠**：后台记录的 `$!`（MSYS pid）在另一会话 `kill -0` 判活失败。沙盒脚本改记录 `/proc/$!/winpid`（Windows pid），用 `tasklist //FI` 判活。
+- **tail -f stdin 注入的两个坑**：① cmd.in 里残留的 `stop` 会被新一轮 tail 回放——服务器一启动就被停（实测复现）；② 多轮启停遗留的 tail.exe 与新 tail 抢读同一 cmd.in，命令行随机丢失。解法：启动前清空 cmd.in + `taskkill tail.exe`（已写进脚本）。
+- **PaperMC v2 API 已 sunset（2026）**：下载走新端点 fill.papermc.io（v3），构建对象自带 sha256；旧 api.papermc.io/v2 返回 `{"ok":false,"error":"sunset"}`。
+- **Paper 1.21.4 的 paper-api 不携带 adventure plaintext 序列化模块**（subagent 实证 + 复核认可）：`PlainTextComponentSerializer` 会运行时 NoClassDefFoundError；只能用带 @Deprecated 的 `PlainComponentSerializer.plain()`（局部压制）。升级暴露 plaintext 模块的 Paper 版本后替换。
+- **paper-plugin.yml 不支持 commands 声明**：/kurobot 经 `Bukkit.getCommandMap().register(...)` 运行期注册（Paper 直接提供该方法，无需反射）。
+- **Shadow 9 不再把 shadowJar 挂进 assemble**：`:paper:build` 只产普通 jar，fat jar 要显式 `:paper:shadowJar`（工程已有 kurobotBuild 任务，构建脚本未改，留待正式版决策）。
+- **观察**：Node 侧 stdout 行缓冲在 Windows 重定向下有秒级延迟，验收 grep 日志要留余量；Paper 控制台日志以 `logs/latest.log` 为准（console.log 是 stdout 重定向）。
 
 ## ADR 候选清单
 
-- **候选 A**（来自 D-05）：内嵌协议端以孙进程形态由 Node 引导层拉起，Java 只管一个子进程。
-- （待补）
+- **候选 A**（来自 D-05）：内嵌协议端以孙进程形态由 Node 引导层拉起，Java 只管一个子进程。**原型已验证成立**：生命周期级联（Java→node→stub）与 external 同构（stub 走的就是普通 WS client 路径）。
+- **候选 B**（来自 D-01）：握手收敛为单程 hello + hello_ack（服务端身份并入 ack body），废除双向 hello 草案语义。原型按此实现并通过。
+- **候选 C**（来自 D-11）：协议包在解析层做「线格式 → 扁平消息」的 transform（含 encodeFrame 出帧助手），作为常驻的协议解析层设计，而非仅 TS 类型体操补丁。
+- **候选 D**（来自 D-03/D-04）：IPC 与 WS 复用同一帧格式与「事件无 id / 请求响应有 id」规则，`*_result` 显式响应帧型。
+- **候选 E**：`kurobot.sendGameChat` 在 IPC 断开时静默丢弃并 WARN——正式版应把 IPC 健康状态暴露给业务层做降级决策（消息排队/重连后补发 vs 丢弃）。
 
 ## MVP 阶段债务清单
 
-- （待补）
+- **心跳只做了应答**（ping→pong），无空闲超时检测、无假连接多阈值判定（架构书 §10 要求）。core 平台无关约束下需要注入 clock/scheduler 抽象。
+- **hello 等待无超时**（stub 挂起不发 hello 会占连接）；IPC broadcast 请求在 TS 侧无超时（Java 侧有 10s）。
+- **协议版本协商是精确相等**（D-10），无 semver 兼容区间。
+- **无重连**：WS 对端断开后 core 不感知重建（stub 自带简退避重连）；Node 死后 Java 侧重启/Watchdog/PID 文件均未做（任务书批准的裁剪）。
+- **业务为空壳**：Relay 假规则（全量转发），无绑定/白名单/权限/转发规则，无 `bindings_updated`。
+- **消息格式拼接**：平台消息广播为 `<sender> content` 裸字符串，无渲染层（归属 koishi-plugin-kurobot，正确）。
+- **`/kurobot send` 在 IPC 断开时仍回复「已发送」**（实际丢弃）——应回报失败。
+- **未消费 `kurobot.relay` 权限**（转发过滤是 Node 侧业务语义，已在 ChatListener javadoc 注明）。
+- **Java :paper 无单元测试**（Bukkit 侧无 mock 依赖，依赖集成/沙盒验收兜底）。
+- **sandbox 烟囱脚本 ts-smoke.mjs 留在 sandbox/**（gitignore 区）：模拟 Java 驱动 bundle 的自验脚本，正式版可升格为 vitest 进程级测试或删除。
+- **Spotless palantir 2.71.0 为最低兼容线**（D-14）：Paper/Velvet 等模块启用时同版本钉住即可。
+- **shadowJar 未挂进 assemble**（见架构发现）：`pnpm build:jar` 链路目前可用但 `:paper:build` 不产 fat jar。
