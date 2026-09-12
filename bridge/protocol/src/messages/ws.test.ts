@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 
-import type { GameChatFrame, HelloFrame, PlatformChatFrame } from "./ws.js";
 import {
     gameChatFrame,
     helloAckFrame,
@@ -80,11 +79,11 @@ describe("WS 侧心跳", () => {
 
 describe("WS 侧 chat 双向同型不同体", () => {
     it("游戏聊天（playerName）与平台聊天（sender）各自通过自己的 schema", () => {
-        const game: GameChatFrame = {
+        const game = {
             header: { type: "chat" },
             body: { playerName: "Steve", content: "hello world" },
         };
-        const platform: PlatformChatFrame = {
+        const platform = {
             header: { type: "chat" },
             body: { sender: "群里的小明", content: "大家好" },
         };
@@ -98,7 +97,7 @@ describe("WS 侧 chat 双向同型不同体", () => {
 
 describe("WS 聚合帧集（按方向收敛）", () => {
     it("服务端收帧集接受 hello/ping/平台 chat，拒绝游戏 chat", () => {
-        const hello: HelloFrame = {
+        const hello = {
             header: { type: "hello", id: UUID },
             body: { peerId: "stub", platform: "stub", version: "0.0.1", protocolVersion: "0.1.0" },
         };
@@ -112,7 +111,7 @@ describe("WS 聚合帧集（按方向收敛）", () => {
     });
 
     it("协议端收帧集接受 hello_ack/pong/游戏 chat，拒绝平台 chat", () => {
-        const gameChat: GameChatFrame = {
+        const gameChat = {
             header: { type: "chat" },
             body: { playerName: "Steve", content: "hi" },
         };

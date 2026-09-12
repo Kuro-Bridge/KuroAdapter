@@ -7,6 +7,7 @@
  *
  * 注意：chat 在两个方向 body 形状不同（playerName / sender），
  * 消费方按方向选用 GameChatFrame / PlatformChatFrame（决策 D-01/D-09）。
+ * 所有 *Frame 类型均为扁平消息 { type, id?, body }（决策 D-11）。
  */
 import { z } from "zod";
 

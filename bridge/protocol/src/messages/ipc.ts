@@ -4,6 +4,8 @@
  * 帧结构复用 WS 帧（决策 D-04）。原型最小集（任务书 §4.1）：
  * - Node→Java：ready（事件）、broadcast / execute_command（请求）
  * - Java→Node：game_chat / shutdown（事件）、broadcast_result / execute_command_result（响应）
+ *
+ * 所有 *Frame 类型均为扁平消息 { type, id?, body }（决策 D-11）。
  */
 import { z } from "zod";
 

@@ -7,8 +7,9 @@
  * 原型最小集见各子模块；docs/protocol/draft-v0.1.md 是语义说明。
  */
 
-import type { FrameHeader, ResultBody } from "./frame.js";
+import type { EventMessage, FrameHeader, RequestMessage, ResultBody } from "./frame.js";
 import {
+    encodeFrame,
     eventFrameSchema,
     frameHeaderSchema,
     requestFrameSchema,
@@ -67,10 +68,11 @@ export {
     wsInboundFrame,
     wsOutboundFrame,
 } from "./messages/ws.js";
-export type { FrameHeader, ResultBody };
+export type { EventMessage, FrameHeader, RequestMessage, ResultBody };
 // ---- 元信息 ----
 // ---- 帧格式 ----
 export {
+    encodeFrame,
     eventFrameSchema,
     frameHeaderSchema,
     PROTOCOL_NAME,

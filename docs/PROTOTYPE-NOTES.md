@@ -61,7 +61,20 @@ Node 26 自带 Undici 全局 `WebSocket` 客户端。stub 只做客户端，用�
 实测 zod 4.4.3：`z.discriminatedUnion("header.type", [...])` 抛 `Invalid discriminated union option`（不支持嵌套判别路径，判别键必须是 option 的顶层属性）。
 → 帧格式 `{ header: { type, id? }, body }` 保持不变，聚合 schema 用 `z.union([...各消息帧 schema])` 平铺。每个消息的帧 schema 单独导出，消费方按方向（发送方）选用精确 schema，聚合 union 只用于收帧侧的「接受任意已知帧」。放弃了「把 type 提到帧顶层」的方案（会偏离 draft-v0.1 已定稿的帧结构）。
 
+### D-10 协议版本协商：spike 要求精确相等
+
+大版本由 WS 子协议 `kurobot-ws.v1` 把关（握手期拒绝）；`hello.protocolVersion` 小版本在 spike 中要求与本端 `PROTOCOL_VERSION` **精确相等**，不匹配回 `hello_ack` error + 关连接（1002）。宽容的 semver 协商（兼容区间）留正式版。
+
+### D-11 帧 schema 解析后 transform 为扁平消息 `{ type, id?, body }`
+
+实测（TS 7/tsgo + tsc 行为一致）：**解构判别与嵌套属性判别都无法收窄 union**（`const { type } = frame.header` 与 `frame.header.type === "x"` 均不行——判别键必须是 union 变量的直接属性）。
+→ protocol 包的帧 schema 在 zod `.transform()` 里把线格式 `{ header: { type, id? }, body }` 摊平成 `{ type, id?, body }`（线格式不变，Java 侧零影响）；消费方直接 `msg.type === "hello"` 原生收窄。出帧统一走 `encodeFrame(message)`。
+→ 副作用：zod v4 对「泛型 body 成员的对象输出 + transform」推断不足（body 键在回调参数上丢失），SSOT 助手内用结构断言收拢（`frame as { header: …; body: z.output<B> }`），断言被限制在两个助手函数内。
+→ 放弃的方案：①每分支二次 safeParse（重复解析、运行时多一次全量校验）；②把 type 提到线格式顶层（违背 draft 已定稿帧结构）。
+
 ## 架构发现（随做随记）
+
+- **TS 生态摩擦**：嵌套判别不可收窄 + zod v4 泛型 transform 推断缺陷，是 SSOT「线格式=消费格式」设计的直接代价；D-11 的扁平 transform 层把它吸收在 protocol 包内，消费方零感知。正式版若消息变多，这个 transform 层就是「协议解析层」的雏形。
 
 - （待补）
 
