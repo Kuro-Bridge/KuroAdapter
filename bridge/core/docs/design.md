@@ -41,3 +41,17 @@ src/
 ## 依赖
 
 - `@kurobot/protocol`（workspace:*）——消息 schema SSOT。
+
+## 原型阶段（spike，2026-09-12）
+
+> 任务书：`docs/PROTOTYPE-PROMPT.md` §4 阶段 2。完整设计不变，本节只标注原型裁剪。
+
+最小闭环（connect → hello 握手 → 心跳 → chat 收发）：
+
+- `src/context.ts`：`CoreContext`（注入 logger + serverId）。
+- `src/transport.ts`：`WsServer` / `WsConnection` / `IpcChannel` / `Logger` 可注入接口（零 Node API）。
+- `src/server.ts`：`KurobotServer` —— 握手状态机（awaitingHello → established/rejected）、心跳应答（ping→pong）、连接生命周期；协议版本不匹配 → `hello_ack` error + 关连接。
+- `src/relay.ts`：假转发规则（占位业务）——IPC `game_chat` → WS `chat` 推给已握手对端；WS `chat` → IPC `broadcast` 请求（UUID 关联，等 `broadcast_result`）。
+- `src/index.ts`：聚合导出。
+
+原型裁剪：无鉴权 token、无 `bindings_updated`、无 msgContinue、无指数退避重连（对端 stub 自行重连）、心跳只做应答 + 空闲超时关连接（不做多阈值假连接检测）、业务模块仅 `relay.ts` 假规则。
