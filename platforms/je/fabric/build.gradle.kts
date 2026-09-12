@@ -16,7 +16,7 @@ dependencies {
 // 苛刻度：Spotless(Palantir)（ADR-011）
 spotless {
     java {
-        palantirJavaFormat()
+        palantirJavaFormat("2.71.0") // JDK 25 兼容：>=2.71.0 才能用新版 javac 内部 API（spotless#2625）
         target("src/**/*.java")
     }
 }

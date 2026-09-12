@@ -83,6 +83,20 @@ esbuild `--format=esm` 打包 CJS 依赖（ws）时产物内 `require("events")`
 Relay 与引导层都要订阅 IPC onClose（前者结算在途请求，后者杀孙进程退出），单 handler 语义会互相覆盖。
 → 传输接口文档明确 onXxx 可多次注册、实现方需回调全部（StdioIpcChannel 用数组实现）。WS 侧单注册即可（core 是唯一订阅方）。
 
+### D-14 Spotless palantir-java-format 钉 2.71.0（JDK 25 兼容）
+
+仓库预置的 Spotless 7.0.2 默认 palantir 版本在 JDK 25 下抛 `NoSuchMethodError`（`DeferredDiagnosticHandler.getDiagnostics()` 在 JDK 25 改了签名，见 spotless#2468/#2625）。
+→ 五个 je 模块的 `palantirJavaFormat()` 全部钉 `2.71.0`。这是首次真正跑 Java 构建暴露的预置缺陷。
+
+### D-15 Java :core 复核修正（subagent 产出打回项）
+
+subagent 产出整体合格，复核发现三处并亲手修复：
+1. `palantir` 版本问题（D-14，构建直接失败）。
+2. `-Werror` 下 try-with-resources 资源未在体内引用的 `[try]` 警告 → 改为直接 `close()` 调用。
+3. FakeProcess.StdoutStream.write 不补换行 → `readLine()` 永久阻塞，4 个用例超时；write 改为按 JSON-lines 语义自动补 `\n`。
+4. shutdownIsGracefulAndIdempotent 断言取帧顺序错（在途 broadcast 帧先于 shutdown 帧落盘）→ 修正断言顺序。
+教训：subagent 自称「跑过构建」不可信（它实际没跑通 spotless/test），主智能体复核环节不可省。
+
 ## 架构发现（随做随记）
 
 - **TS 生态摩擦**：嵌套判别不可收窄 + zod v4 泛型 transform 推断缺陷，是 SSOT「线格式=消费格式」设计的直接代价；D-11 的扁平 transform 层把它吸收在 protocol 包内，消费方零感知。正式版若消息变多，这个 transform 层就是「协议解析层」的雏形。
