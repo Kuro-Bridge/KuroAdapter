@@ -1,11 +1,19 @@
 import { PROTOCOL_VERSION } from "@kurobot/protocol";
 import { describe, expect, it } from "vitest";
 
-import { KurobotServer } from "./server.js";
-import { FakeLogger, FakeWsConnection, FakeWsServer, makeContext } from "./test-fakes.js";
+import { KurobotServer, type ServerTimeouts } from "./server.js";
+import {
+    FakeLogger,
+    FakeWsConnection,
+    FakeWsServer,
+    makeContext,
+    manualTime,
+} from "./test-fakes.js";
 
 const UUID = "123e4567-e89b-12d3-a456-426614174000";
 const CHANNELS = ["10001", "10002"];
+/** 测试用阈值（远小于默认值，手动推进即可覆盖边界） */
+const T = { helloTimeoutMs: 10_000, idleTimeoutMs: 30_000 };
 
 function helloText(protocolVersion: string = PROTOCOL_VERSION): string {
     return JSON.stringify({
@@ -14,15 +22,25 @@ function helloText(protocolVersion: string = PROTOCOL_VERSION): string {
     });
 }
 
-function makeServer(): { server: KurobotServer; ws: FakeWsServer; logger: FakeLogger } {
+interface ServerFixture {
+    server: KurobotServer;
+    ws: FakeWsServer;
+    logger: FakeLogger;
+    time: ReturnType<typeof manualTime>;
+}
+
+function makeServer(timeouts?: ServerTimeouts): ServerFixture {
     const logger = new FakeLogger();
     const ws = new FakeWsServer();
+    const time = manualTime();
+    const context = makeContext({ logger, clock: time.clock, scheduler: time.scheduler });
     const server = new KurobotServer({
-        context: makeContext({ logger }),
+        context,
         wsServer: ws,
         channelBindings: () => CHANNELS,
+        ...(timeouts === undefined ? {} : { timeouts }),
     });
-    return { server, ws, logger };
+    return { server, ws, logger, time };
 }
 
 /** 建立一个已握手连接 */
@@ -31,6 +49,10 @@ function establishedConn(ws: FakeWsServer): FakeWsConnection {
     ws.accept(conn);
     conn.receive(helloText());
     return conn;
+}
+
+function pingText(): string {
+    return JSON.stringify({ header: { type: "ping", id: UUID }, body: { timestamp: 1 } });
 }
 
 describe("KurobotServer 握手", () => {
@@ -92,9 +114,7 @@ describe("KurobotServer 心跳", () => {
         const { ws } = makeServer();
         const conn = new FakeWsConnection();
         ws.accept(conn);
-        conn.receive(
-            JSON.stringify({ header: { type: "ping", id: UUID }, body: { timestamp: 1 } }),
-        );
+        conn.receive(pingText());
 
         expect(conn.sent).toHaveLength(0);
     });
@@ -127,12 +147,16 @@ describe("KurobotServer chat 双向", () => {
         expect(received).toEqual([{ channel: "10001", sender: "小明", content: "早" }]);
     });
 
-    it("sendGameChat 推给已握手对端；无对端时安全丢弃", () => {
+    it("sendGameChat 推给已握手对端并返回送达数；无对端时返回 0", () => {
         const { server, ws } = makeServer();
-        server.sendGameChat({ channel: "10001", playerName: "Steve", content: "hi" });
+        expect(server.sendGameChat({ channel: "10001", playerName: "Steve", content: "hi" })).toBe(
+            0,
+        );
 
         const conn = establishedConn(ws);
-        server.sendGameChat({ channel: "10001", playerName: "Steve", content: "hi" });
+        expect(server.sendGameChat({ channel: "10001", playerName: "Steve", content: "hi" })).toBe(
+            1,
+        );
 
         const chat = JSON.parse(conn.sent[1] ?? "{}");
         expect(chat).toEqual({
@@ -169,6 +193,87 @@ describe("KurobotServer v0.2 出帧（join/leave/status/bindings_updated）", ()
             channelBindings: ["10001"],
         });
         expect(unestablished.sent).toHaveLength(0);
+    });
+});
+
+describe("KurobotServer 超时健壮性（验收 §4.2）", () => {
+    it("假对端连入后不发 hello → hello 超时被关（1002）", () => {
+        const { server, ws, logger, time } = makeServer(T);
+        const conn = new FakeWsConnection();
+        ws.accept(conn);
+
+        time.scheduler.advance(T.helloTimeoutMs - 1);
+        expect(conn.closed).toBeNull();
+
+        time.scheduler.advance(1);
+        expect(conn.closed?.code).toBe(1002);
+        expect(conn.closed?.reason).toContain("hello");
+        expect(server.establishedPeerCount).toBe(0);
+        expect(logger.warns.some((w) => w.includes("hello 超时"))).toBe(true);
+    });
+
+    it("超时前完成握手 → hello 定时器被取消，不再触发", () => {
+        const { server, ws, time } = makeServer(T);
+        const conn = establishedConn(ws);
+
+        // 越过 hello 阈值但停在 idle 阈值内（该用例只验证 hello 定时器被取消）
+        time.scheduler.advance(T.helloTimeoutMs + 1);
+        expect(conn.closed).toBeNull();
+        expect(server.establishedPeerCount).toBe(1);
+    });
+
+    it("握手后停发任何帧 → 空闲阈值判定断开（1001）", () => {
+        const { server, ws, logger, time } = makeServer(T);
+        const conn = establishedConn(ws);
+
+        time.scheduler.advance(T.idleTimeoutMs - 1);
+        expect(conn.closed).toBeNull();
+
+        time.scheduler.advance(1);
+        expect(conn.closed?.code).toBe(1001);
+        expect(conn.closed?.reason).toContain("idle");
+        expect(server.establishedPeerCount).toBe(0);
+        expect(logger.warns.some((w) => w.includes("无任何帧"))).toBe(true);
+    });
+
+    it("空闲窗口内持续 ping → 空闲计时不断重置，连接保持", () => {
+        const { server, ws, time } = makeServer(T);
+        const conn = establishedConn(ws);
+
+        // 三个完整的空闲窗口，每个窗口末尾前 ping 一次
+        for (let i = 0; i < 3; i += 1) {
+            time.scheduler.advance(T.idleTimeoutMs - 1);
+            conn.receive(pingText());
+        }
+        time.scheduler.advance(T.idleTimeoutMs - 1);
+        expect(conn.closed).toBeNull();
+        expect(server.establishedPeerCount).toBe(1);
+    });
+
+    it("连接关闭后定时器全部清理（无泄漏）", () => {
+        const { ws, time } = makeServer(T);
+        const conn = establishedConn(ws);
+        conn.close(1000, "bye");
+
+        expect(time.scheduler.pendingCount).toBe(0);
+    });
+
+    it("server.stop 后无遗留定时器", async () => {
+        const { server, ws, time } = makeServer(T);
+        establishedConn(ws);
+        await server.stop();
+
+        expect(time.scheduler.pendingCount).toBe(0);
+    });
+
+    it("阈值 0 = 禁用全部检测", () => {
+        const { ws, time } = makeServer({ helloTimeoutMs: 0, idleTimeoutMs: 0 });
+        const conn = new FakeWsConnection();
+        ws.accept(conn);
+
+        time.scheduler.advance(1_000_000);
+        expect(conn.closed).toBeNull();
+        expect(time.scheduler.pendingCount).toBe(0);
     });
 });
 

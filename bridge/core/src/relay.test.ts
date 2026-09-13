@@ -9,12 +9,15 @@ import {
     FakeWsConnection,
     FakeWsServer,
     makeContext,
+    manualTime,
     sequentialIdFactory,
 } from "./test-fakes.js";
 
 const UUID = "123e4567-e89b-12d3-a456-426614174000";
 /** 与 relay.ts 的假规则占位频道一致（阶段 3 替换为绑定表） */
 const FANOUT_CHANNEL = "spike";
+/** 测试用 IPC 请求超时（远小于默认值） */
+const IPC_TIMEOUT_MS = 500;
 
 function helloText(): string {
     return JSON.stringify({
@@ -35,17 +38,26 @@ interface Fixture {
     logger: FakeLogger;
     conn: FakeWsConnection;
     shutdownReasons: string[];
+    time: ReturnType<typeof manualTime>;
 }
 
-function makeFixture(): Fixture {
+function makeFixture(ipcRequestTimeoutMs?: number): Fixture {
     const logger = new FakeLogger();
     const ws = new FakeWsServer();
     const ipc = new FakeIpc();
-    const context = makeContext({ logger, newRequestId: sequentialIdFactory() });
+    const time = manualTime();
+    const context = makeContext({
+        logger,
+        newRequestId: sequentialIdFactory(),
+        clock: time.clock,
+        scheduler: time.scheduler,
+    });
     const server = new KurobotServer({
         context,
         wsServer: ws,
         channelBindings: () => [],
+        // 关闭 server 侧超时：本文件只测 Relay 的定时器（pendingCount 断言不混入 server 任务）
+        timeouts: { helloTimeoutMs: 0, idleTimeoutMs: 0 },
     });
     const shutdownReasons: string[] = [];
     const relay = new Relay({
@@ -55,11 +67,12 @@ function makeFixture(): Fixture {
         onShutdown: (reason) => {
             shutdownReasons.push(reason);
         },
+        ...(ipcRequestTimeoutMs === undefined ? {} : { ipcRequestTimeoutMs }),
     });
     const conn = new FakeWsConnection();
     ws.accept(conn);
     conn.receive(helloText());
-    return { relay, ws, ipc, logger, conn, shutdownReasons };
+    return { relay, ws, ipc, logger, conn, shutdownReasons, time };
 }
 
 /** 从 ipc 发出的请求帧里取第 index 个 id（保证回应与请求关联） */
@@ -194,6 +207,72 @@ describe("Relay 平台 → 游戏（broadcast 请求-响应）", () => {
         await expect(
             relay.forwardToGame({ channel: "10001", sender: "e", content: "f" }),
         ).rejects.toBeInstanceOf(IpcRequestError);
+    });
+
+    it("IPC 断开后定时器无泄漏", () => {
+        const { relay, ipc, time } = makeFixture(IPC_TIMEOUT_MS);
+        void relay
+            .forwardToGame({ channel: "10001", sender: "a", content: "b" })
+            .catch(() => undefined);
+        ipc.emitClose();
+
+        expect(time.scheduler.pendingCount).toBe(0);
+    });
+});
+
+describe("Relay IPC 请求超时（对齐 Java 侧 10s 语义）", () => {
+    it("无响应 → 超时以 IpcRequestError 拒绝；迟到的响应被忽略不崩", async () => {
+        const { relay, ipc, logger, time } = makeFixture(IPC_TIMEOUT_MS);
+        const promise = relay.forwardToGame({ channel: "10001", sender: "a", content: "b" });
+
+        time.scheduler.advance(IPC_TIMEOUT_MS - 1);
+        time.scheduler.advance(1);
+        await expect(promise).rejects.toMatchObject({
+            name: "IpcRequestError",
+            reason: expect.stringContaining("超时"),
+        });
+
+        // 迟到的响应：id 已不在途 → 告警忽略
+        const requestId = JSON.parse(ipc.sent[0] ?? "{}").header.id as string;
+        ipc.receive(resultText(requestId, true));
+        expect(logger.warns.some((w) => w.includes("无在途请求"))).toBe(true);
+    });
+
+    it("响应及时到达 → 超时定时器被取消", async () => {
+        const { relay, ipc, time } = makeFixture(IPC_TIMEOUT_MS);
+        const promise = relay.forwardToGame({ channel: "10001", sender: "a", content: "b" });
+        ipc.receive(resultText(requestIdAt(ipc, 0), true));
+        await expect(promise).resolves.toEqual({ ok: true });
+
+        time.scheduler.advance(IPC_TIMEOUT_MS * 3);
+        expect(time.scheduler.pendingCount).toBe(0);
+    });
+
+    it("ipcRequestTimeoutMs=0 禁用超时", async () => {
+        const { relay, time } = makeFixture(0);
+        void relay
+            .forwardToGame({ channel: "10001", sender: "a", content: "b" })
+            .catch(() => undefined);
+
+        time.scheduler.advance(1_000_000);
+        // promise 仍悬挂（不因超时拒绝）——用 pendingCount 断言无调度
+        expect(time.scheduler.pendingCount).toBe(0);
+    });
+});
+
+describe("Relay IPC 健康观测（候选 E）", () => {
+    it("ipcOpen：初始 true，IPC 断开 / dispose 后 false", () => {
+        const { relay, ipc } = makeFixture();
+        expect(relay.ipcOpen).toBe(true);
+
+        ipc.emitClose();
+        expect(relay.ipcOpen).toBe(false);
+    });
+
+    it("dispose 后 ipcOpen 为 false（不再接受新请求）", () => {
+        const { relay } = makeFixture();
+        relay.dispose();
+        expect(relay.ipcOpen).toBe(false);
     });
 });
 

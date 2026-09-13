@@ -18,6 +18,7 @@ import { encodeFrame, PROTOCOL_VERSION } from "@kurobot/protocol";
 
 import { StdioIpcChannel } from "./ipc-stdio.js";
 import { createStderrLogger } from "./logger.js";
+import { NodeClock, NodeScheduler } from "./node-platform.js";
 import { NodeWsServer } from "./ws-server.js";
 
 const SERVER_ID = "kurobot-spike";
@@ -51,6 +52,8 @@ async function main(): Promise<void> {
         serverId: SERVER_ID,
         version: VERSION,
         newRequestId: randomUUID,
+        clock: new NodeClock(),
+        scheduler: new NodeScheduler(),
     });
     const wsServer = new NodeWsServer();
     // MVP 阶段一：绑定表未接入（阶段 3 接 ConfigStore），hello_ack 先报空绑定

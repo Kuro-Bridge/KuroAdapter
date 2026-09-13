@@ -32,6 +32,8 @@ export interface WsServer {
 
 /** IPC 通道（宿主实现：Java 薄壳 ↔ Node 的 stdin/stdout JSON-lines，ADR-010） */
 export interface IpcChannel {
+    /** 通道是否仍可用（断连降级观测用，候选 E；只读快照，不保证随后仍可用） */
+    readonly isOpen: boolean;
     send(text: string): void;
     onMessage(handler: (text: string) => void): void;
     onClose(handler: () => void): void;

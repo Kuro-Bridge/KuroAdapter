@@ -1,6 +1,8 @@
 /**
  * 测试用假传输层（仅测试导入，不进产物）。
  */
+
+import { ManualClock, ManualScheduler } from "./clock.js";
 import type { CoreOptions } from "./context.js";
 import { CoreContext } from "./context.js";
 import type { IpcChannel, Logger, WsConnection, WsServer } from "./transport.js";
@@ -91,6 +93,10 @@ export class FakeIpc implements IpcChannel {
     private messageHandler: ((text: string) => void) | null = null;
     private closeHandler: (() => void) | null = null;
 
+    get isOpen(): boolean {
+        return !this.closed;
+    }
+
     send(text: string): void {
         this.sent.push(text);
     }
@@ -127,12 +133,27 @@ export function sequentialIdFactory(): () => string {
     };
 }
 
+/** 手动时钟 + 调度器（默认注入；需要推进时间的测试取回引用后 advance） */
+export interface ManualTime {
+    readonly clock: ManualClock;
+    readonly scheduler: ManualScheduler;
+}
+
+export function manualTime(): ManualTime {
+    const clock = new ManualClock();
+    const scheduler = new ManualScheduler(clock);
+    return { clock, scheduler };
+}
+
 export function makeContext(overrides?: Partial<CoreOptions>): CoreContext {
+    const time = manualTime();
     return new CoreContext({
         logger: new FakeLogger(),
         serverId: "srv-1",
         version: "0.1.0",
         newRequestId: sequentialIdFactory(),
+        clock: time.clock,
+        scheduler: time.scheduler,
         ...overrides,
     });
 }

@@ -7,6 +7,12 @@
  * - WS chat（平台 → 游戏）→ IPC broadcast 请求（UUID 关联，等 broadcast_result）；
  *   v0.2 起携带来源 channel。
  * - IPC shutdown（Java → Node）→ 通知 onShutdown（引导层负责退出进程）。
+ *
+ * 健壮性（MVP 阶段一）：
+ * - IPC 请求超时（ipcRequestTimeoutMs，默认 10s 对齐 Java 侧；0 禁用）——在途请求
+ *   超时以 IpcRequestError 拒绝，不再无限悬挂。
+ * - 断连降级（候选 E）：ipcOpen 暴露 IPC 健康状态，上层（含 /kurobot send 回执路径）
+ *   可感知失败做降级决策；消息排队/补发留 MVP-2。
  */
 import {
     encodeFrame,
@@ -15,6 +21,7 @@ import {
     type ResultBody,
 } from "@kurobot/protocol";
 
+import type { CancelFn } from "./clock.js";
 import type { CoreContext } from "./context.js";
 import type { KurobotServer } from "./server.js";
 import type { IpcChannel } from "./transport.js";
@@ -25,7 +32,9 @@ import type { IpcChannel } from "./transport.js";
  */
 const FANOUT_PLACEHOLDER_CHANNEL = "spike";
 
-/** IPC 请求被拒/失败的类型化错误 */
+export const DEFAULT_IPC_REQUEST_TIMEOUT_MS = 10_000;
+
+/** IPC 请求被拒/失败/超时的类型化错误 */
 export class IpcRequestError extends Error {
     readonly frameType: string;
     readonly reason: string;
@@ -40,6 +49,7 @@ export class IpcRequestError extends Error {
 
 interface PendingRequest {
     readonly frameType: string;
+    cancelTimer: CancelFn | null;
     resolve: (body: ResultBody) => void;
     reject: (error: Error) => void;
 }
@@ -50,6 +60,8 @@ export interface RelayOptions {
     readonly ipc: IpcChannel;
     /** 收到 Java 的 shutdown 帧（stdin EOF 之外的正常关机路径） */
     readonly onShutdown?: (reason: string) => void;
+    /** IPC 请求超时毫秒（缺省 10s 对齐 Java 侧；0 禁用） */
+    readonly ipcRequestTimeoutMs?: number;
 }
 
 export class Relay {
@@ -57,6 +69,7 @@ export class Relay {
     private readonly server: KurobotServer;
     private readonly ipc: IpcChannel;
     private readonly onShutdown: ((reason: string) => void) | undefined;
+    private readonly ipcRequestTimeoutMs: number;
     private readonly pending = new Map<string, PendingRequest>();
     private disposed = false;
 
@@ -65,13 +78,13 @@ export class Relay {
         this.server = options.server;
         this.ipc = options.ipc;
         this.onShutdown = options.onShutdown;
+        this.ipcRequestTimeoutMs = options.ipcRequestTimeoutMs ?? DEFAULT_IPC_REQUEST_TIMEOUT_MS;
         this.ipc.onMessage((text) => {
             this.handleIpcMessage(text);
         });
         this.ipc.onClose(() => {
             // 通道已死：在途请求全部拒绝，且不再接受新请求
-            this.disposed = true;
-            this.failAllPending(new IpcRequestError("ipc", "channel closed"));
+            this.markDisposed(new IpcRequestError("ipc", "channel closed"));
         });
         this.server.onPlatformChat((body) => {
             void this.forwardToGame(body).catch((error: unknown) => {
@@ -80,15 +93,21 @@ export class Relay {
         });
     }
 
-    /** 平台 → 游戏：发 broadcast 请求并等待结果（IPC 关闭时全部拒绝） */
+    /** IPC 通道是否可用（候选 E：上层可观测的降级信号） */
+    get ipcOpen(): boolean {
+        return !this.disposed;
+    }
+
+    /** 平台 → 游戏：发 broadcast 请求并等待结果（超时/IPC 关闭均拒绝） */
     forwardToGame(body: PlatformChatBody): Promise<ResultBody> {
         if (this.disposed) {
             return Promise.reject(new IpcRequestError("broadcast", "relay disposed"));
         }
         const id = this.context.newRequestId();
         const promise = new Promise<ResultBody>((resolve, reject) => {
-            this.pending.set(id, { frameType: "broadcast", resolve, reject });
+            this.pending.set(id, { frameType: "broadcast", cancelTimer: null, resolve, reject });
         });
+        this.armRequestTimeout(id);
         this.ipc.send(
             encodeFrame({
                 type: "broadcast",
@@ -101,8 +120,38 @@ export class Relay {
 
     /** 放弃所有在途请求（进程退出前调用） */
     dispose(): void {
+        this.markDisposed(new IpcRequestError("ipc", "relay disposed"));
+    }
+
+    private armRequestTimeout(id: string): void {
+        if (this.ipcRequestTimeoutMs <= 0) {
+            return;
+        }
+        const pending = this.pending.get(id);
+        if (pending === undefined) {
+            return;
+        }
+        pending.cancelTimer = this.context.scheduler.schedule(this.ipcRequestTimeoutMs, () => {
+            const expired = this.pending.get(id);
+            if (expired === undefined) {
+                return;
+            }
+            this.pending.delete(id);
+            expired.cancelTimer = null;
+            expired.reject(
+                new IpcRequestError("broadcast", `响应超时（${this.ipcRequestTimeoutMs}ms）`),
+            );
+        });
+    }
+
+    private markDisposed(error: Error): void {
         this.disposed = true;
-        this.failAllPending(new IpcRequestError("ipc", "relay disposed"));
+        for (const pending of this.pending.values()) {
+            pending.cancelTimer?.();
+            pending.cancelTimer = null;
+            pending.reject(error);
+        }
+        this.pending.clear();
     }
 
     private handleIpcMessage(text: string): void {
@@ -164,17 +213,12 @@ export class Relay {
             return;
         }
         this.pending.delete(id);
+        pending.cancelTimer?.();
+        pending.cancelTimer = null;
         if (body.ok) {
             pending.resolve(body);
         } else {
             pending.reject(new IpcRequestError(pending.frameType, body.error));
         }
-    }
-
-    private failAllPending(error: Error): void {
-        for (const pending of this.pending.values()) {
-            pending.reject(error);
-        }
-        this.pending.clear();
     }
 }

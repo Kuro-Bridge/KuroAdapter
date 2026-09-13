@@ -14,6 +14,11 @@ export class StdioIpcChannel implements IpcChannel {
     private readonly readline = createInterface({ input: process.stdin });
     private readonly messageHandlers: ((text: string) => void)[] = [];
     private readonly closeHandlers: (() => void)[] = [];
+    private open = true;
+
+    get isOpen(): boolean {
+        return this.open;
+    }
 
     constructor() {
         this.readline.on("line", (line) => {
@@ -25,6 +30,7 @@ export class StdioIpcChannel implements IpcChannel {
             }
         });
         this.readline.on("close", () => {
+            this.open = false;
             for (const handler of this.closeHandlers) {
                 handler();
             }
