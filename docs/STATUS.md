@@ -102,3 +102,29 @@
 门禁终态：`pnpm check` / `pnpm test`（70 用例）/ `pnpm -r build` / `gradlew build`（:core 36 用例，
 含真管道集成测试）全绿。MVP-2 债务（白名单/权限、Watchdog、tools/embed、重连、协议 command/query
 族等）见 MVP1-NOTES 清单——未写 MVP2-PROMPT（范围属用户决策）。
+
+## MVP 阶段二结论（2026-09-13，master）
+
+> 任务书见 `docs/MVP2-PROMPT.md`，全部决策与沙盒实录见 `docs/MVP2-NOTES.md`。
+
+**「环境变量加载的原型形态」升级为「JAR 自含 Node 运行时的可分发插件」——完成。**
+验收清单 §4.1~§4.6 全过：
+
+- **打包链重建（scripts/embed.ts）**：node-v26.7.0-win-x64 官方 dist 下载（sha256 对
+  SHASUMS256.txt；直连失败走 `KUROBOT_NODE_DIST_BASE` 镜像，缓存 `.cache/node-dist/`）→
+  手搓最小 zip 读取器（零新依赖，stored/deflate + crc32，不支持 zip64）→ 产出
+  `embedded/{node.exe, index.mjs, NODE_LICENSE, manifest.json}` 进 :paper resources。
+  Node 原生 TS 剥离直接执行，vitest 10 例全程不发真网（下载器可注入）。
+- **运行期解压加载链（:core EmbeddedRuntime）**：manifest sha256 幂等比对（复用/缺失/哈希
+  不符三路径逐条日志）；名字校验整体前置防 zip slip（固定名读资源 + 单段白名单 +
+  normalize 包含检查）；DigestInputStream 边拷边校验 + tmp 原子替换。JUnit 8 例。
+- **KuroBotPlugin 双模式**：`KUROBOT_BUNDLE` 保留为开发覆盖（沙盒/CI 用 mise node）；未设 →
+  JAR 解压到 `plugins/kurobot/bin/`（与 Node 配置目录同基，规避 getDataFolder 大小写坑），
+  失败 SEVERE + 无 IPC 降级不崩服。`pnpm build:jar` 一条命令全链路（gradlew.bat 接线）。
+- **沙盒真装路径全过**：首装解压 3 件 → JAR 里的 node.exe 拉起 → stub 握手 → 双向消息
+  （`/kurobot send` ↔ stub 广播 `<stub-群友>` 进游戏）；二次启动「复用 3 / 解压 0」；
+  删 bin/ 自动恢复。三轮优雅关停无孤儿。
+- 门禁终态：`pnpm check` / `pnpm test`（80 用例）/ `pnpm -r build` / `gradlew build`
+  （:core 44 用例）全绿；`unzip -l` 证据：JAR（41MB）内含 embedded 四件。
+
+napukettoqq 协议端接入与多平台 node 矩阵留给后续阶段（债务清单见 MVP2-NOTES）。

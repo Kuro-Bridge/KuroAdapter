@@ -56,14 +56,17 @@
 
 ### :paper 运行期解压加载链（EmbeddedRuntime，放 :core）
 
-新增 `:core` 类 `EmbeddedRuntime`（零 Bukkit API，可 JUnit；:paper 主类只组装）：
+新增 `:core` 类 `EmbeddedRuntime`（零 Bukkit API，可 JUnit——放 :core 的原因：Jackson 已是
+其 implementation 依赖且测试设施现成；:paper 主类只组装）：
 
 - 输入：bin 目录 + 资源源（`name → InputStream`，:paper 注入 classloader）+ 日志消费者。
 - 读 `embedded/manifest.json` → 逐文件：磁盘存在且 sha256 与 manifest 一致 → 复用；
   缺失或哈希不符（版本升级/损坏）→ 从 JAR 资源流解压（tmp + 原子 move，拷贝中
   DigestInputStream 校验 sha）。三条路径均落 INFO 日志（验收靠 grep）。
-- **防 zip slip**：manifest 的文件名必须匹配 `[A-Za-z0-9][A-Za-z0-9._-]*`（单段、无路径
-  分隔符、无 `..`），解析后的目标路径 normalize 后必须仍在 bin 目录内。
+- **防 zip slip**：按固定名读资源（不枚举 zip entry，无 entry 名注入面）；manifest 的文件名
+  必须匹配 `[A-Za-z0-9][A-Za-z0-9._-]*`（单段、无路径分隔符、无 `..`），解析后的目标路径
+  normalize 后必须仍在 bin 目录内（双保险）；**名字校验整体前置**——任何越权名在触碰磁盘前
+  拒绝整个 manifest（JUnit 断言零落盘）。
 - **bin 目录推导**（:paper 侧）：相对服务器根的 `plugins/kurobot/bin/`（小写 kurobot，
   与 Node 侧 `plugins/kurobot/config.json` 同基）。**不用 getDataFolder()**——
   paper-plugin.yml 的 name 是 `KuroBot`，大小写敏感文件系统上会得到 `plugins/KuroBot/`
