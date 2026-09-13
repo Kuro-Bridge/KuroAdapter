@@ -3,8 +3,11 @@ package com.kurobot.paper;
 import com.kurobot.KuroBotPlugin;
 import com.kurobot.core.IpcResult;
 import com.kurobot.core.NodeIpcListener;
+import java.util.List;
+import java.util.logging.Level;
 import net.kyori.adventure.text.Component;
 import org.bukkit.Bukkit;
+import org.bukkit.command.CommandException;
 
 /**
  * Node 侧请求的 Bukkit 桥接（实现 :core 的 {@link NodeIpcListener}）。
@@ -45,16 +48,35 @@ public final class NodeRequestHandler implements NodeIpcListener {
     @Override
     public void onExecuteCommand(String command, IpcResult result) {
         CollectingCommandSender sender = new CollectingCommandSender();
+        VanillaFeedbackCapture capture = new VanillaFeedbackCapture();
         try {
             Bukkit.getScheduler().runTask(plugin, () -> {
                 try {
-                    Bukkit.dispatchCommand(sender, command);
+                    capture.attach();
+                    try {
+                        Bukkit.dispatchCommand(sender, command);
+                    } catch (CommandException e) {
+                        if (!isVanillaListenerRejection(e)) {
+                            throw e;
+                        }
+                        // Paper 的 VanillaCommandWrapper 拒绝自定义 sender（仅认内部 Craft* 类型，
+                        // DEBT1-NOTES D1-04）：vanilla 命令回退真实 console sender 执行，输出经
+                        // log4j 控制台流由 capture 收集
+                        Bukkit.dispatchCommand(Bukkit.getConsoleSender(), command);
+                    }
                 } catch (RuntimeException e) {
                     // 命令本身抛异常（插件命令 bug 等）：显式回执失败，避免 Node 侧等到超时
+                    plugin.getLogger().log(Level.WARNING, "execute_command 执行异常：" + command, e);
                     result.error("命令执行异常：" + e.getMessage());
                     return;
+                } finally {
+                    capture.detach();
                 }
-                result.ok(sender.collectedLines());
+                List<String> output = sender.collectedLines();
+                if (output.isEmpty()) {
+                    output = capture.collectedLines();
+                }
+                result.ok(output);
             });
         } catch (RuntimeException e) {
             // 插件已 disable 等导致调度失败：显式回执失败，避免 Node 侧等到超时
@@ -62,6 +84,19 @@ public final class NodeRequestHandler implements NodeIpcListener {
         }
         // 回执时序（v0.3.0）：主线程任务执行完才 ok（Node 等待真实执行完成）；主线程卡死
         // 超过请求超时（10s）由 Node 侧既有 IPC 超时兜底
+    }
+
+    /** 是否为 VanillaCommandWrapper.getListener 拒绝自定义 sender（回退 console 的信号）。 */
+    private static boolean isVanillaListenerRejection(CommandException exception) {
+        Throwable cause = exception;
+        while (cause != null) {
+            if (cause instanceof IllegalArgumentException
+                    && String.valueOf(cause.getMessage()).contains("a vanilla command listener")) {
+                return true;
+            }
+            cause = cause.getCause();
+        }
+        return false;
     }
 
     @Override

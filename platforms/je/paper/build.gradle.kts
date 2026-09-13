@@ -9,6 +9,9 @@ plugins {
 dependencies {
     implementation(project(":core"))
     compileOnly("io.papermc.paper:paper-api:1.21.4-R0.1-SNAPSHOT")
+    // vanilla 命令输出捕获（NodeRequestHandler 回退路径）：仅编译期需要，运行期由
+    // Paper 服务端自带 log4j-core 提供（v0.3.0，DEBT-1，见 DEBT1-NOTES D1-04）
+    compileOnly("org.apache.logging.log4j:log4j-core:2.25.1")
 }
 
 // 苛刻度：Spotless(Palantir)（ADR-011）
