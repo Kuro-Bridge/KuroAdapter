@@ -162,3 +162,36 @@ napukettoqq 协议端接入与多平台 node 矩阵留给后续阶段（债务�
 门禁终态：`pnpm check` / `pnpm test`（93 用例）/ `pnpm -r build` / `gradlew build` +
 `:core:test --rerun`（:core 57 用例）全绿。下一步：MVP-3（napukettoqq 接入 + 多平台
 矩阵）开题；DEBT-1（协议/业务补全）按其 NOTES 指引复跑。
+
+## 债务清偿一结论（2026-09-13，master）
+
+任务书 `docs/DEBT1-PROMPT.md` 全阶段（0~5）执行完毕，决策与验收实录见
+`docs/DEBT1-NOTES.md`（D1-01~06 + 阶段 1/2 决策回填 + §4 验收表）。提交链：
+1c32578（协议 0.3.0）→ 7f0f6c7（core 业务）→ 2959eee（embedded/stub）→ 4450012（阶段 4
+设计先行）→ a1bac4a（:core/:paper）→ 本册收尾提交。
+
+- **协议 0.3.0**：WS 帧集增 command/command_result、query/query_result、death；
+  IPC 增 player_death、config_reload、execute_command_result 可选 output；hello 可选
+  token；版本协商改主版本兼容区间（0.2.x 对端可连 0.3.0 服务端，1.x 拒绝）+ 未知帧
+  两段式容忍（未知请求回执 unknown frame type、未知事件 debug 忽略，均不断连）。
+- **业务闭环第一块**：群管理员映射（admins）+ WS command → 管理员判定 → IPC
+  execute_command 透传 → Java 收集型 sender 执行 → 输出行回传 command_result；白名单
+  SSOT 维持 MC 原生 whitelist.json（经 command 的 output 覆盖）；query status（最近一帧
+  缓存）/bindings 本地作答；death 按绑定 fan-out；`/kurobot reload` → config_reload →
+  复用 watch 推送路径。
+- **鉴权与权限**：config 增 `token`（空 = 不鉴权向后兼容；非空 close 1008 拒绝）与
+  `admins`；`kurobot.relay` 权限消费落地（negate 即静音）。配置字段说明见
+  `docs/config-schema.md`（SSOT 是 core zod schema）。
+- **重要架构发现（D1-04）**：Paper 的 VanillaCommandWrapper 拒绝自定义 CommandSender
+  承接 vanilla 命令——双路径方案：Bukkit 命令直接收集；vanilla 命令回退真实 console
+  sender 执行、输出由 log4j 主线程窗口捕获（VanillaFeedbackCapture）。放弃 NMS 代理
+  （违背单 jar 通吃红线）。
+- **测试资产（D1-05）**：`sandbox/fake-player.mjs` 离线模式假人（协议 769，零依赖）——
+  无人值守注入真实 join/chat/death/quit 事件；1.21.4 协议坑实录（client_information
+  particleStatus、C2S 帧号漂移、LastSeenMessages.Update 固定 BitSet）。
+- **验收**：§4.1~§4.11 全过（实录表见 DEBT1-NOTES）。门禁终态：`pnpm check` /
+  `pnpm test`（138 用例）/ `pnpm -r build` / `gradlew build` + `:core:test --rerun`
+  （:core 65 用例）全绿。
+- **遗留债务**：msgContinue/msgEnd 流式、status 周期上报、serverId 互联、napukettoqq
+  接入（MVP-3）、koishi-plugin-kurobot 仓库、多平台矩阵/SHASUMS 严格模式；新增小债
+  （vanilla 输出捕获窗口语义、fake-player 无保活）见 DEBT1-NOTES 债务清单。

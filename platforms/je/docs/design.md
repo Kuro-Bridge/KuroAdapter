@@ -213,6 +213,19 @@ NodeIpcTest 扩展），:paper 仍靠沙盒验收兜底。
 :core JUnit 补 codec 新帧编解码 / Result.output 解析 / executeCommand 输出 future；
 :paper 维持零单测（沙盒验收兜底），CollectingCommandSender 行为在沙盒 §4.4 验证。
 
+### 实际差异回填（沙盒验收期发现，D1-04）
+
+设计时假设自定义 CommandSender 可承接全部命令——实测 **Paper 的
+`VanillaCommandWrapper.getListener` 只认内部 Craft* sender 类型**，vanilla 命令
+（whitelist/say 等）对自定义 sender 一律抛 "Cannot make ... a vanilla command listener"
+（Bukkit/插件命令不受影响）。落地为双路径：Bukkit 命令经 CollectingCommandSender 直接
+收集；vanilla 命令回退真实 console sender 执行，输出由 **VanillaFeedbackCapture**
+（:paper 新类，log4j root logger 临时 appender，仅收 `Server thread` 在 attach/detach
+窗口内的行——vanilla 反馈必然经 DedicatedServer.sendMessage 落日志流）收集。为此 :paper
+新增 `compileOnly log4j-core`（运行期由服务端自带）。放弃 ProxiedNativeCommandSender
+动态代理：该接口暴露 NMS 类型，违背 paper-api 单 jar 通吃红线。 §4.5 验收证据：
+`whitelist list` → `output=[There are 1 whitelisted player(s): FakePlayer]`。
+
 ## 已知坑（详见 PROTOTYPE-NOTES / MVP1-NOTES）
 
 - Spotless palantir 钉 2.71.0（JDK 25 兼容线）；`-Xlint:all -Werror`。

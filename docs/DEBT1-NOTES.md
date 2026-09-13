@@ -145,3 +145,109 @@ runtime.autoRestart）、STATUS/ADR（双方都要追加结论与新编号）。
   command_result/query_result/未知回执处理；DEBT-2 自杀逻辑原样保留。
 - 门禁：`mise exec -- pnpm -r build` / `pnpm check` / `pnpm test`（138 用例）全绿；
   embedded/stub 不涉 Java，gradle 门禁留阶段 4 一并跑。
+
+## 阶段 4（platforms/je，2026-09-13，提交 a1bac4a + 沙盒期补丁）
+
+### D1-04 发现并修复：Paper 拒绝自定义 CommandSender 承接 vanilla 命令 → log4j 窗口捕获回退
+
+- 任务书 §1.2 设想「收集型 CommandSender + 主线程调度」收集全部命令输出。沙盒实测：
+  **Bukkit/插件命令**（version 等）成功收集；**vanilla 命令**（whitelist/say 等）100% 抛
+  `IllegalArgumentException: Cannot make ... a vanilla command listener`——
+  `VanillaCommandWrapper.getListener` 只认内部 Craft* sender 类型与 ProxiedNativeCommandSender
+  （后者是 NMS 接口，编译依赖 paper-server，违背「paper-api 单 jar 通吃」红线）。
+- 处置（双路径）：自定义 sender 先行（Bukkit 命令直接收集）；抛出上述特征异常时回退真实
+  console sender 执行，vanilla 反馈必然经 `DedicatedServer.sendMessage` 落 log4j 控制台流，
+  由 `VanillaFeedbackCapture`（root logger 临时 appender，只收 `Server thread` +
+  attach/detach 窗口内行）收集。两条路径输出互斥不重复。
+- 放弃方案：① log4j 全量捕获不做 sender 回退（Bukkit 命令输出不经日志，会漏）；②
+  ProxiedNativeCommandSender 动态代理（依赖 NMS 类型，版本锁定，红线不允许）；③ 只支持
+  Bukkit 命令收集、vanilla 返回占位行（§4.5「output 含白名单内容」无法达成）。
+- 验收对照：`whitelist list` → `成功，输出行 [There are 1 whitelisted player(s): FakePlayer]`。
+
+### 其余落实情况
+
+- :core：IpcFrameCodec 出帧增 player_death（message 允许空串）/config_reload（空体事件）；
+  encodeResult 增 output（null/空不产生字段）；decodeResult 仅 execute_command_result 的
+  ok 分支解析 output（broadcast_result 忽略——镜像 zod 非 strict 的 strip 语义而非拒帧）；
+  IpcResult.ok() 改 default 委托 ok(List)；NodeIpc.executeCommand 返回
+  `CompletableFuture<List<String>>`（未带 output 归一空列表；pending 内部类型随迁，
+  broadcast 用 thenApply 保持 Void 签名）。KurobotVersions 同步 0.3.0。
+- :paper：DeathListener（deathMessage null → 空串兜底）、CollectingCommandSender（控制台
+  语义恒 true；name 与 ConsoleSender 对齐）、PlainText（plain 序列化器共用，deprecation
+  说明随迁）、KurobotCommand reload 子命令、ChatListener kurobot.relay 检查、
+  NodeRequestHandler 回执时序改「真实执行完成后 ok」。
+- 测试：:core 44→65（codec 新帧/output 编码与按帧型解析/executeCommand future 三态/
+  listener 回执 output 编码）；真 bundle 集成测试补 player_death 端到端；build
+  `:core:test --rerun` 真跑全绿。CollectingCommandSender 的 adventure 适配按 paper-api
+  1.21.4 实际签名落（extends Audience 而非 ForwardingAudience；汇聚点
+  sendMessage(Identity,Component,MessageType) 为 no-op sink 必须覆写）。
+
+## 阶段 5（沙盒端到端验收 + 文档收尾，2026-09-13）
+
+### D1-05 无人值守验收需要「真实玩家」→ 自制离线模式假人（sandbox/fake-player.mjs）
+
+- §4.7（游戏内 /kill → death 帧）与 §4.9（relay negate → 聊天不转发）都需玩家在线触发
+  Bukkit 事件。选择自制零依赖 MC 协议假人（handshake→login→configuration→play，协议 769，
+  online-mode=false 免加密）而非降级只靠集成测试证据——death/relay 的 Bukkit 事件接线
+  （PlayerDeathEvent/AsyncChatEvent）没有其它覆盖面。
+- 协议坑实录（1.21.4）：client_information 末位**新增 particleStatus 字段**（缺了直接
+  DecoderException 被踢）；C2S play 帧号随版本漂移（0x18 被解码为 interact；chat 实测
+  0x07）；chat body 的 LastSeenMessages.Update = varint offset + **固定 20 位 BitSet**
+  （3 字节、无长度前缀）；configuration 态需回 finish_configuration ack / keepalive /
+  select_known_packs 空表。play 态刻意不发 keepalive 响应（ID 漂移风险 > 30s 超时窗口）。
+- 结论：假人一次注入即得 join/chat/death/quit 全链真实事件，成为本沙盒的长期测试资产。
+
+### D1-06 无人值守会话承载长驻沙盒服务器：run_in_background 承载主进程
+
+- 前台工具调用里 `paper-start.sh` 启动后，**调用结束会连带杀掉 tail|java 进程树**
+  （stdin EOF → Paper 优雅停机），服务器活不过下一次工具调用——两次启动两次复现。
+- 处置：`run_in_background` 任务承载 `tail -f cmd.in | java -jar paper.jar`（任务体常驻，
+  跨调用存活）；关服用 TaskStop + paper-stop.sh。
+- 连带踩坑：run_in_background 启动**不更新 paper.pid** → paper-stop.sh 的 alive() 查
+  旧 pid 判「未在运行」静默失效 → 下次启动 world 目录锁冲突（DirectoryLock）。
+  无人值守流程应以 TaskStop/端口检查为准，勿依赖 paper.pid。
+
+### 验收实录（任务书 §4 清单）
+
+| # | 项 | 结果 | 证据（grep console.log / 测试） |
+|---|---|---|---|
+| 1 | 门禁全绿 | ✅ | pnpm check/test 138 用例；pnpm -r build；gradlew build + :core:test --rerun 65 用例 |
+| 2 | 版本协商 | ✅ | `hello 版本=1.0.0` → `握手被拒：protocol version mismatch` + `未握手连接关闭` + 持续重连（1002 由 server.test.ts 断言）；`0.2.0` → `握手成功 protocolVersion=0.3.0` |
+| 3 | token | ✅ | `鉴权 token：已启用`；无 token → `握手被拒：auth failed`；错误 token → 同拒；正确 token → `握手成功`；空 token 会话全放行（会话 A） |
+| 4 | 未知帧容忍 | ✅ | 请求帧 → `回执 unknown frame type` + 连接保持；事件帧 → `收到未知事件帧 stub_unknown_event，忽略` + 连接保持 |
+| 5 | command 双向 | ✅ | 管理员 `whitelist list` → `成功，输出行 [There are 1 whitelisted player(s): FakePlayer]`；guest → `失败（error=forbidden）` + `非管理员来源执行命令被拒绝：...userId=stub-guest` warn |
+| 6 | query | ✅ | `query: bindings 结果：成功，data=["stub-channel"]`；join 后 `query: status 结果：成功，data={"tps":20,"onlinePlayers":1,...}`；join 前 status → `失败（error=no status yet)`（设计预期） |
+| 7 | death 事件 | ✅ | 假人被僵尸击杀（survival 自然事件）→ `收到死亡：[stub-channel] FakePlayer FakePlayer was slain by Zombie`；:core 集成测试 player_death 端到端 |
+| 8 | reload | ✅ | `已通知重载` → `收到配置重载通知（config_reload）` → `绑定表已更新：[stub-channel, stub-channel-2]` → stub `收到绑定变更` → 变更后消息进游戏 |
+| 9 | relay 权限 | ✅ | default true：`收到游戏聊天：<FakePlayer> ...`；permissions.yml negate false：join/status 正常推送而聊天 0 帧转发 |
+| 10 | 回归 | ✅ | 双向消息/绑定 fan-out/热重载/JAR 解压升级重建/优雅关停链（`收到关机通知`→`stdin EOF`→stub 退出）均有会话证据；DEBT-2 看护不在本册范围 |
+| 11 | 文档收尾 | ✅ | 本表 + STATUS「债务清偿一结论」+ docs/config-schema.md + design 回填 |
+
+### 债务清单（遗留与延续项）
+
+- **msgContinue/msgEnd 流式回报**、**status 周期上报**（M-04 决策维持，按需 query 已覆盖
+  状态面板）、**多服务器 serverId 互联**、**napukettoqq 协议端接入**（MVP-3）、
+  **koishi-plugin-kurobot 独立仓库**、**多平台 node 矩阵 / build:jar SHASUMS 严格模式**
+  ——全部延续至 MVP-3 及后续。
+- 新增小债：① `whitelist list` 输出行依赖 log4j 捕获，vanilla 命令输出为「主线程窗口内
+  日志行」语义，多命令并发时理论上可能混入同窗口日志行（当前单命令串行可接受）；②
+  CollectingCommandSender 对非 Paper 1.21.x 的 sendMessage 变体集合未经矩阵验证（多版本
+  策略下随适配层重验）；③ sandbox/fake-player.mjs 的 play 态保活未实现，仅适合短窗验收。
+
+### 阶段 1/2 决策欠账回填（当时未记入本文件，从提交/设计提取）
+
+阶段 1（1c32578）与阶段 2（7f0f6c7）期间的实际决策均已固化于
+`bridge/protocol/docs/design.md` 与 `bridge/core/docs/design.md` 的「债务清偿一（DEBT-1）」
+小节及提交说明，要点摘录（编号顺延既有最大号，非当时实时编号）：
+
+- 版本协商改主版本兼容区间（`isProtocolVersionCompatible` 纯函数），不兼容走既有拒绝
+  路径（hello_ack ok:false + close 1002）；未知帧容忍采用两段式解析（wireFrameSchema 先取
+  type：未知请求回 `<type>_result unknown frame type`、未知响应不回执防乒乓、未知事件
+  debug 忽略，均不断连）；IPC 侧不做容忍（受控对端）。
+- token 校验在协商通过后进行（close 1008）；token 进程生命周期内固定，reload 不刷新。
+- query 本地作答（sendStatus 顺带缓存最近一帧；bindings 回实时快照；无缓存回
+  no status yet）；command 走 AdminTable 判定 + IPC 透传；player_death 按绑定 fan-out；
+  config_reload 重读复用 watch 路径（读取失败保留旧值）。
+- execute_command_result 与 WS command_result 共用结果体（output 仅 ok 分支、空输出
+  不产生字段）；death 帧字段按任务书原文 `player`/`message`（与 join/leave 的
+  playerName 不一致已记录并照办）。
