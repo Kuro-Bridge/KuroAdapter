@@ -136,7 +136,9 @@ DEBT-1 小节；4f27c9f：NOTES 修正）。两者均为 docs-only，与本册�
   logging.jsonl 的编码不一致（显示层既有认知，验收 grep 以 latest.log / 英文 token
   为主，python 按字节探测双编码兜底）。
 - **G. 管道前缀的环境变量只作用于管道左端**（`FOO=x tail | node` 里 node 拿不到
-  FOO）——最小环境复现 stub 行为时踩到，改 export 解决。
+  FOO）——最小环境复现 stub 行为时踩到，改 export 解决。另：最小实验在
+  bridge/embedded 下直跑 node 会让 NodeConfigStore 按 cwd 生成 `plugins/kurobot/config.json`
+  残留进仓库——已移除并把 `bridge/embedded/plugins/` 加进 .gitignore。
 
 ## 沙盒端到端验收实录（2026-09-13，任务书 §4）
 
