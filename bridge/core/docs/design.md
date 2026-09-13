@@ -236,3 +236,12 @@ bindings_updated）→ load 失败 error 日志、保留旧值等下次修复。
   （SSOT 破裂）、配置进 Java 薄壳（WS 细节漏进桥接层，违背红线 2/3）。
 - 空 token 安全基线（config 含 ws 段且 token 为空 → WARN）的打点在 embedded bootstrap，
   core 只定义形状，不做行为。
+
+### 实现回填（2026-09-13 验收后）
+
+- `server.ts` 握手成功日志展示 client：有则追加 `，client=<身份串>`，无则逐字节维持
+  0.3.0 旧格式（验收 grep 不受影响）；client 不进 PeerState、不参与任何判定。
+- `parseConfig` 条件展开保证「ws 段缺省 = 结果对象无 ws 键」（测试断言
+  `not.toHaveProperty("ws")`）；defaultConfig 同样无 ws 键。
+- 沙盒与单测证据：config.test.ts +4（形态/非法值/缺省无 ws 键）、embedded
+  ws-server.test.ts +4（真网）、沙盒固定端口/绑定失败/WARN/双对端全过（MVP3-NOTES）。

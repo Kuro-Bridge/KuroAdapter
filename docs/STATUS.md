@@ -195,3 +195,39 @@ napukettoqq 协议端接入与多平台 node 矩阵留给后续阶段（债务�
 - **遗留债务**：msgContinue/msgEnd 流式、status 周期上报、serverId 互联、napukettoqq
   接入（MVP-3）、koishi-plugin-kurobot 仓库、多平台矩阵/SHASUMS 严格模式；新增小债
   （vanilla 输出捕获窗口语义、fake-player 无保活）见 DEBT1-NOTES 债务清单。
+
+## MVP 阶段三结论（2026-09-13，master）
+
+> 任务书见 `docs/MVP3-PROMPT.md`，全部决策与沙盒实录见 `docs/MVP3-NOTES.md`（M3-01~10）。
+
+**「真实协议端无处可连、无据可依」补齐为「固定端口 + 绑定地址 + 安全基线 + 官方对端
+指南」的 external 接入基座——完成。** 范围由用户拍板：只做 external 形态（napukettoqq
+独立部署连入），JAR 内嵌留 MVP-4；napukettoqq 侧适配器在 NapukettoQQ 仓库另册执行，
+本册产出 `docs/protocol/peer-guide.md` 是其实现 SSOT。验收清单 §4 全过：
+
+- **协议 0.3.1（patch）**：hello 可选 `client` 自报身份串（建议 `名称/版本`），服务端仅
+  连接日志辨识、不做行为分支；对 0.2.x/0.3.0 对端双向兼容。WS_SUBPROTOCOL 与主版本
+  兼容协商规则不动。
+- **config 增顶层 `ws` 段**（形状 SSOT 归 core zod schema，消费在 embedded——监听参数
+  是宿主事务，`WsServer` 接口不感知，ADR-028）：整段缺省 = 动态端口 + 全部接口（现状
+  不变）；`port` 固定端口 / `host` 绑定地址 / 只配 host = 动态端口 + 指定地址。
+- **NodeWsServer 参数化 + 绑定失败语义**：构造收 `{host?, port?, logger?}`；EADDRINUSE
+  经 ws 库 error 事件异步到达（实测构造不抛）→ 一次性 error 监听 + listening 事件竞态
+  收口，reject `WsBindError`（含端口与原因）→ bootstrap error 日志 + 非零退出；重启
+  收敛于 Java 看护器退避（1s/5s/15s，10 分钟窗 3 次放弃），不新增重试机制。安全基线：
+  ws 段 + 空 token → 启动 WARN 不阻断。
+- **stub 独立连入模式**：`KUROBOT_STUB_WS_URL`（独立进程模拟 external 对端）/
+  `KUROBOT_STUB_CLIENT`（hello 自报身份）；双独立 stub 并存、广播双方可达无串扰。
+- **docs/protocol/peer-guide.md（新建）**：外部协议端唯一实现依据——连接与子协议、
+  握手/协商/鉴权（1002/1008 区分）、心跳、重连策略（退避 + 反模式点名）、逐帧字段表
+  （对照 zod 现源）、业务约定（channel=群号 / admins userId=QQ 号 / 富文本降级）、
+  安全基线（token 必配 / TLS 隧道）、完整时序示例、版本演进速查。
+- 沙盒验收证据全采集（固定端口/绑定失败/空 token WARN/client 展示/双对端/DEBT-1 四项
+  回归），实录表见 MVP3-NOTES。附带发现：Windows 通配与特定地址绑定可并存（绑定失败
+  复现须同地址形态）；fake-player 补 teleport confirm 修复玩家半生成僵死态（本地资产）。
+
+门禁终态：`pnpm check` / `pnpm test`（146 用例）/ `pnpm -r build` / `gradlew build` +
+`:core:test --rerun`（:core 65 用例）全绿。提交链：b0809ef（协议 0.3.1 + 设计先行）→
+9d06bbd（ws 段 + 参数化）→ 4a834d4（stub + 冒烟）→ a8ee695（peer-guide）→ 本册收尾。
+下一步：napukettoqq 侧 kurobot 适配器任务书（以 peer-guide.md 为 SSOT，NapukettoQQ
+仓库执行）；MVP-4（embedded 形态）与本册债务清单续排。

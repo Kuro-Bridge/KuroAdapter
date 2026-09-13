@@ -181,3 +181,13 @@ src/
   stub 可不经孙进程拉起、以独立进程模拟 external 对端连入（设该变量时 argv 端口可省略）；
   `KUROBOT_STUB_CLIENT` hello 携带 `client` 自报身份（验服务端握手日志展示，协议 0.3.1）。
 - 既有钩子（PROTOCOL_VERSION/TOKEN/ADMIN_SOURCE/SEND_*）与重连 10 次自杀逻辑不动。
+
+### 实现回填（2026-09-13 验收后）
+
+- 绑定失败实例**不登记 `this.server`**：stop() 维持 no-op，进程清理路径安全；
+  listening 后的 error 经注入 logger 记日志不退出。
+- 架构发现（Windows，M3-08）：通配（0.0.0.0）与特定地址（127.0.0.1）绑定可**并存**——
+  复现绑定失败必须同地址形态占位；`ws-server.test.ts` 端口占用用例用同族 socket
+  （listen(0) → 读端口 → 释放）不受影响。
+- 沙盒证据（MVP3-NOTES 验收表）：固定端口 25580、绑定失败退避 3 次放弃、空 token WARN、
+  双独立 stub 并存（WS_URL/CLIENT 钩子）。
