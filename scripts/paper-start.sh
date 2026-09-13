@@ -10,10 +10,9 @@
 #      → 启动前清杀全部 tail.exe。
 #   3. MSYS pid 跨 bash 会话不可靠 → pid 文件记录 Windows pid（/proc/$!/winpid）。
 #
-# 环境变量（KuroBot 插件读取）：
-#   KUROBOT_NODE   node 绝对路径（缺省 mise 的 node——Java ProcessBuilder 解析 "node"
-#                  拿到的是系统 PATH 的 v24，必须显式给绝对路径）
-#   KUROBOT_BUNDLE embedded 引导层产物绝对路径
+# 环境变量（KuroBot 插件读取，MVP 阶段二起插件 JAR 自含 Node 运行时，不再注入 node/bundle）：
+#   KUROBOT_STUB_PEER  stub 协议端脚本路径（测试件不进 JAR，缺省指向仓库内 stub）
+#   KUROBOT_NODE / KUROBOT_BUNDLE  开发覆盖（设置后绕过 JAR 解压链，用环境指定的 node/bundle）
 #
 # 用法：bash scripts/paper-start.sh
 
@@ -41,8 +40,8 @@ else
     echo "[sandbox] 警告：未找到 shadowJar（$PLUGIN_JAR），本次启动不含 KuroBot" >&2
 fi
 
-export KUROBOT_BUNDLE="${KUROBOT_BUNDLE:-$REPO/bridge/embedded/dist/index.mjs}"
-export KUROBOT_NODE="${KUROBOT_NODE:-$(mise which node)}"
+# stub 不进 JAR（测试件）：沙盒经仓库内路径注入；JAR 内自带 node.exe，无需 KUROBOT_NODE
+export KUROBOT_STUB_PEER="${KUROBOT_STUB_PEER:-$REPO/bridge/embedded/stub/peer.mjs}"
 
 # 坑 1：清空旧输入（防止回放上轮 stop）
 : > "$SERVER/cmd.in"
@@ -58,5 +57,4 @@ mise exec -- bash -c '
 '
 
 echo "[sandbox] Paper 已后台启动（winpid=$(cat "$SERVER/paper.pid")），日志：$SERVER/console.log"
-echo "[sandbox] KUROBOT_NODE=$KUROBOT_NODE"
-echo "[sandbox] KUROBOT_BUNDLE=$KUROBOT_BUNDLE"
+echo "[sandbox] KUROBOT_STUB_PEER=$KUROBOT_STUB_PEER"
