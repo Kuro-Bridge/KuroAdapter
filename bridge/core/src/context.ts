@@ -13,6 +13,11 @@ export interface CoreOptions {
     serverId: string;
     /** kurobot 版本（hello_ack 上报给对端） */
     version: string;
+    /**
+     * WS 握手鉴权 token（v0.3.0，DEBT-1）：非空时 hello 必须携带相同 token。
+     * 缺省/空串 = 不鉴权（向后兼容）。exactOptionalPropertyTypes 下经 ?? "" 归一。
+     */
+    token?: string;
     /** 请求-响应关联 id 工厂（宿主注入 UUID 实现） */
     newRequestId: () => string;
     /** 时钟（超时/空闲检测用） */
@@ -25,6 +30,8 @@ export class CoreContext {
     readonly logger: Logger;
     readonly serverId: string;
     readonly version: string;
+    /** 鉴权 token（"" = 不鉴权）；进程生命周期内固定（bootstrap 注入，reload 不刷新） */
+    readonly token: string;
     readonly newRequestId: () => string;
     readonly clock: Clock;
     readonly scheduler: TimerScheduler;
@@ -33,6 +40,7 @@ export class CoreContext {
         this.logger = options.logger;
         this.serverId = options.serverId;
         this.version = options.version;
+        this.token = options.token ?? "";
         this.newRequestId = options.newRequestId;
         this.clock = options.clock;
         this.scheduler = options.scheduler;

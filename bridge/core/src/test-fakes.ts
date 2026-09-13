@@ -13,13 +13,29 @@ import type { IpcChannel, Logger, WsConnection, WsServer } from "./transport.js"
 export class FakeConfigStore implements ConfigStore {
     private current: KurobotConfig;
     private readonly watchers: ((config: KurobotConfig) => void)[] = [];
+    /** load() 覆写（config_reload 测试专用）：返回指定配置或抛错，不影响 watch/current */
+    private loadResult: { ok: true; config: KurobotConfig } | { ok: false; error: unknown } | null =
+        null;
 
     constructor(initial: KurobotConfig = defaultConfig()) {
         this.current = initial;
     }
 
     async load(): Promise<KurobotConfig> {
+        if (this.loadResult !== null) {
+            if (this.loadResult.ok) {
+                return this.loadResult.config;
+            }
+            throw this.loadResult.error;
+        }
         return this.current;
+    }
+
+    /** 注入 load() 返回值（不触发 watch；验证 config_reload 路径用） */
+    setLoadResult(
+        result: { ok: true; config: KurobotConfig } | { ok: false; error: unknown },
+    ): void {
+        this.loadResult = result;
     }
 
     watch(onChange: (config: KurobotConfig) => void): () => void {

@@ -1,8 +1,9 @@
 import { PROTOCOL_VERSION } from "@kurobot/protocol";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
+import { AdminTable } from "./business/admins.js";
 import { BindingTable } from "./business/bindings.js";
-import { defaultConfig, type KurobotConfig } from "./business/config.js";
+import { ConfigError, defaultConfig, type KurobotConfig } from "./business/config.js";
 import { IpcRequestError, Relay } from "./relay.js";
 import { KurobotServer } from "./server.js";
 import {
@@ -42,6 +43,7 @@ function helloText(): string {
 interface Fixture {
     relay: Relay;
     bindings: BindingTable;
+    admins: AdminTable;
     config: FakeConfigStore;
     ws: FakeWsServer;
     ipc: FakeIpc;
@@ -63,6 +65,7 @@ function makeFixture(ipcRequestTimeoutMs?: number, channels: string[] = [BOUND])
         scheduler: time.scheduler,
     });
     const bindings = new BindingTable(channels);
+    const admins = new AdminTable([]);
     const config = new FakeConfigStore(cfg(channels));
     const server = new KurobotServer({
         context,
@@ -77,6 +80,7 @@ function makeFixture(ipcRequestTimeoutMs?: number, channels: string[] = [BOUND])
         server,
         ipc,
         bindings,
+        admins,
         configStore: config,
         onShutdown: (reason) => {
             shutdownReasons.push(reason);
@@ -86,7 +90,7 @@ function makeFixture(ipcRequestTimeoutMs?: number, channels: string[] = [BOUND])
     const conn = new FakeWsConnection();
     ws.accept(conn);
     conn.receive(helloText());
-    return { relay, bindings, config, ws, ipc, logger, conn, shutdownReasons, time };
+    return { relay, bindings, admins, config, ws, ipc, logger, conn, shutdownReasons, time };
 }
 
 /** 从 ipc 发出的请求帧里取第 index 个 id（保证回应与请求关联） */
@@ -384,5 +388,138 @@ describe("Relay 关机", () => {
             }),
         );
         expect(conn.sent).toHaveLength(1); // 只有 hello_ack
+    });
+});
+
+describe("Relay command 请求（v0.3.0：管理员判定 + IPC 透传）", () => {
+    function commandText(command: string, channel = "stub-channel", userId = "stub-admin"): string {
+        return JSON.stringify({
+            header: { type: "command", id: UUID },
+            body: { command, source: { channel, userId } },
+        });
+    }
+
+    it("非管理员来源 → command_result ok:false forbidden + warn，不触发 IPC", async () => {
+        const f = makeFixture();
+        f.conn.receive(commandText("whitelist list", "stub-channel", "intruder"));
+        await Promise.resolve();
+        await Promise.resolve();
+        const reply = JSON.parse(f.conn.sent[1] ?? "{}");
+        expect(reply.header.type).toBe("command_result");
+        expect(reply.body).toEqual({ ok: false, error: "forbidden" });
+        expect(f.ipc.sent).toHaveLength(0);
+        expect(f.logger.warns.some((m) => m.includes("非管理员来源"))).toBe(true);
+    });
+
+    it("管理员来源 → IPC execute_command 请求透传，结果（含 output）原样回 command_result", async () => {
+        const f = makeFixture();
+        f.admins.replace([{ channel: "stub-channel", users: ["stub-admin"] }]);
+        f.conn.receive(commandText("whitelist list"));
+        await Promise.resolve();
+        const request = JSON.parse(f.ipc.sent[0] ?? "{}");
+        expect(request.header.type).toBe("execute_command");
+        expect(request.body).toEqual({ command: "whitelist list" });
+        // Java 回 execute_command_result（带 output）
+        f.ipc.receive(
+            JSON.stringify({
+                header: { type: "execute_command_result", id: request.header.id },
+                body: { ok: true, output: ["Whitelisted players: Steve"] },
+            }),
+        );
+        await vi.waitFor(() => expect(f.conn.sent).toHaveLength(2));
+        const reply = JSON.parse(f.conn.sent[1] ?? "{}");
+        expect(reply).toEqual({
+            header: { type: "command_result", id: UUID },
+            body: { ok: true, output: ["Whitelisted players: Steve"] },
+        });
+    });
+
+    it("管理员来源 + IPC 结果 ok:false → command_result ok:false（错误文本透传）", async () => {
+        const f = makeFixture();
+        f.admins.replace([{ channel: "stub-channel", users: ["stub-admin"] }]);
+        f.conn.receive(commandText("stop"));
+        await Promise.resolve();
+        const request = JSON.parse(f.ipc.sent[0] ?? "{}");
+        f.ipc.receive(
+            JSON.stringify({
+                header: { type: "execute_command_result", id: request.header.id },
+                body: { ok: false, error: "调度命令执行到主线程失败" },
+            }),
+        );
+        await vi.waitFor(() => expect(f.conn.sent).toHaveLength(2));
+        const reply = JSON.parse(f.conn.sent[1] ?? "{}");
+        expect(reply.body.ok).toBe(false);
+        expect(reply.body.error).toContain("调度命令执行到主线程失败");
+    });
+
+    it("配置变更刷新管理员映射：原本 forbidden 的来源在 admins 更新后放行", async () => {
+        const f = makeFixture();
+        f.conn.receive(commandText("list"));
+        await Promise.resolve();
+        await Promise.resolve();
+        expect(JSON.parse(f.conn.sent[1] ?? "{}").body.ok).toBe(false);
+
+        f.config.notify({
+            ...defaultConfig(),
+            channels: [BOUND],
+            admins: [{ channel: "stub-channel", users: ["stub-admin"] }],
+        });
+        f.conn.receive(commandText("list"));
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+        // 第二次命令已发往 IPC（管理员放行）
+        expect(f.ipc.sent.some((t) => t.includes("execute_command"))).toBe(true);
+    });
+});
+
+describe("Relay player_death fan-out（v0.3.0）", () => {
+    it("IPC player_death → 每个绑定频道一帧 death（player/message 原样）", () => {
+        const f = makeFixture();
+        f.ipc.receive(
+            JSON.stringify({
+                header: { type: "player_death" },
+                body: { player: "Steve", message: "Steve 掉出了这个世界" },
+            }),
+        );
+        const deathFrames = f.conn.sent
+            .map((t) => JSON.parse(t) as { header: { type: string }; body: unknown })
+            .filter((frame) => frame.header.type === "death");
+        expect(deathFrames.map((frame) => frame.body)).toEqual([
+            { channel: BOUND, player: "Steve", message: "Steve 掉出了这个世界" },
+        ]);
+    });
+});
+
+describe("Relay config_reload（v0.3.0：/kurobot reload 复用 watch 路径）", () => {
+    it("IPC config_reload → 重读配置，绑定集合变化 → bindings_updated 推送", async () => {
+        const f = makeFixture();
+        const updated = { ...defaultConfig(), channels: ["10002"] };
+        f.config.setLoadResult({ ok: true, config: updated });
+        f.ipc.receive(JSON.stringify({ header: { type: "config_reload" }, body: {} }));
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+        const pushed = f.conn.sent
+            .map(
+                (t) =>
+                    JSON.parse(t) as {
+                        header: { type: string };
+                        body: { channelBindings?: string[] };
+                    },
+            )
+            .filter((frame) => frame.header.type === "bindings_updated");
+        expect(pushed[pushed.length - 1]?.body.channelBindings).toEqual(["10002"]);
+        expect(f.bindings.channels()).toEqual(["10002"]);
+    });
+
+    it("重载后配置非法（load 抛错）→ 保留旧绑定，不崩不推送", async () => {
+        const f = makeFixture();
+        f.config.setLoadResult({ ok: false, error: new ConfigError("boom") });
+        f.ipc.receive(JSON.stringify({ header: { type: "config_reload" }, body: {} }));
+        await Promise.resolve();
+        await Promise.resolve();
+        expect(f.bindings.channels()).toEqual([BOUND]);
+        expect(f.logger.errors.length).toBeGreaterThan(0);
     });
 });

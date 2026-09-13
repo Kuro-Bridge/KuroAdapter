@@ -1,13 +1,17 @@
 /**
- * Relay：IPC ↔ WS 的转发装配（MVP 阶段一：绑定表驱动的转发规则）。
+ * Relay：IPC ↔ WS 的转发装配（MVP 阶段一：绑定表驱动的转发规则；v0.3.0：command/query/
+ * death/config_reload）。
  *
- * - IPC game_chat / player_join / player_quit（Java → Node）→ 按绑定表 fan-out：
- *   每个绑定频道一帧，推给全部已握手对端（无绑定时不出帧）。
- * - IPC status → WS status（全服状态，无频道，直发）。
+ * - IPC game_chat / player_join / player_quit / player_death（Java → Node）→ 按绑定表
+ *   fan-out：每个绑定频道一帧，推给全部已握手对端（无绑定时不出帧）。
+ * - IPC status → WS status（全服状态，无频道，直发；server.sendStatus 顺带更新 query 缓存）。
  * - WS chat（平台 → 游戏）→ 绑定频道过滤（未绑定 → 丢弃 + debug 日志）→
  *   IPC broadcast 请求（UUID 关联，等 broadcast_result，携带来源 channel）。
- * - 配置变更（ConfigStore.watch）→ BindingTable.replace → 集合变化时推
- *   bindings_updated 给已握手对端（ADR-004）。
+ * - WS command（群指令，v0.3.0）→ AdminTable 管理员判定（非管理员 → forbidden + warn，
+ *   不触发 IPC）→ IPC execute_command 透传 → 结果（含 output）原样回 command_result。
+ * - 配置变更（ConfigStore.watch）→ AdminTable.replace + BindingTable.replace → 集合变化时
+ *   推 bindings_updated 给已握手对端（ADR-004）。
+ * - IPC config_reload（/kurobot reload，v0.3.0）→ 重读配置 → 复用 watch 的变更处理路径。
  * - IPC shutdown（Java → Node）→ 通知 onShutdown（引导层负责退出进程）。
  *
  * 健壮性（MVP 阶段一）：
@@ -17,13 +21,17 @@
  *   可感知失败做降级决策；消息排队/补发留 MVP-2。
  */
 import {
+    type BroadcastBody,
+    type CommandBody,
     type CommandResultBody,
+    type ExecuteCommandBody,
     encodeFrame,
     ipcNodeInboundFrame,
     type PlatformChatBody,
     type ResultBody,
 } from "@kurobot/protocol";
 
+import type { AdminTable } from "./business/admins.js";
 import type { BindingTable } from "./business/bindings.js";
 import type { ConfigStore, KurobotConfig } from "./business/config.js";
 import { gameEventChannels, platformChatTarget } from "./business/forwarding.js";
@@ -61,6 +69,8 @@ export interface RelayOptions {
     readonly ipc: IpcChannel;
     /** 绑定表（转发规则数据源；与 server.channelBindings 共享同一实例） */
     readonly bindings: BindingTable;
+    /** 管理员映射表（command 判定数据源；配置变更/重载时 replace 刷新，v0.3.0） */
+    readonly admins: AdminTable;
     /** 配置源（变更 → 绑定表替换 + bindings_updated 推送） */
     readonly configStore: ConfigStore;
     /** 收到 Java 的 shutdown 帧（stdin EOF 之外的正常关机路径） */
@@ -74,6 +84,7 @@ export class Relay {
     private readonly server: KurobotServer;
     private readonly ipc: IpcChannel;
     private readonly bindings: BindingTable;
+    private readonly admins: AdminTable;
     private readonly configStore: ConfigStore;
     private readonly onShutdown: ((reason: string) => void) | undefined;
     private readonly ipcRequestTimeoutMs: number;
@@ -85,6 +96,7 @@ export class Relay {
         this.server = options.server;
         this.ipc = options.ipc;
         this.bindings = options.bindings;
+        this.admins = options.admins;
         this.configStore = options.configStore;
         this.onShutdown = options.onShutdown;
         this.ipcRequestTimeoutMs = options.ipcRequestTimeoutMs ?? DEFAULT_IPC_REQUEST_TIMEOUT_MS;
@@ -98,6 +110,9 @@ export class Relay {
         this.server.onPlatformChat((body) => {
             this.handlePlatformChat(body);
         });
+        this.server.onCommand((body) => {
+            return this.handleCommandRequest(body);
+        });
         this.configStore.watch((config) => {
             this.handleConfigChange(config);
         });
@@ -110,22 +125,10 @@ export class Relay {
 
     /** 平台 → 游戏：发 broadcast 请求并等待结果（超时/IPC 关闭均拒绝） */
     forwardToGame(body: PlatformChatBody): Promise<ResultBody> {
-        if (this.disposed) {
-            return Promise.reject(new IpcRequestError("broadcast", "relay disposed"));
-        }
-        const id = this.context.newRequestId();
-        const promise = new Promise<ResultBody>((resolve, reject) => {
-            this.pending.set(id, { frameType: "broadcast", cancelTimer: null, resolve, reject });
+        return this.ipcRequest("broadcast", {
+            channel: body.channel,
+            message: `<${body.sender}> ${body.content}`,
         });
-        this.armRequestTimeout(id);
-        this.ipc.send(
-            encodeFrame({
-                type: "broadcast",
-                id,
-                body: { channel: body.channel, message: `<${body.sender}> ${body.content}` },
-            }),
-        );
-        return promise;
     }
 
     /** 放弃所有在途请求（进程退出前调用） */
@@ -144,7 +147,41 @@ export class Relay {
         });
     }
 
+    /**
+     * WS command 请求的业务处理（管理员判定全在 core，Java 只 dispatch）：
+     * 非管理员 → forbidden（不触发 IPC）；管理员 → IPC execute_command 透传，
+     * 结果体（含 output）原样回 command_result；IPC 失败/超时经拒绝路径转为 error 回执。
+     */
+    private async handleCommandRequest(body: CommandBody): Promise<CommandResultBody> {
+        if (!this.admins.isAdmin(body.source.channel, body.source.userId)) {
+            this.context.logger.warn(
+                `非管理员来源执行命令被拒绝：channel=${body.source.channel} userId=${body.source.userId} command=${body.command}`,
+            );
+            return { ok: false, error: "forbidden" };
+        }
+        return this.ipcRequest("execute_command", { command: body.command });
+    }
+
+    /** 发送 IPC 请求帧并等待结果（broadcast / execute_command 共用；超时/断开拒绝） */
+    private ipcRequest(
+        frameType: "broadcast" | "execute_command",
+        body: BroadcastBody | ExecuteCommandBody,
+    ): Promise<CommandResultBody> {
+        if (this.disposed) {
+            return Promise.reject(new IpcRequestError(frameType, "relay disposed"));
+        }
+        const id = this.context.newRequestId();
+        const promise = new Promise<CommandResultBody>((resolve, reject) => {
+            this.pending.set(id, { frameType, cancelTimer: null, resolve, reject });
+        });
+        this.armRequestTimeout(id);
+        this.ipc.send(encodeFrame({ type: frameType, id, body }));
+        return promise;
+    }
+
     private handleConfigChange(config: KurobotConfig): void {
+        // admins 无条件刷新（绑定集合未变时管理员映射仍可能已变）
+        this.admins.replace(config.admins);
         if (!this.bindings.replace(config.channels)) {
             return;
         }
@@ -169,7 +206,7 @@ export class Relay {
             this.pending.delete(id);
             expired.cancelTimer = null;
             expired.reject(
-                new IpcRequestError("broadcast", `响应超时（${this.ipcRequestTimeoutMs}ms）`),
+                new IpcRequestError(expired.frameType, `响应超时（${this.ipcRequestTimeoutMs}ms）`),
             );
         });
     }
@@ -223,6 +260,16 @@ export class Relay {
             );
             return;
         }
+        if (message.type === "player_death") {
+            this.fanoutGameEvent((channel) =>
+                this.server.sendDeath({
+                    channel,
+                    player: message.body.player,
+                    message: message.body.message,
+                }),
+            );
+            return;
+        }
         if (message.type === "status") {
             this.server.sendStatus(message.body);
             return;
@@ -232,13 +279,22 @@ export class Relay {
             this.onShutdown?.(message.body.reason);
             return;
         }
-        if (message.type === "player_death" || message.type === "config_reload") {
-            // v0.3.0 事件已在收帧集内；业务处理于 DEBT-1 阶段 2 接入，此处先丢弃
-            this.context.logger.warn(`收到 ${message.type} 帧（业务处理未接入），丢弃`);
+        if (message.type === "config_reload") {
+            this.context.logger.info("收到配置重载通知（config_reload），重新读取配置");
+            void this.reloadConfig();
             return;
         }
         // broadcast_result / execute_command_result：按 id 关联在途请求
         this.settlePending(message.id, message.body);
+    }
+
+    /** /kurobot reload 路径：重读配置并复用 watch 的变更处理（读取失败保留旧配置） */
+    private async reloadConfig(): Promise<void> {
+        try {
+            this.handleConfigChange(await this.configStore.load());
+        } catch (error: unknown) {
+            this.context.logger.error("重载配置读取失败，保留旧配置", error);
+        }
     }
 
     /** 游戏事件按绑定表逐频道出帧（未来按频道差异化规则在 forwarding.ts 扩展） */

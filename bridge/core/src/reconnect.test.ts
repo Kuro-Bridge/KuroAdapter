@@ -1,5 +1,6 @@
 import { PROTOCOL_VERSION } from "@kurobot/protocol";
 import { describe, expect, it } from "vitest";
+import { AdminTable } from "./business/admins.js";
 import { BindingTable } from "./business/bindings.js";
 import { defaultConfig, type KurobotConfig } from "./business/config.js";
 import { Relay } from "./relay.js";
@@ -208,7 +209,15 @@ describe("Relay 断连 → 重建一致性（DEBT-2）", () => {
             channelBindings: () => bindings.channels(),
             timeouts: { helloTimeoutMs: 0, idleTimeoutMs: 0 },
         });
-        const relay = new Relay({ context, server, ipc, bindings, configStore: config });
+        const admins = new AdminTable([]);
+        const relay = new Relay({
+            context,
+            server,
+            ipc,
+            bindings,
+            admins,
+            configStore: config,
+        });
         return { relay, server, ws, ipc, config, bindings, time, logger };
     }
 
@@ -243,6 +252,7 @@ describe("Relay 断连 → 重建一致性（DEBT-2）", () => {
             server: f.server,
             ipc: ipc2,
             bindings: f.bindings,
+            admins: new AdminTable([]),
             configStore: f.config,
         });
         expect(relay2.ipcOpen).toBe(true);

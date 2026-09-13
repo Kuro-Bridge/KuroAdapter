@@ -18,8 +18,9 @@
  * ```
  */
 
+import { AdminTable } from "./business/admins.js";
 import { BindingTable } from "./business/bindings.js";
-import type { ConfigStore, KurobotConfig } from "./business/config.js";
+import type { AdminMapping, ConfigStore, KurobotConfig } from "./business/config.js";
 import { ConfigError, defaultConfig, parseConfig } from "./business/config.js";
 import { gameEventChannels, platformChatTarget } from "./business/forwarding.js";
 import type { CancelFn, Clock, TimerScheduler } from "./clock.js";
@@ -33,6 +34,7 @@ import { DEFAULT_HELLO_TIMEOUT_MS, DEFAULT_IDLE_TIMEOUT_MS, KurobotServer } from
 import type { IpcChannel, Logger, WsConnection, WsServer } from "./transport.js";
 
 export type {
+    AdminMapping,
     CancelFn,
     Clock,
     ConfigStore,
@@ -48,6 +50,7 @@ export type {
     WsServer,
 };
 export {
+    AdminTable,
     BindingTable,
     ConfigError,
     CoreContext,

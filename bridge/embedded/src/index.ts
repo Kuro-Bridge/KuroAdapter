@@ -14,8 +14,10 @@
 import { type ChildProcess, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import {
+    AdminTable,
     BindingTable,
     CoreContext,
+    defaultConfig,
     type KurobotConfig,
     KurobotServer,
     Relay,
@@ -54,26 +56,31 @@ function terminate(spawned: ChildProcess | null, exitCode: number): void {
 async function main(): Promise<void> {
     const logger = createStderrLogger();
     const ipc = new StdioIpcChannel();
-    const context = new CoreContext({
-        logger,
-        serverId: SERVER_ID,
-        version: VERSION,
-        newRequestId: randomUUID,
-        clock: new NodeClock(),
-        scheduler: new NodeScheduler(),
-    });
-
-    // 配置：缺失生成默认（空绑定）；非法不致命——记错误、以空绑定降级运行，等服主修复
+    // 配置：缺失生成默认（空绑定、不鉴权、无管理员）；非法不致命——记错误、降级运行，等服主修复
     const configStore = new NodeConfigStore({ logger });
     let initialConfig: KurobotConfig;
     try {
         initialConfig = await configStore.load();
     } catch (error: unknown) {
         log("error", `加载配置失败，以空绑定降级运行：${String(error)}`);
-        initialConfig = { channels: [], runtime: { autoRestart: true } };
+        initialConfig = defaultConfig();
     }
+    const context = new CoreContext({
+        logger,
+        serverId: SERVER_ID,
+        version: VERSION,
+        // token 在进程生命周期内固定：reload 不刷新（改 token 需重启 Node，见 DEBT1-NOTES）
+        token: initialConfig.token,
+        newRequestId: randomUUID,
+        clock: new NodeClock(),
+        scheduler: new NodeScheduler(),
+    });
     const bindings = new BindingTable(initialConfig.channels);
     log("info", `当前绑定频道：[${bindings.channels().join(", ")}]`);
+    log(
+        "info",
+        `鉴权 token：${initialConfig.token === "" ? "未启用（空）" : "已启用"}；管理员映射：${initialConfig.admins.length} 条`,
+    );
 
     const wsServer = new NodeWsServer();
     const server = new KurobotServer({
@@ -88,6 +95,7 @@ async function main(): Promise<void> {
         server,
         ipc,
         bindings,
+        admins: new AdminTable(initialConfig.admins),
         configStore,
         onShutdown: (reason) => {
             log("info", `收到 Java 关机通知（${reason}），退出`);
