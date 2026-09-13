@@ -28,6 +28,11 @@ const ZIP_NAME = `${NODE_PLATFORM_DIR}.zip`;
 const DEFAULT_DIST_BASE = "https://nodejs.org/dist";
 const ENV_DIST_BASE = "KUROBOT_NODE_DIST_BASE";
 const ENV_CACHE_DIR = "KUROBOT_NODE_CACHE_DIR";
+/**
+ * SHASUMS 严格模式（DEBT-2）：设为 1 时在线拉取 SHASUMS256.txt 失败即失败，拒绝回退缓存
+ * （发布/CI 用，杜绝「信任上次缓存值」的窗口）；缺省行为不变（回退 + WARN 明示来源）。
+ */
+const ENV_STRICT = "KUROBOT_NODE_DIST_STRICT";
 
 /** SHASUMS256.txt 行格式：`<sha256><两空格><文件名>`（容忍 \r 与多余空白）。 */
 const SHASUM_LINE = /^([0-9a-f]{64})\s\s+(\S.*)$/;
@@ -52,6 +57,11 @@ export interface EmbedOptions {
     download?: (url: string) => Promise<Buffer>;
     /** 日志输出；缺省 console.log。 */
     log?: (message: string) => void;
+    /**
+     * SHASUMS 严格模式（DEBT-2）：true = 在线 SHASUMS 拉取失败直接失败，不回退缓存。
+     * 缺省读环境变量 KUROBOT_NODE_DIST_STRICT=1，未设为 false（回退 + WARN）。
+     */
+    strict?: boolean;
 }
 
 export interface EmbedResult {
@@ -137,13 +147,21 @@ export async function runEmbed(options: EmbedOptions): Promise<EmbedResult> {
     const log = options.log ?? ((message: string) => console.log(message));
     const download = options.download ?? fetchUrl;
     const distBase = options.distBase ?? process.env[ENV_DIST_BASE] ?? DEFAULT_DIST_BASE;
+    const strict = options.strict ?? process.env[ENV_STRICT] === "1";
     const { shasumsUrl, zipUrl } = distUrls(distBase, NODE_VERSION);
 
     const bundleData = await readProduct(
         options.distBundle,
         `bridge/embedded 产物（先 pnpm -r build）`,
     );
-    const zip = await ensureZip({ cacheDir: options.cacheDir, zipUrl, shasumsUrl, download, log });
+    const zip = await ensureZip({
+        cacheDir: options.cacheDir,
+        zipUrl,
+        shasumsUrl,
+        download,
+        log,
+        strict,
+    });
     const nodeExe = extractZipEntry(zip, `${NODE_PLATFORM_DIR}/${PRODUCT_NODE_EXE}`);
     const license = extractZipEntry(zip, `${NODE_PLATFORM_DIR}/LICENSE`);
 
@@ -194,9 +212,10 @@ async function ensureZip(dependencies: {
     shasumsUrl: string;
     download: (url: string) => Promise<Buffer>;
     log: (message: string) => void;
+    strict: boolean;
 }): Promise<Buffer> {
-    const { cacheDir, zipUrl, shasumsUrl, download, log } = dependencies;
-    const expected = await expectedZipSha(cacheDir, shasumsUrl, download, log);
+    const { cacheDir, zipUrl, shasumsUrl, download, log, strict } = dependencies;
+    const expected = await expectedZipSha(cacheDir, shasumsUrl, download, log, strict);
     const cachedZip = join(cacheDir, ZIP_NAME);
     if (await fileExists(cachedZip)) {
         const cached = await readFile(cachedZip);
@@ -220,12 +239,16 @@ async function ensureZip(dependencies: {
     return zip;
 }
 
-/** 取官方期望的 zip sha256：优先在线拉 SHASUMS256.txt，失败回退缓存（离线复用上次校验值）。 */
+/**
+ * 取官方期望的 zip sha256：优先在线拉 SHASUMS256.txt；失败时——严格模式直接失败（拒绝
+ * 信任缓存值），非严格回退缓存并 WARN 明示来源（离线复用上次校验值，DEBT-2）。
+ */
 async function expectedZipSha(
     cacheDir: string,
     shasumsUrl: string,
     download: (url: string) => Promise<Buffer>,
     log: (message: string) => void,
+    strict: boolean,
 ): Promise<string> {
     const cachedShasums = join(cacheDir, "SHASUMS256.txt");
     let text: string;
@@ -236,12 +259,20 @@ async function expectedZipSha(
         await writeFile(tmp, text, "utf8");
         await rename(tmp, cachedShasums);
     } catch (error: unknown) {
+        if (strict) {
+            throw new Error(
+                `无法获取 SHASUMS256.txt（${String(error)}），且 ${ENV_STRICT}=1 拒绝回退缓存`,
+            );
+        }
         if (!(await fileExists(cachedShasums))) {
             throw new Error(
                 `无法获取 SHASUMS256.txt（${String(error)}；可经 ${ENV_DIST_BASE} 换镜像）`,
             );
         }
-        log("[embed] SHASUMS256.txt 在线拉取失败，回退本地缓存");
+        log(
+            `[embed] [WARN] SHASUMS256.txt 在线拉取失败，回退本地缓存` +
+                `（本次校验值来源=缓存而非官方在线值；发布/CI 可设 ${ENV_STRICT}=1 拒绝回退）`,
+        );
         text = await readFile(cachedShasums, "utf8");
     }
     const expected = parseShasums(text).get(ZIP_NAME);

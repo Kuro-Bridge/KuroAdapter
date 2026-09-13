@@ -6,7 +6,7 @@
  */
 
 import { createHash } from "node:crypto";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { crc32, deflateRawSync } from "node:zlib";
@@ -259,5 +259,55 @@ describe("runEmbed", () => {
             log: (message) => logs.push(message),
         });
         await expect(attempt).rejects.toThrow("sha256 校验失败");
+    });
+
+    /** 预置「缓存可用 + 在线 SHASUMS 必失败」的下载器环境（严格模式两用例共用）。 */
+    async function setupOfflineShasums(
+        strict: boolean,
+    ): Promise<{ attempt: Promise<EmbedResult>; localLogs: string[]; root: string }> {
+        const root = await makeTemp();
+        await writeFile(join(root, "index.mjs"), fakeBundle);
+        const zip = buildZip([
+            { name: `${NODE_PLATFORM_DIR}/node.exe`, data: fakeExe },
+            { name: `${NODE_PLATFORM_DIR}/LICENSE`, data: fakeLicense },
+        ]);
+        const cacheDir = join(root, "cache");
+        await mkdir(cacheDir, { recursive: true });
+        // 缓存里的 SHASUMS 与 zip 实际哈希一致——回退本可成功，严格模式必须拒绝
+        await writeFile(join(cacheDir, "SHASUMS256.txt"), `${sha256(zip)}  ${ZIP_NAME}\n`, "utf8");
+        const localLogs: string[] = [];
+        const attempt = runEmbed({
+            distBundle: join(root, "index.mjs"),
+            outDir: join(root, "embedded"),
+            cacheDir,
+            distBase: "https://example.test/node",
+            download: (url) =>
+                url.endsWith("SHASUMS256.txt")
+                    ? Promise.reject(new Error("模拟在线 SHASUMS 不可达"))
+                    : Promise.resolve(zip),
+            log: (message) => localLogs.push(message),
+            strict,
+        });
+        return { attempt, localLogs, root };
+    }
+
+    it("严格模式（strict: true）：在线 SHASUMS 失败 → 直接失败，拒绝回退缓存（DEBT-2）", async () => {
+        const { attempt } = await setupOfflineShasums(true);
+        await expect(attempt).rejects.toThrow("拒绝回退缓存");
+    });
+
+    it("非严格模式（缺省）：在线 SHASUMS 失败 → 回退缓存成功 + WARN 明示来源是缓存（DEBT-2）", async () => {
+        const { attempt, localLogs, root } = await setupOfflineShasums(false);
+        const result = await attempt;
+        expect(result.copied.map((name) => name)).toContain("node.exe");
+        expect(
+            localLogs.some(
+                (line) =>
+                    line.includes("[WARN]") &&
+                    line.includes("来源=缓存") &&
+                    line.includes("KUROBOT_NODE_DIST_STRICT=1"),
+            ),
+        ).toBe(true);
+        expect(await readFile(join(root, "embedded", "node.exe"))).toEqual(fakeExe);
     });
 });

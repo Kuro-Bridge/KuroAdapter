@@ -1,4 +1,32 @@
 # 行尾统一 LF（2026-08-07）：biome 强制 LF（space+4/LF），Windows 下
 # core.autocrlf 会把 checkout 转 CRLF 导致 biome check 全文件报错。
 # text=auto：git 自动识别文本文件；eol=lf：checkout 强制 LF，commit 存 LF。
+# 二进制例外（DEBT-2，2026-09-13）：显式 binary 杜绝任何换行改写/文本化误伤
+# （gradle-wrapper.jar 等靠 text=auto 的自动识别兜底不够显式）。
 * text=auto eol=lf
+
+# 打包物 / 可执行
+*.jar binary
+*.exe binary
+*.dll binary
+*.so binary
+*.dylib binary
+*.node binary
+*.zip binary
+*.gz binary
+*.tgz binary
+*.tar binary
+*.7z binary
+
+# 图片 / 字体 / 文档
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.eot binary
+*.pdf binary
