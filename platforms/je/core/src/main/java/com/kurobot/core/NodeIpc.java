@@ -72,6 +72,7 @@ public final class NodeIpc implements AutoCloseable {
     private volatile Duration requestTimeout = Duration.ofSeconds(10);
     private volatile Duration shutdownGrace = Duration.ofSeconds(5);
     private volatile Duration shutdownForceWait = Duration.ofSeconds(2);
+    private volatile Path workingDirectory;
 
     /**
      * @param nodeExecutable node 可执行文件路径
@@ -187,6 +188,15 @@ public final class NodeIpc implements AutoCloseable {
         this.shutdownForceWait = Objects.requireNonNull(wait, "wait");
     }
 
+    /**
+     * 子进程工作目录（须在 {@link #start()} 前调用）。null/缺省 = 继承当前进程目录
+     * （生产形态：Paper 以服务器根目录运行，Node 侧据此定位 plugins/kurobot/config.json；
+     * 集成测试用它把子进程指到带配置的临时目录）。
+     */
+    void setWorkingDirectory(Path directory) {
+        this.workingDirectory = Objects.requireNonNull(directory, "directory");
+    }
+
     // ---- 启动 ----
 
     private void spawn() {
@@ -201,7 +211,7 @@ public final class NodeIpc implements AutoCloseable {
         }
         Process spawned;
         try {
-            spawned = processFactory.start(command, extraEnv);
+            spawned = processFactory.start(command, extraEnv, workingDirectory);
         } catch (IOException | RuntimeException e) {
             startFuture.completeExceptionally(new IpcException("拉起 Node 进程失败：" + e.getMessage(), e));
             return;

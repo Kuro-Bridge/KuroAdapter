@@ -2,6 +2,7 @@ package com.kurobot.core;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -13,14 +14,20 @@ import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
+import org.junit.jupiter.api.io.TempDir;
 
 /**
- * TS↔Java 真管道集成测试（原型阶段 3，任务书 §4 阶段 3）：用真实 node 子进程 + 真实
- * embedded bundle（含 stub 孙进程）验证 IPC 环，不需要 Paper。
+ * TS↔Java 真管道集成测试（原型阶段 3 建立，MVP 阶段一起随业务升级）：用真实 node 子进程 +
+ * 真实 embedded bundle（含 stub 孙进程）验证 IPC 环，不需要 Paper。
  *
- * <p>链路：Java(NodeIpc) → stdin JSON-lines → node(bootstrap + core) → stub 孙进程 →
- * WS 握手 → 平台消息回 Java(onBroadcast) → Java 回执 result → Java 发 game_chat →
- * stub stderr 打印「收到游戏聊天」→ 经 onStderrLine 中继回 Java 断言。
+ * <p>链路：Java(NodeIpc) → stdin JSON-lines → node(bootstrap + core + 绑定表) →
+ * stub 孙进程 → WS 握手 → 平台消息（绑定频道）回 Java(onBroadcast) → Java 回执 result →
+ * Java 发 game_chat → 按绑定频道 fan-out → stub stderr 打印「收到游戏聊天」→
+ * 经 onStderrLine 中继回 Java 断言。
+ *
+ * <p>配置：MVP 阶段一起 Node 侧读 {@code plugins/kurobot/config.json}（相对子进程 cwd）
+ * 做绑定过滤——本测试把子进程 cwd 指到 {@link TempDir} 并预置绑定 stub 频道（"stub-channel"），
+ * 空绑定会把 stub 消息丢弃导致用例失败。
  *
  * <p>前置：`mise exec -- pnpm -r build` 已产出 bundle（未构建时本测试自动跳过，不失败）；
  * node 需在 PATH（经 mise exec 运行 Gradle 即满足）。
@@ -31,6 +38,9 @@ class NodeIpcBundleIntegrationTest {
     private static final Path BUNDLE = resolveRepoRelative("bridge/embedded/dist/index.mjs");
 
     private static final Path STUB = resolveRepoRelative("bridge/embedded/stub/peer.mjs");
+
+    /** stub 协议端的固定频道（peer.mjs 的 STUB_CHANNEL）。 */
+    private static final String STUB_CHANNEL = "stub-channel";
 
     private static Path resolveRepoRelative(String relative) {
         for (String base : new String[] {".", "..", "../..", "../../.."}) {
@@ -47,14 +57,16 @@ class NodeIpcBundleIntegrationTest {
 
     @Test
     @Timeout(60)
-    void realBundleRoundTrip() throws Exception {
+    void realBundleRoundTrip(@TempDir Path serverRoot) throws Exception {
         Assumptions.assumeTrue(
                 Files.isRegularFile(BUNDLE),
                 "embedded bundle 未构建，跳过（先 pnpm -r build）；wd=" + Path.of("").toAbsolutePath() + " bundle=" + BUNDLE);
         Assumptions.assumeTrue(Files.isRegularFile(STUB), "stub 脚本缺失");
+        writeBoundConfig(serverRoot);
 
         RecordingHandler handler = new RecordingHandler();
         NodeIpc ipc = new NodeIpc("node", BUNDLE.toRealPath(), STUB.toRealPath(), handler, log::add);
+        ipc.setWorkingDirectory(serverRoot);
         try {
             // 1) ready：WS 动态端口
             int wsPort = ipc.start().get(15, TimeUnit.SECONDS);
@@ -78,6 +90,15 @@ class NodeIpcBundleIntegrationTest {
         } finally {
             ipc.shutdown("integration test done");
         }
+    }
+
+    /** 在临时服务器根目录预置绑定 stub 频道的配置（Node 侧 ConfigStore 读取）。 */
+    private static void writeBoundConfig(Path serverRoot) throws IOException {
+        Path configDir = serverRoot.resolve("plugins").resolve("kurobot");
+        Files.createDirectories(configDir);
+        Files.writeString(
+                configDir.resolve("config.json"),
+                "{\"channels\":[\"" + STUB_CHANNEL + "\"]}\n");
     }
 
     /** 轮询 stderr 队列直到出现包含目标文本的行（超时返回 false）。 */

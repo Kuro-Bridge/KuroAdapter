@@ -19,7 +19,8 @@
         "build": "tsdown"
     },
     "dependencies": {
-        "@kurobot/protocol": "workspace:*"
+        "@kurobot/protocol": "workspace:*",
+        "zod": "^4.0.0"
     },
     "devDependencies": {
         "tsdown": "^0.22.14",

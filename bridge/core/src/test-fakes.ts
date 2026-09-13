@@ -2,10 +2,44 @@
  * 测试用假传输层（仅测试导入，不进产物）。
  */
 
+import type { ConfigStore, KurobotConfig } from "./business/config.js";
+import { defaultConfig } from "./business/config.js";
 import { ManualClock, ManualScheduler } from "./clock.js";
 import type { CoreOptions } from "./context.js";
 import { CoreContext } from "./context.js";
 import type { IpcChannel, Logger, WsConnection, WsServer } from "./transport.js";
+
+/** 假配置源：可预置配置，notify 模拟文件变更 */
+export class FakeConfigStore implements ConfigStore {
+    private current: KurobotConfig;
+    private readonly watchers: ((config: KurobotConfig) => void)[] = [];
+
+    constructor(initial: KurobotConfig = defaultConfig()) {
+        this.current = initial;
+    }
+
+    async load(): Promise<KurobotConfig> {
+        return this.current;
+    }
+
+    watch(onChange: (config: KurobotConfig) => void): () => void {
+        this.watchers.push(onChange);
+        return () => {
+            const index = this.watchers.indexOf(onChange);
+            if (index >= 0) {
+                this.watchers.splice(index, 1);
+            }
+        };
+    }
+
+    /** 测试注入：模拟配置文件变更（投递全部订阅者） */
+    notify(config: KurobotConfig): void {
+        this.current = config;
+        for (const watcher of this.watchers) {
+            watcher(config);
+        }
+    }
+}
 
 export class FakeLogger implements Logger {
     readonly debugs: string[] = [];

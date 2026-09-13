@@ -1,11 +1,13 @@
 /**
- * Relay：IPC ↔ WS 的转发装配（spike 假规则，MVP 阶段一维持：「占位频道全量转发」）。
+ * Relay：IPC ↔ WS 的转发装配（MVP 阶段一：绑定表驱动的转发规则）。
  *
- * - IPC game_chat / player_join / player_quit（Java → Node）→ 按占位频道 fan-out 推给
- *   已握手对端（阶段 3 用绑定表替换假规则：游戏事件 → 全部绑定频道）。
+ * - IPC game_chat / player_join / player_quit（Java → Node）→ 按绑定表 fan-out：
+ *   每个绑定频道一帧，推给全部已握手对端（无绑定时不出帧）。
  * - IPC status → WS status（全服状态，无频道，直发）。
- * - WS chat（平台 → 游戏）→ IPC broadcast 请求（UUID 关联，等 broadcast_result）；
- *   v0.2 起携带来源 channel。
+ * - WS chat（平台 → 游戏）→ 绑定频道过滤（未绑定 → 丢弃 + debug 日志）→
+ *   IPC broadcast 请求（UUID 关联，等 broadcast_result，携带来源 channel）。
+ * - 配置变更（ConfigStore.watch）→ BindingTable.replace → 集合变化时推
+ *   bindings_updated 给已握手对端（ADR-004）。
  * - IPC shutdown（Java → Node）→ 通知 onShutdown（引导层负责退出进程）。
  *
  * 健壮性（MVP 阶段一）：
@@ -21,16 +23,13 @@ import {
     type ResultBody,
 } from "@kurobot/protocol";
 
+import type { BindingTable } from "./business/bindings.js";
+import type { ConfigStore, KurobotConfig } from "./business/config.js";
+import { gameEventChannels, platformChatTarget } from "./business/forwarding.js";
 import type { CancelFn } from "./clock.js";
 import type { CoreContext } from "./context.js";
 import type { KurobotServer } from "./server.js";
 import type { IpcChannel } from "./transport.js";
-
-/**
- * 假规则的占位频道（MVP 阶段一）：绑定表落地（阶段 3）前的临时 fan-out 目标。
- * 外部对端（koishi-plugin-kurobot）不会收到它——仅开发期 stub / 沙盒观测用。
- */
-const FANOUT_PLACEHOLDER_CHANNEL = "spike";
 
 export const DEFAULT_IPC_REQUEST_TIMEOUT_MS = 10_000;
 
@@ -58,6 +57,10 @@ export interface RelayOptions {
     readonly context: CoreContext;
     readonly server: KurobotServer;
     readonly ipc: IpcChannel;
+    /** 绑定表（转发规则数据源；与 server.channelBindings 共享同一实例） */
+    readonly bindings: BindingTable;
+    /** 配置源（变更 → 绑定表替换 + bindings_updated 推送） */
+    readonly configStore: ConfigStore;
     /** 收到 Java 的 shutdown 帧（stdin EOF 之外的正常关机路径） */
     readonly onShutdown?: (reason: string) => void;
     /** IPC 请求超时毫秒（缺省 10s 对齐 Java 侧；0 禁用） */
@@ -68,6 +71,8 @@ export class Relay {
     private readonly context: CoreContext;
     private readonly server: KurobotServer;
     private readonly ipc: IpcChannel;
+    private readonly bindings: BindingTable;
+    private readonly configStore: ConfigStore;
     private readonly onShutdown: ((reason: string) => void) | undefined;
     private readonly ipcRequestTimeoutMs: number;
     private readonly pending = new Map<string, PendingRequest>();
@@ -77,6 +82,8 @@ export class Relay {
         this.context = options.context;
         this.server = options.server;
         this.ipc = options.ipc;
+        this.bindings = options.bindings;
+        this.configStore = options.configStore;
         this.onShutdown = options.onShutdown;
         this.ipcRequestTimeoutMs = options.ipcRequestTimeoutMs ?? DEFAULT_IPC_REQUEST_TIMEOUT_MS;
         this.ipc.onMessage((text) => {
@@ -87,9 +94,10 @@ export class Relay {
             this.markDisposed(new IpcRequestError("ipc", "channel closed"));
         });
         this.server.onPlatformChat((body) => {
-            void this.forwardToGame(body).catch((error: unknown) => {
-                this.context.logger.error("转发平台消息失败", error);
-            });
+            this.handlePlatformChat(body);
+        });
+        this.configStore.watch((config) => {
+            this.handleConfigChange(config);
         });
     }
 
@@ -121,6 +129,26 @@ export class Relay {
     /** 放弃所有在途请求（进程退出前调用） */
     dispose(): void {
         this.markDisposed(new IpcRequestError("ipc", "relay disposed"));
+    }
+
+    private handlePlatformChat(body: PlatformChatBody): void {
+        const target = platformChatTarget(this.bindings.channels(), body);
+        if (target === null) {
+            this.context.logger.debug(`平台消息来自未绑定频道 ${body.channel}，丢弃`);
+            return;
+        }
+        void this.forwardToGame(target).catch((error: unknown) => {
+            this.context.logger.error("转发平台消息失败", error);
+        });
+    }
+
+    private handleConfigChange(config: KurobotConfig): void {
+        if (!this.bindings.replace(config.channels)) {
+            return;
+        }
+        const channels = this.bindings.channels();
+        this.context.logger.info(`绑定表已更新：[${channels.join(", ")}]`);
+        this.server.sendBindingsUpdated({ channelBindings: channels });
     }
 
     private armRequestTimeout(id: string): void {
@@ -172,25 +200,25 @@ export class Relay {
         }
         const message = parsed.data;
         if (message.type === "game_chat") {
-            this.server.sendGameChat({
-                channel: FANOUT_PLACEHOLDER_CHANNEL,
-                playerName: message.body.playerName,
-                content: message.body.content,
-            });
+            this.fanoutGameEvent((channel) =>
+                this.server.sendGameChat({
+                    channel,
+                    playerName: message.body.playerName,
+                    content: message.body.content,
+                }),
+            );
             return;
         }
         if (message.type === "player_join") {
-            this.server.sendJoin({
-                channel: FANOUT_PLACEHOLDER_CHANNEL,
-                playerName: message.body.playerName,
-            });
+            this.fanoutGameEvent((channel) =>
+                this.server.sendJoin({ channel, playerName: message.body.playerName }),
+            );
             return;
         }
         if (message.type === "player_quit") {
-            this.server.sendLeave({
-                channel: FANOUT_PLACEHOLDER_CHANNEL,
-                playerName: message.body.playerName,
-            });
+            this.fanoutGameEvent((channel) =>
+                this.server.sendLeave({ channel, playerName: message.body.playerName }),
+            );
             return;
         }
         if (message.type === "status") {
@@ -204,6 +232,17 @@ export class Relay {
         }
         // broadcast_result / execute_command_result：按 id 关联在途请求
         this.settlePending(message.id, message.body);
+    }
+
+    /** 游戏事件按绑定表逐频道出帧（未来按频道差异化规则在 forwarding.ts 扩展） */
+    private fanoutGameEvent(send: (channel: string) => number): void {
+        let delivered = 0;
+        for (const channel of gameEventChannels(this.bindings.channels())) {
+            delivered += send(channel);
+        }
+        if (delivered === 0) {
+            this.context.logger.debug("游戏事件无绑定频道或无已握手对端，未出帧");
+        }
     }
 
     private settlePending(id: string, body: ResultBody): void {

@@ -6,6 +6,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
@@ -40,6 +41,8 @@ final class FakeProcess extends Process {
     volatile List<String> command;
 
     volatile Map<String, String> extraEnv;
+
+    volatile Path workingDirectory;
 
     FakeProcess() {
         stdin.onClose(() -> {

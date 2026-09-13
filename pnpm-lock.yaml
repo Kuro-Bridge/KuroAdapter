@@ -231,6 +231,9 @@ importers:
       '@kurobot/protocol':
         specifier: workspace:*
         version: link:../protocol
+      zod:
+        specifier: ^4.0.0
+        version: 4.4.3
     devDependencies:
       tsdown:
         specifier: ^0.22.14

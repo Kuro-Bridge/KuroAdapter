@@ -13,9 +13,16 @@
 
 import { type ChildProcess, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { CoreContext, KurobotServer, Relay } from "@kurobot/bridge-core";
+import {
+    BindingTable,
+    CoreContext,
+    type KurobotConfig,
+    KurobotServer,
+    Relay,
+} from "@kurobot/bridge-core";
 import { encodeFrame, PROTOCOL_VERSION } from "@kurobot/protocol";
 
+import { NodeConfigStore } from "./config-store.js";
 import { StdioIpcChannel } from "./ipc-stdio.js";
 import { createStderrLogger } from "./logger.js";
 import { NodeClock, NodeScheduler } from "./node-platform.js";
@@ -55,15 +62,33 @@ async function main(): Promise<void> {
         clock: new NodeClock(),
         scheduler: new NodeScheduler(),
     });
+
+    // 配置：缺失生成默认（空绑定）；非法不致命——记错误、以空绑定降级运行，等服主修复
+    const configStore = new NodeConfigStore({ logger });
+    let initialConfig: KurobotConfig;
+    try {
+        initialConfig = await configStore.load();
+    } catch (error: unknown) {
+        log("error", `加载配置失败，以空绑定降级运行：${String(error)}`);
+        initialConfig = { channels: [] };
+    }
+    const bindings = new BindingTable(initialConfig.channels);
+    log("info", `当前绑定频道：[${bindings.channels().join(", ")}]`);
+
     const wsServer = new NodeWsServer();
-    // MVP 阶段一：绑定表未接入（阶段 3 接 ConfigStore），hello_ack 先报空绑定
-    const server = new KurobotServer({ context, wsServer, channelBindings: () => [] });
+    const server = new KurobotServer({
+        context,
+        wsServer,
+        channelBindings: () => bindings.channels(),
+    });
 
     let stub: ChildProcess | null = null;
     const relay = new Relay({
         context,
         server,
         ipc,
+        bindings,
+        configStore,
         onShutdown: (reason) => {
             log("info", `收到 Java 关机通知（${reason}），退出`);
             relay.dispose();

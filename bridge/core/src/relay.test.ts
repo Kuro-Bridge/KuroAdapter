@@ -1,9 +1,11 @@
 import { PROTOCOL_VERSION } from "@kurobot/protocol";
 import { describe, expect, it } from "vitest";
 
+import { BindingTable } from "./business/bindings.js";
 import { IpcRequestError, Relay } from "./relay.js";
 import { KurobotServer } from "./server.js";
 import {
+    FakeConfigStore,
     FakeIpc,
     FakeLogger,
     FakeWsConnection,
@@ -14,8 +16,8 @@ import {
 } from "./test-fakes.js";
 
 const UUID = "123e4567-e89b-12d3-a456-426614174000";
-/** 与 relay.ts 的假规则占位频道一致（阶段 3 替换为绑定表） */
-const FANOUT_CHANNEL = "spike";
+/** 夹具默认绑定频道（平台消息放行、游戏事件 fan-out 目标） */
+const BOUND = "10001";
 /** 测试用 IPC 请求超时（远小于默认值） */
 const IPC_TIMEOUT_MS = 500;
 
@@ -33,6 +35,8 @@ function helloText(): string {
 
 interface Fixture {
     relay: Relay;
+    bindings: BindingTable;
+    config: FakeConfigStore;
     ws: FakeWsServer;
     ipc: FakeIpc;
     logger: FakeLogger;
@@ -41,7 +45,7 @@ interface Fixture {
     time: ReturnType<typeof manualTime>;
 }
 
-function makeFixture(ipcRequestTimeoutMs?: number): Fixture {
+function makeFixture(ipcRequestTimeoutMs?: number, channels: string[] = [BOUND]): Fixture {
     const logger = new FakeLogger();
     const ws = new FakeWsServer();
     const ipc = new FakeIpc();
@@ -52,10 +56,12 @@ function makeFixture(ipcRequestTimeoutMs?: number): Fixture {
         clock: time.clock,
         scheduler: time.scheduler,
     });
+    const bindings = new BindingTable(channels);
+    const config = new FakeConfigStore({ channels });
     const server = new KurobotServer({
         context,
         wsServer: ws,
-        channelBindings: () => [],
+        channelBindings: () => bindings.channels(),
         // 关闭 server 侧超时：本文件只测 Relay 的定时器（pendingCount 断言不混入 server 任务）
         timeouts: { helloTimeoutMs: 0, idleTimeoutMs: 0 },
     });
@@ -64,6 +70,8 @@ function makeFixture(ipcRequestTimeoutMs?: number): Fixture {
         context,
         server,
         ipc,
+        bindings,
+        configStore: config,
         onShutdown: (reason) => {
             shutdownReasons.push(reason);
         },
@@ -72,7 +80,7 @@ function makeFixture(ipcRequestTimeoutMs?: number): Fixture {
     const conn = new FakeWsConnection();
     ws.accept(conn);
     conn.receive(helloText());
-    return { relay, ws, ipc, logger, conn, shutdownReasons, time };
+    return { relay, bindings, config, ws, ipc, logger, conn, shutdownReasons, time };
 }
 
 /** 从 ipc 发出的请求帧里取第 index 个 id（保证回应与请求关联） */
@@ -86,9 +94,9 @@ function resultText(id: string, ok: boolean, error?: string): string {
     return JSON.stringify({ header: { type: "broadcast_result", id }, body });
 }
 
-describe("Relay 游戏 → 平台", () => {
-    it("IPC game_chat → WS chat（占位频道假规则）推给已握手对端", () => {
-        const { ipc, conn } = makeFixture();
+describe("Relay 游戏 → 平台（绑定频道 fan-out）", () => {
+    it("IPC game_chat → 每个绑定频道一帧 chat", () => {
+        const { ipc, conn } = makeFixture(undefined, ["10001", "10002"]);
         ipc.receive(
             JSON.stringify({
                 header: { type: "game_chat" },
@@ -96,15 +104,29 @@ describe("Relay 游戏 → 平台", () => {
             }),
         );
 
-        const chat = JSON.parse(conn.sent[1] ?? "{}");
-        expect(chat).toEqual({
+        expect(conn.sent).toHaveLength(3); // hello_ack + 2 帧 chat
+        expect(JSON.parse(conn.sent[1] ?? "{}")).toEqual({
             header: { type: "chat" },
-            body: { channel: FANOUT_CHANNEL, playerName: "Steve", content: "yo" },
+            body: { channel: "10001", playerName: "Steve", content: "yo" },
         });
+        expect(JSON.parse(conn.sent[2] ?? "{}").body.channel).toBe("10002");
     });
 
-    it("IPC player_join / player_quit → WS join / leave（占位频道假规则）", () => {
-        const { ipc, conn } = makeFixture();
+    it("无绑定频道 → 不出帧", () => {
+        const { ipc, conn, logger } = makeFixture(undefined, []);
+        ipc.receive(
+            JSON.stringify({
+                header: { type: "game_chat" },
+                body: { playerName: "Steve", content: "yo" },
+            }),
+        );
+
+        expect(conn.sent).toHaveLength(1); // 只有 hello_ack
+        expect(logger.debugs.some((d) => d.includes("未出帧"))).toBe(true);
+    });
+
+    it("IPC player_join / player_quit → 每个绑定频道一帧 join / leave", () => {
+        const { ipc, conn } = makeFixture(undefined, ["10001", "10002"]);
         ipc.receive(
             JSON.stringify({ header: { type: "player_join" }, body: { playerName: "Steve" } }),
         );
@@ -112,16 +134,20 @@ describe("Relay 游戏 → 平台", () => {
             JSON.stringify({ header: { type: "player_quit" }, body: { playerName: "Steve" } }),
         );
 
-        const join = JSON.parse(conn.sent[1] ?? "{}");
-        const leave = JSON.parse(conn.sent[2] ?? "{}");
-        expect(join).toEqual({
+        const join1 = JSON.parse(conn.sent[1] ?? "{}");
+        const join2 = JSON.parse(conn.sent[2] ?? "{}");
+        const leave1 = JSON.parse(conn.sent[3] ?? "{}");
+        const leave2 = JSON.parse(conn.sent[4] ?? "{}");
+        expect(join1).toEqual({
             header: { type: "join" },
-            body: { channel: FANOUT_CHANNEL, playerName: "Steve" },
+            body: { channel: "10001", playerName: "Steve" },
         });
-        expect(leave).toEqual({
+        expect(join2.body.channel).toBe("10002");
+        expect(leave1).toEqual({
             header: { type: "leave" },
-            body: { channel: FANOUT_CHANNEL, playerName: "Steve" },
+            body: { channel: "10001", playerName: "Steve" },
         });
+        expect(leave2.body.channel).toBe("10002");
     });
 
     it("IPC status → WS status 原样中继", () => {
@@ -150,11 +176,11 @@ describe("Relay 游戏 → 平台", () => {
     });
 });
 
-describe("Relay 平台 → 游戏（broadcast 请求-响应）", () => {
-    it("forwardToGame 发出携带 channel 的 broadcast 请求；result ok → promise 解决", async () => {
+describe("Relay 平台 → 游戏（绑定过滤 + broadcast 请求-响应）", () => {
+    it("绑定频道的平台 chat → broadcast 请求携带 channel；result ok → promise 解决", async () => {
         const { relay, ipc } = makeFixture();
         const promise = relay.forwardToGame({
-            channel: "10001",
+            channel: BOUND,
             sender: "小明",
             content: "大家好",
         });
@@ -163,28 +189,41 @@ describe("Relay 平台 → 游戏（broadcast 请求-响应）", () => {
         const requestId = requestIdAt(ipc, 0);
         expect(JSON.parse(ipc.sent[0] ?? "{}")).toEqual({
             header: { type: "broadcast", id: requestId },
-            body: { channel: "10001", message: "<小明> 大家好" },
+            body: { channel: BOUND, message: "<小明> 大家好" },
         });
 
         ipc.receive(resultText(requestId, true));
         await expect(promise).resolves.toEqual({ ok: true });
     });
 
+    it("未绑定频道的平台 chat 被丢弃（不发 broadcast）并记 debug 日志", () => {
+        const { ipc, conn, logger } = makeFixture();
+        conn.receive(
+            JSON.stringify({
+                header: { type: "chat" },
+                body: { channel: "99999", sender: "小明", content: "大家好" },
+            }),
+        );
+
+        expect(ipc.sent).toHaveLength(0);
+        expect(logger.debugs.some((d) => d.includes("未绑定频道 99999"))).toBe(true);
+    });
+
     it("result error → promise 以 IpcRequestError 拒绝", async () => {
         const { relay, ipc } = makeFixture();
-        const promise = relay.forwardToGame({ channel: "10001", sender: "a", content: "b" });
+        const promise = relay.forwardToGame({ channel: BOUND, sender: "a", content: "b" });
         ipc.receive(resultText(requestIdAt(ipc, 0), false, "no players"));
 
         await expect(promise).rejects.toBeInstanceOf(IpcRequestError);
         await expect(promise).rejects.toMatchObject({ reason: "no players" });
     });
 
-    it("WS 平台 chat 自动触发 broadcast（组装路径）；失败被捕获进日志不外泄", async () => {
+    it("WS 平台 chat（绑定频道）自动触发 broadcast；失败被捕获进日志不外泄", async () => {
         const { ipc, conn, logger } = makeFixture();
         conn.receive(
             JSON.stringify({
                 header: { type: "chat" },
-                body: { channel: "10001", sender: "小明", content: "大家好" },
+                body: { channel: BOUND, sender: "小明", content: "大家好" },
             }),
         );
         expect(ipc.sent).toHaveLength(1);
@@ -198,21 +237,21 @@ describe("Relay 平台 → 游戏（broadcast 请求-响应）", () => {
 
     it("IPC 断开 → 在途请求全部拒绝；之后新请求立即拒绝", async () => {
         const { relay, ipc } = makeFixture();
-        const first = relay.forwardToGame({ channel: "10001", sender: "a", content: "b" });
-        const second = relay.forwardToGame({ channel: "10001", sender: "c", content: "d" });
+        const first = relay.forwardToGame({ channel: BOUND, sender: "a", content: "b" });
+        const second = relay.forwardToGame({ channel: BOUND, sender: "c", content: "d" });
         ipc.emitClose();
 
         await expect(first).rejects.toBeInstanceOf(IpcRequestError);
         await expect(second).rejects.toBeInstanceOf(IpcRequestError);
         await expect(
-            relay.forwardToGame({ channel: "10001", sender: "e", content: "f" }),
+            relay.forwardToGame({ channel: BOUND, sender: "e", content: "f" }),
         ).rejects.toBeInstanceOf(IpcRequestError);
     });
 
     it("IPC 断开后定时器无泄漏", () => {
         const { relay, ipc, time } = makeFixture(IPC_TIMEOUT_MS);
         void relay
-            .forwardToGame({ channel: "10001", sender: "a", content: "b" })
+            .forwardToGame({ channel: BOUND, sender: "a", content: "b" })
             .catch(() => undefined);
         ipc.emitClose();
 
@@ -220,10 +259,54 @@ describe("Relay 平台 → 游戏（broadcast 请求-响应）", () => {
     });
 });
 
+describe("Relay 配置变更 → bindings_updated（验收 §4.3c）", () => {
+    it("绑定集合变化 → 推送变更后完整列表给已握手对端", () => {
+        const { config, conn } = makeFixture();
+        config.notify({ channels: [BOUND, "10002"] });
+
+        const frame = JSON.parse(conn.sent[1] ?? "{}");
+        expect(frame).toEqual({
+            header: { type: "bindings_updated" },
+            body: { channelBindings: [BOUND, "10002"] },
+        });
+    });
+
+    it("集合未变（重排/重复）→ 不推送", () => {
+        const { config, conn } = makeFixture(undefined, [BOUND, "10002"]);
+        config.notify({ channels: ["10002", BOUND] });
+
+        expect(conn.sent).toHaveLength(1); // 只有 hello_ack
+    });
+
+    it("配置变更影响 hello_ack 快照（新握手对端拿到新列表）", () => {
+        const { config, ws } = makeFixture();
+        config.notify({ channels: [BOUND, "10003"] });
+
+        const conn2 = new FakeWsConnection();
+        ws.accept(conn2);
+        conn2.receive(helloText());
+        const ack = JSON.parse(conn2.sent[0] ?? "{}");
+        expect(ack.body.channelBindings).toEqual([BOUND, "10003"]);
+    });
+
+    it("清空绑定后游戏事件不再出帧", () => {
+        const { config, ipc, conn } = makeFixture();
+        config.notify({ channels: [] });
+        ipc.receive(
+            JSON.stringify({
+                header: { type: "game_chat" },
+                body: { playerName: "Steve", content: "yo" },
+            }),
+        );
+
+        expect(conn.sent).toHaveLength(2); // hello_ack + bindings_updated
+    });
+});
+
 describe("Relay IPC 请求超时（对齐 Java 侧 10s 语义）", () => {
     it("无响应 → 超时以 IpcRequestError 拒绝；迟到的响应被忽略不崩", async () => {
         const { relay, ipc, logger, time } = makeFixture(IPC_TIMEOUT_MS);
-        const promise = relay.forwardToGame({ channel: "10001", sender: "a", content: "b" });
+        const promise = relay.forwardToGame({ channel: BOUND, sender: "a", content: "b" });
 
         time.scheduler.advance(IPC_TIMEOUT_MS - 1);
         time.scheduler.advance(1);
@@ -240,7 +323,7 @@ describe("Relay IPC 请求超时（对齐 Java 侧 10s 语义）", () => {
 
     it("响应及时到达 → 超时定时器被取消", async () => {
         const { relay, ipc, time } = makeFixture(IPC_TIMEOUT_MS);
-        const promise = relay.forwardToGame({ channel: "10001", sender: "a", content: "b" });
+        const promise = relay.forwardToGame({ channel: BOUND, sender: "a", content: "b" });
         ipc.receive(resultText(requestIdAt(ipc, 0), true));
         await expect(promise).resolves.toEqual({ ok: true });
 
@@ -251,7 +334,7 @@ describe("Relay IPC 请求超时（对齐 Java 侧 10s 语义）", () => {
     it("ipcRequestTimeoutMs=0 禁用超时", async () => {
         const { relay, time } = makeFixture(0);
         void relay
-            .forwardToGame({ channel: "10001", sender: "a", content: "b" })
+            .forwardToGame({ channel: BOUND, sender: "a", content: "b" })
             .catch(() => undefined);
 
         time.scheduler.advance(1_000_000);

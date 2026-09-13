@@ -69,11 +69,18 @@ class NodeIpcTest {
     }
 
     private NodeIpc newIpc(FakeProcess process, Path stubPath) {
-        NodeIpc ipc = new NodeIpc("node", Path.of("bundle.mjs"), stubPath, listener, logs::add, (command, extraEnv) -> {
-            process.command = List.copyOf(command);
-            process.extraEnv = Map.copyOf(extraEnv);
-            return process;
-        });
+        NodeIpc ipc = new NodeIpc(
+                "node",
+                Path.of("bundle.mjs"),
+                stubPath,
+                listener,
+                logs::add,
+                (command, extraEnv, workingDirectory) -> {
+                    process.command = List.copyOf(command);
+                    process.extraEnv = Map.copyOf(extraEnv);
+                    process.workingDirectory = workingDirectory;
+                    return process;
+                });
         ipc.setRequestTimeout(Duration.ofSeconds(5));
         ipc.setShutdownGrace(Duration.ofSeconds(2));
         ipc.setShutdownForceWait(Duration.ofMillis(300));
