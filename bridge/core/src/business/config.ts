@@ -6,9 +6,13 @@
  */
 import { z } from "zod";
 
-/** kurobot 配置形状（MVP：仅绑定频道列表） */
+/** kurobot 配置形状（MVP：绑定频道列表；DEBT-2 增 runtime 宿主参数段） */
 export interface KurobotConfig {
     readonly channels: readonly string[];
+    /** 宿主运行参数（DEBT-2）：node 异常退出后 Java 侧是否自动重启 */
+    readonly runtime: {
+        readonly autoRestart: boolean;
+    };
 }
 
 /** 配置读写抽象（宿主注入；watch 返回取消订阅函数） */
@@ -30,17 +34,27 @@ export class ConfigError extends Error {
     }
 }
 
-const configSchema = z.object({
-    channels: z.array(z.string().min(1)),
+const runtimeSchema = z.object({
+    /** node 异常退出后 Java 侧自动重启（DEBT-2）；缺省 true */
+    autoRestart: z.boolean().default(true),
 });
 
-/** 解析配置（纯函数）：去重保序；形状/内容非法抛 ConfigError */
+const configSchema = z.object({
+    channels: z.array(z.string().min(1)),
+    /** 宿主运行参数段（v0.2.1 起随 ready 上报 autoRestart；缺省整段按 true） */
+    runtime: runtimeSchema.default({ autoRestart: true }),
+});
+
+/** 解析配置（纯函数）：channels 去重保序；形状/内容非法抛 ConfigError */
 export function parseConfig(raw: unknown): KurobotConfig {
     let parsed: z.infer<typeof configSchema>;
     try {
         parsed = configSchema.parse(raw);
     } catch (error: unknown) {
-        throw new ConfigError("配置不合法（期望 { channels: string[] }，频道为非空字符串）", error);
+        throw new ConfigError(
+            "配置不合法（期望 { channels: string[], runtime?: { autoRestart?: boolean } }）",
+            error,
+        );
     }
     const channels: string[] = [];
     for (const channel of parsed.channels) {
@@ -48,10 +62,10 @@ export function parseConfig(raw: unknown): KurobotConfig {
             channels.push(channel);
         }
     }
-    return { channels };
+    return { channels, runtime: { autoRestart: parsed.runtime.autoRestart } };
 }
 
 /** 默认配置（无绑定——平台消息不进游戏，直到服主写入绑定） */
 export function defaultConfig(): KurobotConfig {
-    return { channels: [] };
+    return { channels: [], runtime: { autoRestart: true } };
 }

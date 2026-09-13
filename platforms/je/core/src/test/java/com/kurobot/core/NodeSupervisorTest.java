@@ -108,7 +108,8 @@ class NodeSupervisorTest {
         return ipc;
     }
 
-    /** 触发进程异常退出并等待本轮看护记账（三种分支共用 cause 里的 exit= 标记，快照防旧日志误报）。 */
+    /** 触发进程异常退出并等待本轮看护记账。exit 必须在 base 快照之后——否则读取线程可能在
+     * exit 与取基线之间就把 WARN 写进日志，base 把目标行排除导致等待必然超时（实测竞态）。 */
     private void crashAndAwaitBookkeeping(FakeProcess process, int exitCode) throws Exception {
         int base = logs.size();
         process.exit(exitCode);
@@ -118,7 +119,9 @@ class NodeSupervisorTest {
     private NodeSupervisor supervisor;
 
     private void awaitLogSince(int fromIndex, String fragment, String message) throws Exception {
-        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        // 15s：全量 :core:test 期间集成测试（真 node 进程）的负载可能推迟虚拟线程调度，
+        // 5s 窗口曾实测偶发超时（DEBT2-NOTES：测试稳定性发现）
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(15);
         while (System.nanoTime() < deadline) {
             for (int i = fromIndex; i < logs.size(); i++) {
                 if (logs.get(i).contains(fragment)) {
@@ -149,7 +152,6 @@ class NodeSupervisorTest {
         FakeProcess first = processes.poll(5, TimeUnit.SECONDS);
         readyUp(first);
 
-        first.exit(137);
         crashAndAwaitBookkeeping(first, 137);
         assertEquals(10L, scheduler.delays.poll(1, TimeUnit.SECONDS), "第 1 次连续失败 → 退避 10ms");
 
@@ -158,7 +160,6 @@ class NodeSupervisorTest {
         assertNotNull(second, "退避到点应拉起新实例");
         readyUp(second);
 
-        second.exit(2);
         crashAndAwaitBookkeeping(second, 2);
         assertEquals(10L, scheduler.delays.poll(1, TimeUnit.SECONDS), "成功后连续失败已归零 → 再次退避 10ms");
     }
@@ -172,7 +173,6 @@ class NodeSupervisorTest {
         for (int i = 0; i < 3; i++) {
             FakeProcess process = processes.poll(5, TimeUnit.SECONDS);
             readyUp(process);
-            process.exit(1);
             crashAndAwaitBookkeeping(process, 1);
             if (i < 2) {
                 scheduler.fireAll();
@@ -201,7 +201,6 @@ class NodeSupervisorTest {
         for (int i = 0; i < 2; i++) {
             FakeProcess process = processes.poll(5, TimeUnit.SECONDS);
             readyUp(process);
-            process.exit(1);
             crashAndAwaitBookkeeping(process, 1);
             scheduler.fireAll();
         }
@@ -210,7 +209,6 @@ class NodeSupervisorTest {
         clock.set(10_000);
         FakeProcess third = processes.poll(5, TimeUnit.SECONDS);
         readyUp(third);
-        third.exit(1);
         crashAndAwaitBookkeeping(third, 1);
 
         assertFalse(supervisor.isGivenUp(), "窗口外的失败不应累计");
@@ -225,7 +223,6 @@ class NodeSupervisorTest {
         supervisor.start();
         FakeProcess process = processes.poll(5, TimeUnit.SECONDS);
         readyUp(process);
-        process.exit(5);
         crashAndAwaitBookkeeping(process, 5);
 
         assertTrue(
@@ -243,7 +240,6 @@ class NodeSupervisorTest {
         supervisor.start();
         FakeProcess process = processes.poll(5, TimeUnit.SECONDS);
         readyUp(process);
-        process.exit(1);
         crashAndAwaitBookkeeping(process, 1);
         assertEquals(10L, scheduler.delays.poll(1, TimeUnit.SECONDS));
 

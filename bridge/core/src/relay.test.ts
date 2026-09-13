@@ -2,6 +2,7 @@ import { PROTOCOL_VERSION } from "@kurobot/protocol";
 import { describe, expect, it } from "vitest";
 
 import { BindingTable } from "./business/bindings.js";
+import { defaultConfig, type KurobotConfig } from "./business/config.js";
 import { IpcRequestError, Relay } from "./relay.js";
 import { KurobotServer } from "./server.js";
 import {
@@ -20,6 +21,11 @@ const UUID = "123e4567-e89b-12d3-a456-426614174000";
 const BOUND = "10001";
 /** 测试用 IPC 请求超时（远小于默认值） */
 const IPC_TIMEOUT_MS = 500;
+
+/** 构造 KurobotConfig（runtime 用缺省 true） */
+function cfg(channels: string[]): KurobotConfig {
+    return { ...defaultConfig(), channels };
+}
 
 function helloText(): string {
     return JSON.stringify({
@@ -57,7 +63,7 @@ function makeFixture(ipcRequestTimeoutMs?: number, channels: string[] = [BOUND])
         scheduler: time.scheduler,
     });
     const bindings = new BindingTable(channels);
-    const config = new FakeConfigStore({ channels });
+    const config = new FakeConfigStore(cfg(channels));
     const server = new KurobotServer({
         context,
         wsServer: ws,
@@ -262,7 +268,7 @@ describe("Relay 平台 → 游戏（绑定过滤 + broadcast 请求-响应）", 
 describe("Relay 配置变更 → bindings_updated（验收 §4.3c）", () => {
     it("绑定集合变化 → 推送变更后完整列表给已握手对端", () => {
         const { config, conn } = makeFixture();
-        config.notify({ channels: [BOUND, "10002"] });
+        config.notify(cfg([BOUND, "10002"]));
 
         const frame = JSON.parse(conn.sent[1] ?? "{}");
         expect(frame).toEqual({
@@ -273,14 +279,14 @@ describe("Relay 配置变更 → bindings_updated（验收 §4.3c）", () => {
 
     it("集合未变（重排/重复）→ 不推送", () => {
         const { config, conn } = makeFixture(undefined, [BOUND, "10002"]);
-        config.notify({ channels: ["10002", BOUND] });
+        config.notify(cfg(["10002", BOUND]));
 
         expect(conn.sent).toHaveLength(1); // 只有 hello_ack
     });
 
     it("配置变更影响 hello_ack 快照（新握手对端拿到新列表）", () => {
         const { config, ws } = makeFixture();
-        config.notify({ channels: [BOUND, "10003"] });
+        config.notify(cfg([BOUND, "10003"]));
 
         const conn2 = new FakeWsConnection();
         ws.accept(conn2);
@@ -291,7 +297,7 @@ describe("Relay 配置变更 → bindings_updated（验收 §4.3c）", () => {
 
     it("清空绑定后游戏事件不再出帧", () => {
         const { config, ipc, conn } = makeFixture();
-        config.notify({ channels: [] });
+        config.notify(cfg([]));
         ipc.receive(
             JSON.stringify({
                 header: { type: "game_chat" },

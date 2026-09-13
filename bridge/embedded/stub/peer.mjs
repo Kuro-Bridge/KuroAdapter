@@ -6,8 +6,11 @@
  * stderr（经 Node/Java 中继进服务器控制台）。断线按 1s→2s→4s…封顶 30s 重连
  * （draft §3 指数退避的简化版）。
  *
- * 协议 v0.2（MVP 阶段一）：hello 协议版本 0.2.0；平台消息携带 channel
- * （STUB_CHANNEL 常量，沙盒验收时写入配置绑定表即可端到端连通）。
+ * 重连上限（DEBT-2 孤儿治理）：连续 10 次未成功连入 → 打印原因并以退出码 1 退出——
+ * 宿主强杀 node 后孤儿 stub 不再无限重连。open 成功即清零计数。
+ *
+ * 协议 v0.2.1（DEBT-2）：hello 协议版本随 PROTOCOL_VERSION 同步（精确相等协商）；
+ * 平台消息携带 channel（STUB_CHANNEL 常量，沙盒验收时写入配置绑定表即可端到端连通）。
  *
  * 用法：node peer.mjs <wsPort>
  * 零依赖：Node 26 内置全局 WebSocket（Undici）。
@@ -18,6 +21,8 @@ const PROTOCOL_VERSION = "0.2.1";
 const WS_SUBPROTOCOL = "kurobot-ws.v1";
 const STUB_CHANNEL = "stub-channel";
 const HEARTBEAT_INTERVAL_MS = 5000;
+/** 连续重连失败上限（DEBT-2 孤儿治理）：达到即退出（孤儿 stub 不再无限重连） */
+const MAX_CONSECUTIVE_FAILURES = 10;
 
 const port = process.argv[2];
 if (port === undefined || Number.isNaN(Number(port))) {
@@ -39,11 +44,14 @@ function sendFrame(ws, message) {
 
 let backoffMs = 1000;
 let heartbeatTimer = null;
+let consecutiveFailures = 0;
+let lastErrorText = "unknown";
 
 function connect() {
     const ws = new WebSocket(`ws://127.0.0.1:${port}`, WS_SUBPROTOCOL);
 
     ws.addEventListener("open", () => {
+        consecutiveFailures = 0;
         backoffMs = 1000;
         log(`已连入 ws://127.0.0.1:${port}（子协议 ${WS_SUBPROTOCOL}），发送 hello`);
         sendFrame(ws, {
@@ -126,7 +134,16 @@ function connect() {
             heartbeatTimer = null;
         }
         if (ws.readyState === WebSocket.CLOSED || ws.readyState === WebSocket.CLOSING) {
-            log(`连接断开，${backoffMs}ms 后重连`);
+            consecutiveFailures += 1;
+            if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+                log(
+                    `连续 ${consecutiveFailures} 次重连失败（最后一次：${lastErrorText}），` +
+                        "放弃重连并退出（孤儿治理：宿主可能已停止，不再无限重连）",
+                );
+                process.exit(1);
+                return;
+            }
+            log(`连接断开，${backoffMs}ms 后重连（连续失败 ${consecutiveFailures}/${MAX_CONSECUTIVE_FAILURES}）`);
             const wait = backoffMs;
             backoffMs = Math.min(backoffMs * 2, 30_000);
             setTimeout(connect, wait);
@@ -134,7 +151,8 @@ function connect() {
     };
     ws.addEventListener("close", scheduleReconnect);
     ws.addEventListener("error", (event) => {
-        log(`连接错误：${String(event.message ?? event.error ?? "unknown")}`);
+        lastErrorText = String(event.message ?? event.error ?? "unknown");
+        log(`连接错误：${lastErrorText}`);
     });
 }
 

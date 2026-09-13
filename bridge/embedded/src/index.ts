@@ -70,7 +70,7 @@ async function main(): Promise<void> {
         initialConfig = await configStore.load();
     } catch (error: unknown) {
         log("error", `加载配置失败，以空绑定降级运行：${String(error)}`);
-        initialConfig = { channels: [] };
+        initialConfig = { channels: [], runtime: { autoRestart: true } };
     }
     const bindings = new BindingTable(initialConfig.channels);
     log("info", `当前绑定频道：[${bindings.channels().join(", ")}]`);
@@ -97,8 +97,17 @@ async function main(): Promise<void> {
     });
 
     const port = await server.start();
-    ipc.send(encodeFrame({ type: "ready", body: { wsPort: port } }));
-    log("info", `IPC ready 已发送（wsPort=${port}，协议 ${PROTOCOL_VERSION}）`);
+    // autoRestart 随 ready 上报（v0.2.1）：业务配置的宿主参数交给 Java 看护器，Node 只做搬运
+    ipc.send(
+        encodeFrame({
+            type: "ready",
+            body: { wsPort: port, autoRestart: initialConfig.runtime.autoRestart },
+        }),
+    );
+    log(
+        "info",
+        `IPC ready 已发送（wsPort=${port}，autoRestart=${initialConfig.runtime.autoRestart}，协议 ${PROTOCOL_VERSION}）`,
+    );
 
     const stubPath = process.env["KUROBOT_STUB_PEER"];
     if (stubPath !== undefined && stubPath.length > 0) {
