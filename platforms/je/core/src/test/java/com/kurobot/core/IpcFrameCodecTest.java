@@ -43,6 +43,40 @@ class IpcFrameCodecTest {
     }
 
     @Test
+    void playerJoinAndQuitEventFramesHaveNoId() throws Exception {
+        JsonNode join = parse(IpcFrameCodec.encodePlayerJoin("Steve"));
+        assertEquals("player_join", join.path("header").path("type").asText());
+        assertFalse(join.path("header").has("id"), "事件帧严禁携带 id");
+        assertEquals("Steve", join.path("body").path("playerName").asText());
+        assertEquals(1, join.path("body").size(), "join body 仅 playerName");
+        assertEquals(2, join.size(), "顶层仅 header 与 body");
+
+        JsonNode quit = parse(IpcFrameCodec.encodePlayerQuit("Alex"));
+        assertEquals("player_quit", quit.path("header").path("type").asText());
+        assertFalse(quit.path("header").has("id"), "事件帧严禁携带 id");
+        assertEquals("Alex", quit.path("body").path("playerName").asText());
+        assertEquals(1, quit.path("body").size(), "quit body 仅 playerName");
+    }
+
+    @Test
+    void statusEventFrameCarriesMetrics() throws Exception {
+        String encoded = IpcFrameCodec.encodeStatus(19.5, 3, 12345L);
+
+        assertFalse(encoded.contains("\n"), "帧必须单行");
+        JsonNode frame = parse(encoded);
+        assertEquals("status", frame.path("header").path("type").asText());
+        assertFalse(frame.path("header").has("id"), "事件帧严禁携带 id");
+        assertTrue(frame.path("body").path("tps").isFloatingPointNumber(), "tps 应为浮点数");
+        assertEquals(19.5, frame.path("body").path("tps").asDouble(), 0.0);
+        assertTrue(frame.path("body").path("onlinePlayers").isIntegralNumber(), "onlinePlayers 应为整数");
+        assertEquals(3, frame.path("body").path("onlinePlayers").asInt());
+        assertTrue(frame.path("body").path("uptimeSeconds").isIntegralNumber(), "uptimeSeconds 应为整数");
+        assertEquals(12345L, frame.path("body").path("uptimeSeconds").asLong());
+        assertEquals(3, frame.path("body").size(), "status body 仅三项指标");
+        assertEquals(2, frame.size(), "顶层仅 header 与 body");
+    }
+
+    @Test
     void requestFramesCarryUuidId() throws Exception {
         String id = UUID.randomUUID().toString();
 

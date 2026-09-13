@@ -70,12 +70,7 @@ class NodeIpcTest {
 
     private NodeIpc newIpc(FakeProcess process, Path stubPath) {
         NodeIpc ipc = new NodeIpc(
-                "node",
-                Path.of("bundle.mjs"),
-                stubPath,
-                listener,
-                logs::add,
-                (command, extraEnv, workingDirectory) -> {
+                "node", Path.of("bundle.mjs"), stubPath, listener, logs::add, (command, extraEnv, workingDirectory) -> {
                     process.command = List.copyOf(command);
                     process.extraEnv = Map.copyOf(extraEnv);
                     process.workingDirectory = workingDirectory;
@@ -312,13 +307,71 @@ class NodeIpcTest {
         FakeProcess process = new FakeProcess();
         NodeIpc ipc = launchReady(process);
 
-        ipc.sendGameChat("Steve", "hello world");
+        assertTrue(ipc.sendGameChat("Steve", "hello world"), "通道可用时应返回 true");
 
         JsonNode frame = pollWrittenFrame(process);
         assertEquals("game_chat", frame.path("header").path("type").asText());
         assertFalse(frame.path("header").has("id"), "事件帧严禁携带 id");
         assertEquals("Steve", frame.path("body").path("playerName").asText());
         assertEquals("hello world", frame.path("body").path("content").asText());
+        ipc.shutdown("done");
+    }
+
+    @Test
+    void playerJoinQuitAndStatusSendEventFramesWithoutId() throws Exception {
+        FakeProcess process = new FakeProcess();
+        NodeIpc ipc = launchReady(process);
+
+        assertTrue(ipc.sendPlayerJoin("Alex"), "通道可用时应返回 true");
+        JsonNode join = pollWrittenFrame(process);
+        assertEquals("player_join", join.path("header").path("type").asText());
+        assertFalse(join.path("header").has("id"), "事件帧严禁携带 id");
+        assertEquals("Alex", join.path("body").path("playerName").asText());
+
+        assertTrue(ipc.sendPlayerQuit("Alex"), "通道可用时应返回 true");
+        JsonNode quit = pollWrittenFrame(process);
+        assertEquals("player_quit", quit.path("header").path("type").asText());
+        assertFalse(quit.path("header").has("id"), "事件帧严禁携带 id");
+        assertEquals("Alex", quit.path("body").path("playerName").asText());
+
+        assertTrue(ipc.sendStatus(19.5, 3, 12345L), "通道可用时应返回 true");
+        JsonNode status = pollWrittenFrame(process);
+        assertEquals("status", status.path("header").path("type").asText());
+        assertFalse(status.path("header").has("id"), "事件帧严禁携带 id");
+        assertEquals(19.5, status.path("body").path("tps").asDouble(), 0.0);
+        assertEquals(3, status.path("body").path("onlinePlayers").asInt());
+        assertEquals(12345L, status.path("body").path("uptimeSeconds").asLong());
+        ipc.shutdown("done");
+    }
+
+    @Test
+    void eventSendsAreDroppedWithWarningWhenChannelUnavailable() throws Exception {
+        FakeProcess process = new FakeProcess();
+        NodeIpc ipc = newIpc(process, null); // 未 start：通道不可用
+
+        assertFalse(ipc.sendPlayerJoin("Alex"), "通道不可用应返回 false");
+        assertFalse(ipc.sendPlayerQuit("Alex"), "通道不可用应返回 false");
+        assertFalse(ipc.sendStatus(20.0, 1, 60L), "通道不可用应返回 false");
+        assertFalse(ipc.sendGameChat("Alex", "no channel"), "通道不可用应返回 false");
+        assertFalse(ipc.sendPlayerJoin(""), "空 playerName 应返回 false");
+        assertTrue(
+                logs.stream().anyMatch(line -> line.contains("[WARN]") && line.contains("IPC 通道不可用")), "通道不可用丢弃应有告警日志");
+        assertTrue(
+                logs.stream().anyMatch(line -> line.contains("[WARN]") && line.contains("playerName 不能为空")),
+                "参数非法丢弃应有告警日志");
+        ipc.shutdown("never started");
+    }
+
+    @Test
+    void sendStatusRejectsNegativeMetrics() throws Exception {
+        FakeProcess process = new FakeProcess();
+        NodeIpc ipc = launchReady(process);
+
+        assertFalse(ipc.sendStatus(-0.1, 1, 60L), "负 tps 应丢弃");
+        assertFalse(ipc.sendStatus(20.0, -1, 60L), "负 onlinePlayers 应丢弃");
+        assertFalse(ipc.sendStatus(20.0, 1, -1L), "负 uptimeSeconds 应丢弃");
+        assertTrue(logs.stream().anyMatch(line -> line.contains("[WARN]") && line.contains("不能为负")), "非法指标应有告警日志");
+        assertNull(process.stdin.pollLine(Duration.ofMillis(300)), "非法 status 不得写出任何帧");
         ipc.shutdown("done");
     }
 
@@ -414,7 +467,8 @@ class NodeIpcTest {
         assertTrue(sent.isCompletedExceptionally(), "未启动时请求应立即异常完成");
         assertThrows(ExecutionException.class, () -> sent.get(1, TimeUnit.SECONDS));
 
-        ipc.sendGameChat("Alex", "no channel yet"); // 仅告警，不抛不崩
+        ipc.sendGameChat("Alex", "no channel yet"); // 仅告警，不抛不崩（返回值此处不关心）
+        assertFalse(ipc.sendPlayerJoin("Alex"), "无通道时事件发送应返回 false");
         ipc.shutdown("never started");
     }
 

@@ -36,8 +36,11 @@ public final class KurobotCommand extends Command {
                 return true;
             }
             String text = String.join(" ", Arrays.copyOfRange(args, 1, args.length));
-            ipc.sendGameChat(sender.getName(), text);
-            sender.sendMessage(Component.text("已发送"));
+            if (ipc.sendGameChat(sender.getName(), text)) {
+                sender.sendMessage(Component.text("已发送"));
+            } else {
+                sender.sendMessage(Component.text("发送失败：Node IPC 通道不可用，消息已丢弃"));
+            }
             return true;
         }
         sender.sendMessage(Component.text("用法：" + getUsage()));

@@ -117,18 +117,73 @@ public final class NodeIpc implements AutoCloseable {
         return startFuture;
     }
 
-    /** 发送游戏聊天事件（事件帧无 id）。线程安全；通道不可用时仅记告警并丢弃。 */
-    public void sendGameChat(String playerName, String content) {
+    /**
+     * 发送游戏聊天事件（事件帧无 id）。线程安全。
+     *
+     * @return 通道可用且帧写出成功为 true；参数非法或通道不可用时记告警并丢弃，返回 false
+     *     （上层可据此向触发者明确反馈失败，而非静默丢失）。
+     */
+    public boolean sendGameChat(String playerName, String content) {
         Objects.requireNonNull(playerName, "playerName");
         Objects.requireNonNull(content, "content");
         if (playerName.isEmpty() || content.isEmpty()) {
             logWarn("game_chat 的 playerName/content 不能为空，丢弃该事件");
-            return;
+            return false;
         }
         if (unavailable("game_chat 事件")) {
-            return;
+            return false;
         }
-        writeFrame(IpcFrameCodec.encodeGameChat(playerName, content));
+        return writeFrame(IpcFrameCodec.encodeGameChat(playerName, content));
+    }
+
+    /**
+     * 发送玩家进服事件（事件帧无 id）。线程安全。
+     *
+     * @return 通道可用且帧写出成功为 true；参数非法或通道不可用时记告警并丢弃，返回 false。
+     */
+    public boolean sendPlayerJoin(String playerName) {
+        Objects.requireNonNull(playerName, "playerName");
+        if (playerName.isEmpty()) {
+            logWarn("player_join 的 playerName 不能为空，丢弃该事件");
+            return false;
+        }
+        if (unavailable("player_join 事件")) {
+            return false;
+        }
+        return writeFrame(IpcFrameCodec.encodePlayerJoin(playerName));
+    }
+
+    /**
+     * 发送玩家退服事件（事件帧无 id）。线程安全。
+     *
+     * @return 通道可用且帧写出成功为 true；参数非法或通道不可用时记告警并丢弃，返回 false。
+     */
+    public boolean sendPlayerQuit(String playerName) {
+        Objects.requireNonNull(playerName, "playerName");
+        if (playerName.isEmpty()) {
+            logWarn("player_quit 的 playerName 不能为空，丢弃该事件");
+            return false;
+        }
+        if (unavailable("player_quit 事件")) {
+            return false;
+        }
+        return writeFrame(IpcFrameCodec.encodePlayerQuit(playerName));
+    }
+
+    /**
+     * 发送服务器状态快照（事件帧无 id）。线程安全。
+     *
+     * @return 通道可用且帧写出成功为 true；指标为负或通道不可用时记告警并丢弃，返回 false。
+     */
+    public boolean sendStatus(double tps, int onlinePlayers, long uptimeSeconds) {
+        if (tps < 0 || onlinePlayers < 0 || uptimeSeconds < 0) {
+            logWarn("status 的 tps/onlinePlayers/uptimeSeconds 不能为负，丢弃该事件");
+            return false;
+        }
+        if (unavailable("status 事件")) {
+            return false;
+        }
+        return writeFrame(IpcFrameCodec.encodeStatus(tps, onlinePlayers, uptimeSeconds));
     }
 
     /** 发送广播请求并等待 broadcast_result；默认 10s 超时 / IPC 断开时异常完成。 */

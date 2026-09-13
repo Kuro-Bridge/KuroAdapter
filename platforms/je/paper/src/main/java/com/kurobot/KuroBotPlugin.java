@@ -2,6 +2,7 @@ package com.kurobot;
 
 import com.kurobot.core.NodeIpc;
 import com.kurobot.paper.ChatListener;
+import com.kurobot.paper.ConnectionListener;
 import com.kurobot.paper.KurobotCommand;
 import com.kurobot.paper.NodeRequestHandler;
 import java.nio.file.Path;
@@ -58,6 +59,7 @@ public final class KuroBotPlugin extends JavaPlugin {
             startNodeIpc(bundleEnv);
         }
         Bukkit.getPluginManager().registerEvents(new ChatListener(this), this);
+        Bukkit.getPluginManager().registerEvents(new ConnectionListener(this), this);
         // paper-plugin.yml 不支持 commands 声明，经 Paper 提供的 CommandMap 直接注册（无需反射）
         Bukkit.getCommandMap().register("kurobot", new KurobotCommand(this));
     }

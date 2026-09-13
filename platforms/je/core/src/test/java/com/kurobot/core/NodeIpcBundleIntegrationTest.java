@@ -22,8 +22,8 @@ import org.junit.jupiter.api.io.TempDir;
  *
  * <p>链路：Java(NodeIpc) → stdin JSON-lines → node(bootstrap + core + 绑定表) →
  * stub 孙进程 → WS 握手 → 平台消息（绑定频道）回 Java(onBroadcast) → Java 回执 result →
- * Java 发 game_chat → 按绑定频道 fan-out → stub stderr 打印「收到游戏聊天」→
- * 经 onStderrLine 中继回 Java 断言。
+ * Java 发 game_chat / player_join / status → 按绑定频道 fan-out → stub stderr 打印
+ * 「收到游戏聊天 / 收到进服 / 收到状态」→ 经 onStderrLine 中继回 Java 断言。
  *
  * <p>配置：MVP 阶段一起 Node 侧读 {@code plugins/kurobot/config.json}（相对子进程 cwd）
  * 做绑定过滤——本测试把子进程 cwd 指到 {@link TempDir} 并预置绑定 stub 频道（"stub-channel"），
@@ -79,7 +79,7 @@ class NodeIpcBundleIntegrationTest {
             call.result().ok();
 
             // 3) 游戏 → 平台：Java 发 game_chat，stub 的 stderr 应打印游戏聊天
-            //（断言用 channel 无关子串——v0.2 起 stub 日志携带 [channel] 前缀，频道值随阶段演进）
+            // （断言用 channel 无关子串——v0.2 起 stub 日志携带 [channel] 前缀，频道值随阶段演进）
             ipc.sendGameChat("IntegrationTest", "来自 Java 的问候");
             assertTrue(
                     awaitStderrLineContaining("<IntegrationTest> 来自 Java 的问候", Duration.ofSeconds(15)),
@@ -87,6 +87,13 @@ class NodeIpcBundleIntegrationTest {
 
             // 4) 在途请求结算验证（平台消息的 result ok 不应悬挂）
             assertTrue(call.resultAnswered(), "result 应恰好回执一次");
+
+            // 5) 进服 / 状态：Java 发 player_join + status，经 Node 绑定表 fan-out 后
+            //    stub stderr 应打印「收到进服」与「收到状态」（channel 无关子串，同步骤 3）
+            assertTrue(ipc.sendPlayerJoin("IntegrationTest"), "player_join 应发出");
+            assertTrue(awaitStderrLineContaining("收到进服", Duration.ofSeconds(15)), "stub 应收到进服事件，实际收到：" + stderrLines);
+            assertTrue(ipc.sendStatus(20.0, 1, 60L), "status 应发出");
+            assertTrue(awaitStderrLineContaining("收到状态", Duration.ofSeconds(15)), "stub 应收到状态事件，实际收到：" + stderrLines);
         } finally {
             ipc.shutdown("integration test done");
         }
@@ -96,9 +103,7 @@ class NodeIpcBundleIntegrationTest {
     private static void writeBoundConfig(Path serverRoot) throws IOException {
         Path configDir = serverRoot.resolve("plugins").resolve("kurobot");
         Files.createDirectories(configDir);
-        Files.writeString(
-                configDir.resolve("config.json"),
-                "{\"channels\":[\"" + STUB_CHANNEL + "\"]}\n");
+        Files.writeString(configDir.resolve("config.json"), "{\"channels\":[\"" + STUB_CHANNEL + "\"]}\n");
     }
 
     /** 轮询 stderr 队列直到出现包含目标文本的行（超时返回 false）。 */

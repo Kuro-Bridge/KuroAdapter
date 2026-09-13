@@ -22,8 +22,7 @@ public interface ProcessFactory {
      *     Node 侧据此定位 plugins/kurobot/config.json）
      * @throws IOException 拉起失败（找不到可执行文件等）
      */
-    Process start(List<String> command, Map<String, String> extraEnv, Path workingDirectory)
-            throws IOException;
+    Process start(List<String> command, Map<String, String> extraEnv, Path workingDirectory) throws IOException;
 
     /** 默认实现：ProcessBuilder + 继承当前环境变量再叠加 extraEnv。 */
     static ProcessFactory system() {

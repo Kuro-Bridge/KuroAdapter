@@ -12,8 +12,9 @@ import java.util.UUID;
  * 与 bridge/protocol 的 zod schema 逐字段一致（帧格式 SSOT 的 Java 侧镜像，一个字节不改）。
  *
  * <ul>
- *   <li>出帧（Java→Node）：game_chat / shutdown 事件（header 仅 type），broadcast /
- *       execute_command 请求与两种 *_result 响应（header 携带 UUID id）。</li>
+ *   <li>出帧（Java→Node）：game_chat / player_join / player_quit / status / shutdown 事件
+ *       （header 仅 type），broadcast / execute_command 请求与两种 *_result 响应（header 携带
+ *       UUID id）。</li>
  *   <li>入帧（Node→Java）：ready 事件、broadcast / execute_command 请求、两种 *_result 响应。</li>
  *   <li>事件帧严禁携带 id（事件 header 严格校验：仅允许 type 一个键）；请求/响应帧 id
  *       必填且必须可解析为 UUID（对齐 {@code z.uuid()}），header 其余键宽松（对齐非 strict 的
@@ -27,6 +28,9 @@ final class IpcFrameCodec {
     static final String TYPE_BROADCAST = "broadcast";
     static final String TYPE_EXECUTE_COMMAND = "execute_command";
     static final String TYPE_GAME_CHAT = "game_chat";
+    static final String TYPE_PLAYER_JOIN = "player_join";
+    static final String TYPE_PLAYER_QUIT = "player_quit";
+    static final String TYPE_STATUS = "status";
     static final String TYPE_SHUTDOWN = "shutdown";
     static final String TYPE_BROADCAST_RESULT = "broadcast_result";
     static final String TYPE_EXECUTE_COMMAND_RESULT = "execute_command_result";
@@ -48,6 +52,26 @@ final class IpcFrameCodec {
         ObjectNode body = MAPPER.createObjectNode();
         body.put("reason", reason);
         return encodeEvent(TYPE_SHUTDOWN, body);
+    }
+
+    static String encodePlayerJoin(String playerName) {
+        ObjectNode body = MAPPER.createObjectNode();
+        body.put("playerName", playerName);
+        return encodeEvent(TYPE_PLAYER_JOIN, body);
+    }
+
+    static String encodePlayerQuit(String playerName) {
+        ObjectNode body = MAPPER.createObjectNode();
+        body.put("playerName", playerName);
+        return encodeEvent(TYPE_PLAYER_QUIT, body);
+    }
+
+    static String encodeStatus(double tps, int onlinePlayers, long uptimeSeconds) {
+        ObjectNode body = MAPPER.createObjectNode();
+        body.put("tps", tps);
+        body.put("onlinePlayers", onlinePlayers);
+        body.put("uptimeSeconds", uptimeSeconds);
+        return encodeEvent(TYPE_STATUS, body);
     }
 
     static String encodeBroadcastRequest(String id, String message) {
