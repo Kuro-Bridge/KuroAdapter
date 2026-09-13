@@ -44,3 +44,4 @@ sandbox/
 
 # QQ 运行产物（登录态数据库，勿提交）
 *.db
+bridge/embedded/plugins/
