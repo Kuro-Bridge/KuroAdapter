@@ -196,9 +196,10 @@ public final class KuroBotPlugin extends JavaPlugin {
             current.setAutoRestart(autoRestart);
         }
         getLogger().info("Node 子进程就绪，WS 端口 " + wsPort + "（autoRestart=" + autoRestart + "）");
-        // 版本来源：插件=paper-plugin.yml；node=manifest（开发覆盖为 dev）；协议=:core 硬编码副本
+        // 版本来源：插件=paper-plugin.yml；node=manifest（开发覆盖为 dev）；协议=:core 硬编码副本。
+        // 「[KuroBot]」前缀由插件 logger 自动附加（M2-11：手写会双前缀）
         getLogger()
-                .info(() -> "[KuroBot] 就绪：插件 v" + getPluginMeta().getVersion() + " / node v" + nodeVersion + " / 协议 v"
+                .info(() -> "就绪：插件 v" + getPluginMeta().getVersion() + " / node v" + nodeVersion + " / 协议 v"
                         + KurobotVersions.PROTOCOL_VERSION);
     }
 
