@@ -11,6 +11,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -117,6 +118,10 @@ class NodeIpcTest {
     }
 
     private String resultFrame(String type, String id, boolean ok, String error) {
+        return resultFrame(type, id, ok, error, null);
+    }
+
+    private String resultFrame(String type, String id, boolean ok, String error, List<String> output) {
         ObjectNode root = mapper.createObjectNode();
         ObjectNode header = root.putObject("header");
         header.put("type", type);
@@ -125,6 +130,10 @@ class NodeIpcTest {
         body.put("ok", ok);
         if (error != null) {
             body.put("error", error);
+        }
+        if (output != null) {
+            ArrayNode array = body.putArray("output");
+            output.forEach(array::add);
         }
         return root.toString();
     }
@@ -251,18 +260,49 @@ class NodeIpcTest {
     }
 
     @Test
-    void executeCommandRoundTripOk() throws Exception {
+    void executeCommandRoundTripOkWithOutput() throws Exception {
         FakeProcess process = new FakeProcess();
         NodeIpc ipc = launchReady(process);
 
-        CompletableFuture<Void> sent = ipc.executeCommand("whitelist list");
+        CompletableFuture<List<String>> sent = ipc.executeCommand("whitelist list");
         JsonNode frame = pollWrittenFrame(process);
         assertEquals("execute_command", frame.path("header").path("type").asText());
         String id = frame.path("header").path("id").asText();
         assertEquals("whitelist list", frame.path("body").path("command").asText());
 
-        process.stdout.write(resultFrame("execute_command_result", id, true, null));
-        sent.get(5, TimeUnit.SECONDS);
+        process.stdout.write(
+                resultFrame("execute_command_result", id, true, null, List.of("There are 2 players:", "Steve")));
+        List<String> output = sent.get(5, TimeUnit.SECONDS);
+        assertEquals(List.of("There are 2 players:", "Steve"), output);
+        ipc.shutdown("done");
+    }
+
+    @Test
+    void executeCommandOkWithoutOutputNormalizesEmptyList() throws Exception {
+        FakeProcess process = new FakeProcess();
+        NodeIpc ipc = launchReady(process);
+
+        CompletableFuture<List<String>> sent = ipc.executeCommand("say hi");
+        String id = pollWrittenFrame(process).path("header").path("id").asText();
+
+        process.stdout.write(resultFrame("execute_command_result", id, true, null, null));
+        List<String> output = sent.get(5, TimeUnit.SECONDS);
+        assertTrue(output.isEmpty(), "未携带 output 的 ok 响应应归一为空列表");
+        ipc.shutdown("done");
+    }
+
+    @Test
+    void executeCommandErrorResultFailsFuture() throws Exception {
+        FakeProcess process = new FakeProcess();
+        NodeIpc ipc = launchReady(process);
+
+        CompletableFuture<List<String>> sent = ipc.executeCommand("stop");
+        String id = pollWrittenFrame(process).path("header").path("id").asText();
+
+        process.stdout.write(resultFrame("execute_command_result", id, false, "not allowed", null));
+        ExecutionException failure = assertThrows(ExecutionException.class, () -> sent.get(5, TimeUnit.SECONDS));
+        assertTrue(failure.getCause() instanceof IpcException);
+        assertTrue(failure.getCause().getMessage().contains("not allowed"));
         ipc.shutdown("done");
     }
 
@@ -307,6 +347,26 @@ class NodeIpcTest {
         assertEquals(id, frame.path("header").path("id").asText());
         assertFalse(frame.path("body").path("ok").asBoolean());
         assertEquals("no permission", frame.path("body").path("error").asText());
+        ipc.shutdown("done");
+    }
+
+    @Test
+    void incomingExecuteCommandOkEncodesOutputField() throws Exception {
+        FakeProcess process = new FakeProcess();
+        NodeIpc ipc = launchReady(process);
+
+        String id = "99999999-8888-7777-6666-555555555555";
+        process.stdout.write(requestFrame("execute_command", id, "command", "list"));
+
+        RecordingListener.CommandCall call = listener.executeCalls.poll(5, TimeUnit.SECONDS);
+        assertNotNull(call, "onExecuteCommand 应被调用");
+        call.result().ok(List.of("Whitelisted players: Steve", "Alex"));
+
+        JsonNode frame = pollWrittenFrame(process);
+        assertTrue(frame.path("body").path("ok").asBoolean());
+        assertFalse(frame.path("body").has("error"));
+        assertEquals(2, frame.path("body").path("output").size());
+        assertEquals("Alex", frame.path("body").path("output").get(1).asText());
         ipc.shutdown("done");
     }
 

@@ -9,17 +9,22 @@ import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
 
 /**
- * /kurobot 命令（仅原型——开发期手工触发 IPC 帧的调试入口，后续由正式管理命令替代）。
+ * /kurobot 命令（开发/验收期的 IPC 手工触发入口）。
  *
  * <p>paper-plugin.yml 不支持 commands 声明，由主类经 {@code Bukkit.getCommandMap()} 直接
- * 注册。子命令：{@code kurobot send <文本...>} → 以发送者名义上报一条 game_chat 事件帧。
+ * 注册。子命令：
+ * <ul>
+ *   <li>{@code kurobot send <文本...>} → 以发送者名义上报一条 game_chat 事件帧。</li>
+ *   <li>{@code kurobot reload}（v0.3.0）→ 上报 config_reload 事件帧，Node 侧重读配置
+ *       （绑定变更经既有 bindings_updated 推送路径生效；命令即时返回「已通知重载」）。</li>
+ * </ul>
  * 权限：kurobot.admin（paper-plugin.yml 已声明，default: op）。
  */
 public final class KurobotCommand extends Command {
     private final KuroBotPlugin plugin;
 
     public KurobotCommand(KuroBotPlugin plugin) {
-        super("kurobot", "KuroBot 原型开发命令", "/kurobot send <文本...>", List.of());
+        super("kurobot", "KuroBot 开发命令", "/kurobot send <文本...> | reload", List.of());
         this.plugin = plugin;
     }
 
@@ -42,6 +47,21 @@ public final class KurobotCommand extends Command {
                 sender.sendMessage(Component.text("发送失败：Node 进程反复崩溃，自动重启已放弃（需修复后重启服务器或重载插件）"));
             } else {
                 sender.sendMessage(Component.text("发送失败：Node IPC 通道不可用，消息已丢弃"));
+            }
+            return true;
+        }
+        if (args.length == 1 && "reload".equals(args[0])) {
+            NodeIpc ipc = plugin.getIpc();
+            if (ipc == null) {
+                sender.sendMessage(Component.text("Node IPC 未就绪"));
+                return true;
+            }
+            if (ipc.sendConfigReload()) {
+                sender.sendMessage(Component.text("已通知重载"));
+            } else if (plugin.isSupervisorGivenUp()) {
+                sender.sendMessage(Component.text("重载失败：Node 进程反复崩溃，自动重启已放弃（需修复后重启服务器或重载插件）"));
+            } else {
+                sender.sendMessage(Component.text("重载失败：Node IPC 通道不可用"));
             }
             return true;
         }

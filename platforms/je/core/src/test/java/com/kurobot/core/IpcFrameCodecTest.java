@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -94,7 +95,7 @@ class IpcFrameCodecTest {
     @Test
     void resultFrameOkHasNoErrorField() throws Exception {
         String id = UUID.randomUUID().toString();
-        JsonNode ok = parse(IpcFrameCodec.encodeResult("broadcast_result", id, true, null));
+        JsonNode ok = parse(IpcFrameCodec.encodeResult("broadcast_result", id, true, null, null));
         assertEquals(id, ok.path("header").path("id").asText());
         assertTrue(ok.path("body").path("ok").asBoolean());
         assertFalse(ok.path("body").has("error"), "ok 响应不得携带 error 字段");
@@ -103,9 +104,60 @@ class IpcFrameCodecTest {
     @Test
     void resultFrameErrorCarriesError() throws Exception {
         String id = UUID.randomUUID().toString();
-        JsonNode error = parse(IpcFrameCodec.encodeResult("execute_command_result", id, false, "no permission"));
+        JsonNode error = parse(IpcFrameCodec.encodeResult("execute_command_result", id, false, "no permission", null));
         assertFalse(error.path("body").path("ok").asBoolean());
         assertEquals("no permission", error.path("body").path("error").asText());
+    }
+
+    @Test
+    void resultFrameOutputEncoding() throws Exception {
+        String id = UUID.randomUUID().toString();
+        // null / 空列表 → 不产生 output 字段（协议：空输出不产生字段）
+        assertFalse(
+                parse(IpcFrameCodec.encodeResult("execute_command_result", id, true, null, null))
+                        .path("body")
+                        .has("output"),
+                "output=null 不得产生字段");
+        assertFalse(
+                parse(IpcFrameCodec.encodeResult("execute_command_result", id, true, null, List.of()))
+                        .path("body")
+                        .has("output"),
+                "空 output 不得产生字段");
+        // 非空列表 → 逐行回传
+        JsonNode withOutput = parse(IpcFrameCodec.encodeResult(
+                "execute_command_result",
+                id,
+                true,
+                null,
+                List.of("There are 2 of a max of 20 players online:", "Steve")));
+        assertTrue(withOutput.path("body").path("output").isArray());
+        assertEquals(2, withOutput.path("body").path("output").size());
+        assertEquals("Steve", withOutput.path("body").path("output").get(1).asText());
+    }
+
+    @Test
+    void playerDeathEventFrameAllowsEmptyMessage() throws Exception {
+        // deathMessage 可为 null（/kill）→ 空串兜底；player 仍必填
+        JsonNode empty = parse(IpcFrameCodec.encodePlayerDeath("Steve", ""));
+        assertEquals("player_death", empty.path("header").path("type").asText());
+        assertFalse(empty.path("header").has("id"), "事件帧严禁携带 id");
+        assertEquals("Steve", empty.path("body").path("player").asText());
+        assertEquals("", empty.path("body").path("message").asText());
+        assertEquals(2, empty.path("body").size(), "death body 仅 player 与 message");
+
+        JsonNode withText = parse(IpcFrameCodec.encodePlayerDeath("Alex", "Alex 被僵尸杀死了"));
+        assertEquals("Alex 被僵尸杀死了", withText.path("body").path("message").asText());
+    }
+
+    @Test
+    void configReloadEventFrameHasEmptyBody() throws Exception {
+        String encoded = IpcFrameCodec.encodeConfigReload();
+        assertFalse(encoded.contains("\n"), "帧必须单行");
+        JsonNode frame = parse(encoded);
+        assertEquals("config_reload", frame.path("header").path("type").asText());
+        assertFalse(frame.path("header").has("id"), "事件帧严禁携带 id");
+        assertEquals(0, frame.path("body").size(), "config_reload body 为空对象");
+        assertEquals(2, frame.size(), "顶层仅 header 与 body");
     }
 
     @Test
@@ -253,6 +305,58 @@ class IpcFrameCodecTest {
                                 + "\"},\"body\":{\"ok\":\"yes\"}}")
                         .isEmpty(),
                 "ok 非布尔必须拒绝");
+    }
+
+    @Test
+    void decodeExecuteCommandResultOutput() {
+        String id = UUID.randomUUID().toString();
+        // ok + output：逐行解析
+        Optional<InboundFrame> withOutput =
+                IpcFrameCodec.decode("{\"header\":{\"type\":\"execute_command_result\",\"id\":\""
+                        + id
+                        + "\"},\"body\":{\"ok\":true,\"output\":[\"There are 2 players:\",\"Steve\"]}}");
+        assertTrue(withOutput.isPresent());
+        assertTrue(withOutput.get() instanceof InboundFrame.Result result
+                && result.ok()
+                && List.of("There are 2 players:", "Steve").equals(result.output()));
+        // ok 无 output：output=null（NodeIpc 归一空列表）
+        Optional<InboundFrame> withoutOutput = IpcFrameCodec.decode(
+                "{\"header\":{\"type\":\"execute_command_result\",\"id\":\"" + id + "\"},\"body\":{\"ok\":true}}");
+        assertTrue(withoutOutput.isPresent());
+        assertTrue(
+                withoutOutput.get() instanceof InboundFrame.Result result && result.ok() && result.output() == null,
+                "无 output 应为 null");
+        // output 形状非法：整帧拒绝（镜像 zod 按帧型校验的失败路径）
+        assertTrue(
+                IpcFrameCodec.decode("{\"header\":{\"type\":\"execute_command_result\",\"id\":\"" + id
+                                + "\"},\"body\":{\"ok\":true,\"output\":\"lines\"}}")
+                        .isEmpty(),
+                "output 非数组必须拒绝");
+        assertTrue(
+                IpcFrameCodec.decode("{\"header\":{\"type\":\"execute_command_result\",\"id\":\"" + id
+                                + "\"},\"body\":{\"ok\":true,\"output\":[42]}}")
+                        .isEmpty(),
+                "output 元素非字符串必须拒绝");
+        // !ok 分支不解析 output（zod false 分支对未知键 strip 而非拒帧）
+        Optional<InboundFrame> errorWithOutput =
+                IpcFrameCodec.decode("{\"header\":{\"type\":\"execute_command_result\",\"id\":\"" + id
+                        + "\"},\"body\":{\"ok\":false,\"error\":\"x\",\"output\":[\"ignored\"]}}");
+        assertTrue(errorWithOutput.isPresent());
+        assertTrue(
+                errorWithOutput.get() instanceof InboundFrame.Result result && !result.ok() && result.output() == null,
+                "!ok 分支不解析 output");
+    }
+
+    @Test
+    void decodeBroadcastResultIgnoresOutputField() {
+        // broadcast_result 不解析 output（zod resultBodySchema 非 strict 对未知键 strip）
+        String id = UUID.randomUUID().toString();
+        Optional<InboundFrame> decoded = IpcFrameCodec.decode("{\"header\":{\"type\":\"broadcast_result\",\"id\":\""
+                + id + "\"},\"body\":{\"ok\":true,\"output\":[\"x\"]}}");
+        assertTrue(decoded.isPresent());
+        assertTrue(
+                decoded.get() instanceof InboundFrame.Result result && result.ok() && result.output() == null,
+                "broadcast_result 的 output 应被忽略");
     }
 
     @Test

@@ -6,6 +6,7 @@ import com.kurobot.core.NodeIpc;
 import com.kurobot.core.NodeSupervisor;
 import com.kurobot.paper.ChatListener;
 import com.kurobot.paper.ConnectionListener;
+import com.kurobot.paper.DeathListener;
 import com.kurobot.paper.KurobotCommand;
 import com.kurobot.paper.NodeRequestHandler;
 import java.io.IOException;
@@ -96,6 +97,7 @@ public final class KuroBotPlugin extends JavaPlugin {
         }
         Bukkit.getPluginManager().registerEvents(new ChatListener(this), this);
         Bukkit.getPluginManager().registerEvents(new ConnectionListener(this), this);
+        Bukkit.getPluginManager().registerEvents(new DeathListener(this), this);
         // paper-plugin.yml 不支持 commands 声明，经 Paper 提供的 CommandMap 直接注册（无需反射）
         Bukkit.getCommandMap().register("kurobot", new KurobotCommand(this));
     }

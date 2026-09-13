@@ -12,6 +12,8 @@ permissions:
     kurobot.admin:
         description: KuroBot 管理权限
         default: op
+    # 聊天转发开关（v0.3.0 消费，ChatListener 检查）：default true = 全员可转发；
+    # negate（设为 false）即静音——该玩家的聊天不再上报 Node
     kurobot.relay:
         description: 消息互通权限（聊天转发）
         default: true

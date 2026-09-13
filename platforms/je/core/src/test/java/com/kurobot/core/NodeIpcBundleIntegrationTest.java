@@ -94,6 +94,11 @@ class NodeIpcBundleIntegrationTest {
             assertTrue(awaitStderrLineContaining("收到进服", Duration.ofSeconds(15)), "stub 应收到进服事件，实际收到：" + stderrLines);
             assertTrue(ipc.sendStatus(20.0, 1, 60L), "status 应发出");
             assertTrue(awaitStderrLineContaining("收到状态", Duration.ofSeconds(15)), "stub 应收到状态事件，实际收到：" + stderrLines);
+
+            // 6) 死亡（v0.3.0）：Java 发 player_death，fan-out 后 stub stderr 打印「收到死亡」；
+            //    message 允许空串（deathMessage 可为 null 的兜底形状）
+            assertTrue(ipc.sendPlayerDeath("IntegrationTest", "IntegrationTest 被测试杀死了"), "player_death 应发出");
+            assertTrue(awaitStderrLineContaining("收到死亡", Duration.ofSeconds(15)), "stub 应收到死亡事件，实际收到：" + stderrLines);
         } finally {
             ipc.shutdown("integration test done");
         }
@@ -157,8 +162,8 @@ class NodeIpcBundleIntegrationTest {
             this.message = message;
             this.result = new IpcResult() {
                 @Override
-                public void ok() {
-                    result.ok();
+                public void ok(List<String> output) {
+                    result.ok(output);
                     answered.complete(null);
                 }
 

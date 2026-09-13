@@ -59,7 +59,7 @@ public final class NodeIpc implements AutoCloseable {
     private final ScheduledExecutorService scheduler;
 
     private final Object writeLock = new Object();
-    private final ConcurrentMap<String, CompletableFuture<Void>> pending = new ConcurrentHashMap<>();
+    private final ConcurrentMap<String, CompletableFuture<List<String>>> pending = new ConcurrentHashMap<>();
     private final CompletableFuture<Integer> startFuture = new CompletableFuture<>();
     private final AtomicBoolean spawnStarted = new AtomicBoolean();
     private final AtomicBoolean shutdownStarted = new AtomicBoolean();
@@ -174,6 +174,27 @@ public final class NodeIpc implements AutoCloseable {
     }
 
     /**
+     * 发送玩家死亡事件（v0.3.0，事件帧无 id）。线程安全。
+     *
+     * <p>{@code message} 允许空串——Bukkit 的 deathMessage 可为 null（如 /kill），DeathListener
+     * 以空串兜底后原样上报，Node 侧据此渲染。
+     *
+     * @return 通道可用且帧写出成功为 true；player 为空或通道不可用时记告警并丢弃，返回 false。
+     */
+    public boolean sendPlayerDeath(String player, String message) {
+        Objects.requireNonNull(player, "player");
+        Objects.requireNonNull(message, "message");
+        if (player.isEmpty()) {
+            logWarn("player_death 的 player 不能为空，丢弃该事件");
+            return false;
+        }
+        if (unavailable("player_death 事件")) {
+            return false;
+        }
+        return writeFrame(IpcFrameCodec.encodePlayerDeath(player, message));
+    }
+
+    /**
      * 发送服务器状态快照（事件帧无 id）。线程安全。
      *
      * @return 通道可用且帧写出成功为 true；指标为负或通道不可用时记告警并丢弃，返回 false。
@@ -192,13 +213,29 @@ public final class NodeIpc implements AutoCloseable {
     /** 发送广播请求并等待 broadcast_result；默认 10s 超时 / IPC 断开时异常完成。 */
     public CompletableFuture<Void> broadcast(String message) {
         Objects.requireNonNull(message, "message");
-        return sendRequest(IpcFrameCodec.TYPE_BROADCAST, "message", message);
+        return sendRequest(IpcFrameCodec.TYPE_BROADCAST, "message", message).thenApply(result -> null);
     }
 
-    /** 发送执行命令请求并等待 execute_command_result；默认 10s 超时 / IPC 断开时异常完成。 */
-    public CompletableFuture<Void> executeCommand(String command) {
+    /**
+     * 发送执行命令请求并等待 execute_command_result（v0.3.0：ok 时回传命令输出行，未携带
+     * output 归一空列表）；失败（!ok）/ 默认 10s 超时 / IPC 断开时异常完成。
+     */
+    public CompletableFuture<List<String>> executeCommand(String command) {
         Objects.requireNonNull(command, "command");
         return sendRequest(IpcFrameCodec.TYPE_EXECUTE_COMMAND, "command", command);
+    }
+
+    /**
+     * 发送配置重载通知（v0.3.0，/kurobot reload 触发）：空 body 事件帧，语义对齐 shutdown
+     * 的单向通知——不等待 Node 侧回执（重载效果经 bindings_updated 体现）。线程安全。
+     *
+     * @return 通道可用且帧写出成功为 true；通道不可用时记告警并丢弃，返回 false。
+     */
+    public boolean sendConfigReload() {
+        if (unavailable("config_reload 事件")) {
+            return false;
+        }
+        return writeFrame(IpcFrameCodec.encodeConfigReload());
     }
 
     /**
@@ -430,34 +467,34 @@ public final class NodeIpc implements AutoCloseable {
             private final AtomicBoolean answered = new AtomicBoolean();
 
             @Override
-            public void ok() {
-                respond(true, null);
+            public void ok(List<String> output) {
+                respond(true, null, output);
             }
 
             @Override
             public void error(String error) {
-                respond(false, error);
+                respond(false, error, null);
             }
 
-            private void respond(boolean ok, String error) {
+            private void respond(boolean ok, String error, List<String> output) {
                 if (!answered.compareAndSet(false, true)) {
                     logWarn(type + " 的 IpcResult 被重复调用，忽略后续调用");
                     return;
                 }
                 String safeError = (error == null || error.isEmpty()) ? "unspecified" : error;
-                writeFrame(IpcFrameCodec.encodeResult(type, id, ok, safeError));
+                writeFrame(IpcFrameCodec.encodeResult(type, id, ok, safeError, output));
             }
         };
     }
 
     private void settleResult(InboundFrame.Result result) {
-        CompletableFuture<Void> future = pending.remove(result.id());
+        CompletableFuture<List<String>> future = pending.remove(result.id());
         if (future == null) {
             logWarn("收到无在途请求的响应，忽略：type=" + result.type() + " id=" + result.id());
             return;
         }
         if (result.ok()) {
-            future.complete(null);
+            future.complete(result.output() == null ? List.of() : result.output());
             return;
         }
         future.completeExceptionally(new IpcException(result.type() + " 失败：" + result.error()));
@@ -465,7 +502,7 @@ public final class NodeIpc implements AutoCloseable {
 
     // ---- 请求发送 ----
 
-    private CompletableFuture<Void> sendRequest(String type, String field, String value) {
+    private CompletableFuture<List<String>> sendRequest(String type, String field, String value) {
         if (value.isEmpty()) {
             return CompletableFuture.failedFuture(new IllegalArgumentException(type + " 的 " + field + " 不能为空"));
         }
@@ -473,7 +510,7 @@ public final class NodeIpc implements AutoCloseable {
             return CompletableFuture.failedFuture(new IpcException("IPC 通道不可用，无法发送 " + type));
         }
         String id = UUID.randomUUID().toString();
-        CompletableFuture<Void> future = new CompletableFuture<>();
+        CompletableFuture<List<String>> future = new CompletableFuture<>();
         pending.put(id, future);
         String frame = IpcFrameCodec.TYPE_BROADCAST.equals(type)
                 ? IpcFrameCodec.encodeBroadcastRequest(id, value)
@@ -486,7 +523,7 @@ public final class NodeIpc implements AutoCloseable {
         Duration timeout = requestTimeout;
         scheduler.schedule(
                 () -> {
-                    CompletableFuture<Void> expired = pending.remove(id);
+                    CompletableFuture<List<String>> expired = pending.remove(id);
                     if (expired != null) {
                         expired.completeExceptionally(
                                 new TimeoutException(type + " 响应超时（" + timeout.toMillis() + "ms）"));
@@ -584,7 +621,7 @@ public final class NodeIpc implements AutoCloseable {
             startFuture.completeExceptionally(new IpcException("Node 进程在 ready 前断开（" + cause + exitSuffix + "）"));
         }
         IpcException failure = new IpcException("IPC 通道已关闭（" + cause + exitSuffix + "）");
-        for (Map.Entry<String, CompletableFuture<Void>> entry : pending.entrySet()) {
+        for (Map.Entry<String, CompletableFuture<List<String>>> entry : pending.entrySet()) {
             if (pending.remove(entry.getKey(), entry.getValue())) {
                 entry.getValue().completeExceptionally(failure);
             }

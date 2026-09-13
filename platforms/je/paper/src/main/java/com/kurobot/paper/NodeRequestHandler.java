@@ -11,9 +11,11 @@ import org.bukkit.Bukkit;
  *
  * <p><b>线程契约：全部回调在 :core 的 IPC 读取虚拟线程（kurobot-ipc-stdout /
  * kurobot-ipc-stderr）上被调用</b>，不在 Bukkit 主线程。硬约束「IPC 永不阻塞主线程」：本类
- * 只把 Bukkit API 操作经 {@code runTask} 调度回主线程（入队即返回），随后立即回执
- * {@link IpcResult}；回执在通道已关闭时由 :core 忽略。本类零业务——转发规则、权限语义等
- * 决策都在 Node 侧（AGENTS.md 硬约束 2）。
+ * 只把 Bukkit API 操作经 {@code runTask} 调度回主线程（入队即返回）；broadcast 调度后立即
+ * 回执，execute_command（v0.3.0）改为在主线程任务内执行完命令、以收集型 CommandSender 的
+ * 输出行回执 {@link IpcResult}（Node 侧等待真实执行完成，调度/执行失败显式 error）。回执在
+ * 通道已关闭时由 :core 忽略。本类零业务——转发规则、权限语义等决策都在 Node 侧
+ * （AGENTS.md 硬约束 2）。
  */
 public final class NodeRequestHandler implements NodeIpcListener {
     private final KuroBotPlugin plugin;
@@ -42,13 +44,24 @@ public final class NodeRequestHandler implements NodeIpcListener {
 
     @Override
     public void onExecuteCommand(String command, IpcResult result) {
+        CollectingCommandSender sender = new CollectingCommandSender();
         try {
-            Bukkit.getScheduler().runTask(plugin, () -> Bukkit.dispatchCommand(Bukkit.getConsoleSender(), command));
+            Bukkit.getScheduler().runTask(plugin, () -> {
+                try {
+                    Bukkit.dispatchCommand(sender, command);
+                } catch (RuntimeException e) {
+                    // 命令本身抛异常（插件命令 bug 等）：显式回执失败，避免 Node 侧等到超时
+                    result.error("命令执行异常：" + e.getMessage());
+                    return;
+                }
+                result.ok(sender.collectedLines());
+            });
         } catch (RuntimeException e) {
+            // 插件已 disable 等导致调度失败：显式回执失败，避免 Node 侧等到超时
             result.error("调度命令执行到主线程失败：" + e.getMessage());
-            return;
         }
-        result.ok(); // 已调度回主线程执行即回执 ok（命令本身的成功与否由命令语义决定）
+        // 回执时序（v0.3.0）：主线程任务执行完才 ok（Node 等待真实执行完成）；主线程卡死
+        // 超过请求超时（10s）由 Node 侧既有 IPC 超时兜底
     }
 
     @Override
