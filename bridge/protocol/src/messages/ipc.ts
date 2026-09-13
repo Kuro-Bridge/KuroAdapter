@@ -1,19 +1,23 @@
 /**
  * IPC 侧消息（Java 薄壳 ↔ Node 子进程，stdin/stdout JSON-lines，ADR-010）
  *
- * 帧结构复用 WS 帧（决策 D-04）。spike 最小集 + v0.2 增量（MVP 阶段一）：
- * - Node→Java：ready（事件）、broadcast / execute_command（请求）
- * - Java→Node：game_chat / player_join / player_quit / status / shutdown（事件）、
- *   broadcast_result / execute_command_result（响应）
+ * 帧结构复用 WS 帧（决策 D-04）。spike 最小集 + v0.2 增量（MVP 阶段一）+ v0.3.0 增量
+ * （DEBT-1）：Node→Java 无新增；Java→Node 增 player_death / config_reload 事件；
+ * execute_command_result 增可选 output（命令输出行，收集型 CommandSender 回传）。
  *
- * 命名对齐：IPC 帧名描述 Bukkit 事件源（game_chat / player_join），WS 帧名是协议事件
- * （chat / join）；channel 概念只在 Node 侧业务存在，IPC 的 game_chat / player_join 等
- * 不携带 channel（Java 零业务）。
+ * 命名对齐：IPC 帧名描述 Bukkit 事件源（game_chat / player_join / player_death），WS 帧
+ * 名是协议事件（chat / join / death）；channel 概念只在 Node 侧业务存在，IPC 的
+ * game_chat / player_join / player_death 等不携带 channel（Java 零业务）。
  * 所有 *Frame 类型均为扁平消息 { type, id?, body }（决策 D-11）。
  */
 import { z } from "zod";
 
-import { eventFrameSchema, requestFrameSchema, resultBodySchema } from "../frame.js";
+import {
+    commandResultBodySchema,
+    eventFrameSchema,
+    requestFrameSchema,
+    resultBodySchema,
+} from "../frame.js";
 
 // ---- Node → Java ----
 
@@ -84,6 +88,21 @@ export const playerQuitEventFrame = eventFrameSchema("player_quit", playerQuitEv
 export type PlayerQuitEventBody = z.infer<typeof playerQuitEventBodySchema>;
 export type PlayerQuitEventFrame = z.infer<typeof playerQuitEventFrame>;
 
+const playerDeathEventBodySchema = z.object({
+    /** 死亡玩家名（任务书原文命名；WS death 帧同名字段，与 join/leave 的 playerName 不一致已记录并照办） */
+    player: z.string().min(1),
+    /**
+     * 死亡消息文本（PlayerDeathEvent#deathMessage 的 plain 序列化；可为 null → Java 侧
+     * 以空串兜底，故允许空串）
+     */
+    message: z.string(),
+});
+
+/** 玩家死亡事件（PlayerDeathEvent 桥接；channel fan-out 是 Node 侧业务） */
+export const playerDeathEventFrame = eventFrameSchema("player_death", playerDeathEventBodySchema);
+export type PlayerDeathEventBody = z.infer<typeof playerDeathEventBodySchema>;
+export type PlayerDeathEventFrame = z.infer<typeof playerDeathEventFrame>;
+
 const statusEventBodySchema = z.object({
     tps: z.number().nonnegative(),
     onlinePlayers: z.number().int().nonnegative(),
@@ -104,14 +123,21 @@ export const shutdownFrame = eventFrameSchema("shutdown", shutdownBodySchema);
 export type ShutdownBody = z.infer<typeof shutdownBodySchema>;
 export type ShutdownFrame = z.infer<typeof shutdownFrame>;
 
+/** 配置重载通知（v0.3.0 事件，/kurobot reload 触发；无参数——重载后 core 重读全部配置） */
+export const configReloadFrame = eventFrameSchema("config_reload", z.object({}));
+export type ConfigReloadFrame = z.infer<typeof configReloadFrame>;
+
 /** broadcast 的响应（ok / error） */
 export const broadcastResultFrame = requestFrameSchema("broadcast_result", resultBodySchema);
 export type BroadcastResultFrame = z.infer<typeof broadcastResultFrame>;
 
-/** execute_command 的响应（ok / error） */
+/**
+ * execute_command 的响应（v0.3.0：ok 分支增可选 output——命令输出行，由 Java 侧收集型
+ * CommandSender 回传；空输出不产生字段。结果体与 WS command_result 共用）
+ */
 export const executeCommandResultFrame = requestFrameSchema(
     "execute_command_result",
-    resultBodySchema,
+    commandResultBodySchema,
 );
 export type ExecuteCommandResultFrame = z.infer<typeof executeCommandResultFrame>;
 
@@ -122,7 +148,9 @@ export const ipcNodeInboundFrame = z.union([
     gameChatEventFrame,
     playerJoinEventFrame,
     playerQuitEventFrame,
+    playerDeathEventFrame,
     statusEventFrame,
+    configReloadFrame,
     broadcastResultFrame,
     executeCommandResultFrame,
     shutdownFrame,

@@ -179,3 +179,24 @@
 - **结论**：**完全复用**：同一帧格式，仅 type 命名空间不同（IPC 侧 snake_case 事件/请求名）。id 规则统一：**事件帧无 id（携带 id 即校验失败，尽早暴露方向用错），请求/响应帧 id 必填（UUID 关联）**。IPC 请求-响应用显式 `*_result` 帧型（`broadcast` → `broadcast_result`，同 id），不用通用 `result` 帧。
 - **实证**（`docs/PROTOTYPE-NOTES.md` D-03/D-04）：原型两侧（zod schema + Java Jackson DTO 镜像）按此实现，编解码/严格拒绝/请求-响应关联均有单测与真管道集成测试。
 - **理由**：一套帧 schema、一套编解码心智模型、Java 侧一套 Jackson DTO；显式响应帧型让每条响应有自己的 body schema，判别信息不重复、类型收敛，两侧都不需要二次分发。放弃的「单一 `ipc_result` 帧 + body 内嵌 type」方案存在判别信息重复。
+
+## ADR-026 协议版本协商改「主版本兼容区间」+ WS 未知帧容忍（2026-09-13，DEBT-1）
+
+- **背景**：D-10 的精确相等协商要求对端与服端版本逐位一致，每加一个可选字段就强迫全体对端同步升级（0.2.1 的 ready.autoRestart 已经历一次）。0.3.0 引入请求族与鉴权后，若维持精确相等，「服务端先升、对端渐次跟进」的渐进演进不可行。
+- **选项**：
+  1. 维持精确相等。
+  2. **主版本号相同即兼容**（次/补丁位自由浮动，0.2.0 对端可连 0.3.0 服务端，1.x 拒绝）。
+  3. 不校验版本。
+- **结论**：**选 2**。协议包导出纯函数 `isProtocolVersionCompatible(peerVersion, serverVersion)`（解析 `^\d+\.\d+\.\d+$` 比主版本；任一解析失败 = 不兼容），不兼容仍走既有拒绝路径（hello_ack `ok:false` + close 1002 + reason）。兼容区间的安全网是 **WS 侧未知帧容忍**（IPC 侧不做——Java 与 Node 同仓同版 lockstep，未知帧 = 版本错位 bug，保持 warn + 丢弃响亮暴露）：未识别的**请求帧**（带 uuid id）→ 回同 id 的 `<type>_result` 体 `{ok:false, error:"unknown frame type"}`，不断连；未识别的**事件帧** → 忽略 + debug 日志。补充规则：未知 type 以 `_result` 结尾（对端回了我们不认识的响应）视为响应帧**不回执**、仅 debug 忽略——否则「响应回执响应」会构成乒乓循环。
+- **理由**：语义化版本的本意即「主版本 = 破坏性变更」；0.x 阶段主版本不动、小版本持续演进，精确相等会把 0.x 变成事实上的 1.0 门槛。容忍策略让服务端可以先于对端携带新能力而不炸旧对端。
+- **回退条件**：同一主版本内出现不兼容演进的现实压力（如字段语义反转）时，回退精确相等或改为 hello 携带能力开关列表（features[]）。
+
+## ADR-027 白名单 SSOT 归 MC 原生 whitelist（2026-09-13，DEBT-1）
+
+- **背景**：群服互通的典型诉求「群管理员在群里加白名单」。白名单数据放 core 自建存储，还是直接用 MC 原生 whitelist？
+- **选项**：
+  1. core 自建白名单表（config 或独立存储），改动时镜像到 MC（写 whitelist.json 或回放原生命令）。
+  2. **SSOT = MC 原生 whitelist（whitelist.json）**：core 不做存储/镜像；群管理员经 WS `command` → IPC `execute_command` → Java dispatch `whitelist add|remove|list`，输出行经 `execute_command_result.output` 回传。
+- **结论**：**选 2**。
+- **理由**：MC 的 whitelist.json 是服主已熟悉的事实标准（Vanilla/Paper 全生态兼容，`/whitelist on|off`、与 op 联动等语义免费获得）；双写镜像必然产生漂移（服主手改原生表 vs core 表互不知情）；core 平台无关约束（ADR-007）下读 whitelist.json 反而是平台耦合（BE 平台路径/格式各异）。输出回传链（收集型 CommandSender）让 `list`/`add` 结果原样可观测，业务价值不损失。
+- **回退条件**：出现「跨服务器共享白名单 / 群内可视化编辑白名单」等 core 必须持有数据的诉求时，再引入 core 白名单表 + 与原生表的单向同步。

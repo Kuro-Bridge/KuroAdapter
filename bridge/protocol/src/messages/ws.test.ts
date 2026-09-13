@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import {
     bindingsUpdatedFrame,
+    commandFrame,
+    commandResultFrame,
+    deathFrame,
     gameChatFrame,
     helloAckFrame,
     helloFrame,
@@ -10,6 +13,8 @@ import {
     pingFrame,
     platformChatFrame,
     pongFrame,
+    queryFrame,
+    queryResultFrame,
     statusFrame,
     wsInboundFrame,
     wsOutboundFrame,
@@ -80,6 +85,30 @@ describe("WS 侧 hello / hello_ack", () => {
             body: { ok: false },
         });
         expect(bad.success).toBe(false);
+    });
+
+    it("hello 的 token 可选（v0.3.0）：携带与缺省均合法，非字符串被拒", () => {
+        const base = {
+            peerId: "stub",
+            platform: "stub",
+            version: "0.0.1",
+            protocolVersion: "0.3.0",
+        };
+        expect(
+            helloFrame.safeParse({ header: { type: "hello", id: UUID }, body: base }).success,
+        ).toBe(true);
+        expect(
+            helloFrame.safeParse({
+                header: { type: "hello", id: UUID },
+                body: { ...base, token: "s3cret" },
+            }).success,
+        ).toBe(true);
+        expect(
+            helloFrame.safeParse({
+                header: { type: "hello", id: UUID },
+                body: { ...base, token: 123 },
+            }).success,
+        ).toBe(false);
     });
 });
 
@@ -177,6 +206,143 @@ describe("WS 侧 v0.2 新事件（Server→Peer，均无 id）", () => {
                 .success,
         ).toBe(false);
     });
+
+    it("death 携带 channel + player + message；message 允许空串（deathMessage 可为 null）", () => {
+        expect(
+            deathFrame.safeParse({
+                header: { type: "death" },
+                body: { channel: "10001", player: "Steve", message: "Steve 掉进了虚空" },
+            }).success,
+        ).toBe(true);
+        expect(
+            deathFrame.safeParse({
+                header: { type: "death" },
+                body: { channel: "10001", player: "Steve", message: "" },
+            }).success,
+        ).toBe(true);
+        expect(
+            deathFrame.safeParse({
+                header: { type: "death" },
+                body: { channel: "10001", playerName: "Steve", message: "" },
+            }).success,
+        ).toBe(false);
+        expect(
+            deathFrame.safeParse({
+                header: { type: "death", id: UUID },
+                body: { channel: "10001", player: "Steve", message: "" },
+            }).success,
+        ).toBe(false);
+    });
+});
+
+describe("WS 侧 v0.3.0 请求族（Peer→Server）", () => {
+    it("command 请求：command + source{channel,userId} 必填；source 缺失被拒", () => {
+        const ok = {
+            header: { type: "command", id: UUID },
+            body: {
+                command: "whitelist list",
+                source: { channel: "stub-channel", userId: "stub-admin" },
+            },
+        };
+        expect(commandFrame.safeParse(ok).success).toBe(true);
+        expect(
+            commandFrame.safeParse({
+                header: { type: "command", id: UUID },
+                body: { command: "whitelist list" },
+            }).success,
+        ).toBe(false);
+        expect(
+            commandFrame.safeParse({
+                header: { type: "command", id: UUID },
+                body: {
+                    command: "whitelist list",
+                    source: { channel: "stub-channel", userId: "" },
+                },
+            }).success,
+        ).toBe(false);
+        expect(
+            commandFrame.safeParse({
+                header: { type: "command" },
+                body: {
+                    command: "whitelist list",
+                    source: { channel: "stub-channel", userId: "u" },
+                },
+            }).success,
+        ).toBe(false);
+    });
+
+    it("query 请求：kind 仅接受 status / bindings", () => {
+        expect(
+            queryFrame.safeParse({ header: { type: "query", id: UUID }, body: { kind: "status" } })
+                .success,
+        ).toBe(true);
+        expect(
+            queryFrame.safeParse({
+                header: { type: "query", id: UUID },
+                body: { kind: "bindings" },
+            }).success,
+        ).toBe(true);
+        expect(
+            queryFrame.safeParse({
+                header: { type: "query", id: UUID },
+                body: { kind: "whitelist" },
+            }).success,
+        ).toBe(false);
+    });
+
+    it("command_result：ok 体可带 output 行数组，error 体要求非空 error", () => {
+        expect(
+            commandResultFrame.safeParse({
+                header: { type: "command_result", id: UUID },
+                body: { ok: true, output: ["Steve, Herobrine"] },
+            }).success,
+        ).toBe(true);
+        expect(
+            commandResultFrame.safeParse({
+                header: { type: "command_result", id: UUID },
+                body: { ok: true },
+            }).success,
+        ).toBe(true);
+        expect(
+            commandResultFrame.safeParse({
+                header: { type: "command_result", id: UUID },
+                body: { ok: false, error: "forbidden" },
+            }).success,
+        ).toBe(true);
+        expect(
+            commandResultFrame.safeParse({
+                header: { type: "command_result", id: UUID },
+                body: { ok: false },
+            }).success,
+        ).toBe(false);
+    });
+
+    it("query_result：ok 体携带任意 data，error 体要求非空 error", () => {
+        expect(
+            queryResultFrame.safeParse({
+                header: { type: "query_result", id: UUID },
+                body: { ok: true, data: { tps: 20, onlinePlayers: 0, uptimeSeconds: 60 } },
+            }).success,
+        ).toBe(true);
+        expect(
+            queryResultFrame.safeParse({
+                header: { type: "query_result", id: UUID },
+                body: { ok: true, data: ["stub-channel"] },
+            }).success,
+        ).toBe(true);
+        expect(
+            queryResultFrame.safeParse({
+                header: { type: "query_result", id: UUID },
+                body: { ok: false, error: "no status yet" },
+            }).success,
+        ).toBe(true);
+        expect(
+            queryResultFrame.safeParse({
+                header: { type: "query_result", id: UUID },
+                body: { ok: true },
+            }).success,
+        ).toBe(false);
+    });
 });
 
 describe("WS 聚合帧集（按方向收敛）", () => {
@@ -234,6 +400,42 @@ describe("WS 聚合帧集（按方向收敛）", () => {
             wsOutboundFrame.safeParse({
                 header: { type: "bindings_updated" },
                 body: { channelBindings: ["10001"] },
+            }).success,
+        ).toBe(true);
+    });
+
+    it("服务端收帧集接受 v0.3.0 command/query 请求；协议端收帧集接受其响应与 death", () => {
+        expect(
+            wsInboundFrame.safeParse({
+                header: { type: "command", id: UUID },
+                body: {
+                    command: "whitelist list",
+                    source: { channel: "stub-channel", userId: "stub-admin" },
+                },
+            }).success,
+        ).toBe(true);
+        expect(
+            wsInboundFrame.safeParse({
+                header: { type: "query", id: UUID },
+                body: { kind: "bindings" },
+            }).success,
+        ).toBe(true);
+        expect(
+            wsOutboundFrame.safeParse({
+                header: { type: "command_result", id: UUID },
+                body: { ok: true, output: [] },
+            }).success,
+        ).toBe(true);
+        expect(
+            wsOutboundFrame.safeParse({
+                header: { type: "query_result", id: UUID },
+                body: { ok: true, data: [] },
+            }).success,
+        ).toBe(true);
+        expect(
+            wsOutboundFrame.safeParse({
+                header: { type: "death" },
+                body: { channel: "10001", player: "Steve", message: "boom" },
             }).success,
         ).toBe(true);
     });

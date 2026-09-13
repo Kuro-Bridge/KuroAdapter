@@ -3,11 +3,13 @@ import { describe, expect, it } from "vitest";
 import {
     broadcastRequestFrame,
     broadcastResultFrame,
+    configReloadFrame,
     executeCommandRequestFrame,
     executeCommandResultFrame,
     gameChatEventFrame,
     ipcJavaInboundFrame,
     ipcNodeInboundFrame,
+    playerDeathEventFrame,
     playerJoinEventFrame,
     playerQuitEventFrame,
     readyFrame,
@@ -94,6 +96,33 @@ describe("IPC 请求-响应（UUID 关联）", () => {
             }).success,
         ).toBe(true);
     });
+
+    it("execute_command_result 可带 output 行数组（v0.3.0）；broadcast_result 不感知该字段", () => {
+        expect(
+            executeCommandResultFrame.safeParse({
+                header: { type: "execute_command_result", id: UUID },
+                body: { ok: true, output: ["Whitelisted players: Steve"] },
+            }).success,
+        ).toBe(true);
+        expect(
+            executeCommandResultFrame.safeParse({
+                header: { type: "execute_command_result", id: UUID },
+                body: { ok: true, output: [] },
+            }).success,
+        ).toBe(true);
+        expect(
+            executeCommandResultFrame.safeParse({
+                header: { type: "execute_command_result", id: UUID },
+                body: { ok: true, output: "Steve" },
+            }).success,
+        ).toBe(false);
+        expect(
+            executeCommandResultFrame.safeParse({
+                header: { type: "execute_command_result", id: UUID },
+                body: { ok: false, error: "执行超时" },
+            }).success,
+        ).toBe(true);
+    });
 });
 
 describe("IPC 事件（Java→Node）", () => {
@@ -150,6 +179,43 @@ describe("IPC 事件（Java→Node）", () => {
             }).success,
         ).toBe(false);
     });
+
+    it("player_death 携带 player + message（message 允许空串）；config_reload 为空 body 事件（v0.3.0）", () => {
+        expect(
+            playerDeathEventFrame.safeParse({
+                header: { type: "player_death" },
+                body: { player: "Steve", message: "Steve 被僵尸杀死了" },
+            }).success,
+        ).toBe(true);
+        expect(
+            playerDeathEventFrame.safeParse({
+                header: { type: "player_death" },
+                body: { player: "Steve", message: "" },
+            }).success,
+        ).toBe(true);
+        expect(
+            playerDeathEventFrame.safeParse({
+                header: { type: "player_death" },
+                body: { player: "", message: "x" },
+            }).success,
+        ).toBe(false);
+        expect(
+            playerDeathEventFrame.safeParse({
+                header: { type: "player_death", id: UUID },
+                body: { player: "Steve", message: "" },
+            }).success,
+        ).toBe(false);
+        expect(
+            configReloadFrame.safeParse({ header: { type: "config_reload" }, body: {} }).success,
+        ).toBe(true);
+        // zod 非严格 object 剥离未知键：Java 未来扩展字段不炸旧 Node
+        expect(
+            configReloadFrame.safeParse({
+                header: { type: "config_reload" },
+                body: { source: "console" },
+            }).success,
+        ).toBe(true);
+    });
 });
 
 describe("IPC 聚合帧集（按进程侧收敛）", () => {
@@ -193,5 +259,20 @@ describe("IPC 聚合帧集（按进程侧收敛）", () => {
                 body: { tps: 20, onlinePlayers: 1, uptimeSeconds: 1 },
             }).success,
         ).toBe(true);
+    });
+
+    it("Node 收帧集接受 v0.3.0 player_death / config_reload；Java 收帧集不变", () => {
+        expect(
+            ipcNodeInboundFrame.safeParse({
+                header: { type: "player_death" },
+                body: { player: "Steve", message: "" },
+            }).success,
+        ).toBe(true);
+        expect(
+            ipcNodeInboundFrame.safeParse({ header: { type: "config_reload" }, body: {} }).success,
+        ).toBe(true);
+        expect(
+            ipcJavaInboundFrame.safeParse({ header: { type: "config_reload" }, body: {} }).success,
+        ).toBe(false);
     });
 });

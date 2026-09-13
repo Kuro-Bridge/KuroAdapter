@@ -17,6 +17,7 @@
  *   可感知失败做降级决策；消息排队/补发留 MVP-2。
  */
 import {
+    type CommandResultBody,
     encodeFrame,
     ipcNodeInboundFrame,
     type PlatformChatBody,
@@ -49,7 +50,8 @@ export class IpcRequestError extends Error {
 interface PendingRequest {
     readonly frameType: string;
     cancelTimer: CancelFn | null;
-    resolve: (body: ResultBody) => void;
+    /** v0.3.0 起 resolve 体为命令结果体（ok 分支可带 output）；通用结果体是其结构子集 */
+    resolve: (body: CommandResultBody) => void;
     reject: (error: Error) => void;
 }
 
@@ -230,6 +232,11 @@ export class Relay {
             this.onShutdown?.(message.body.reason);
             return;
         }
+        if (message.type === "player_death" || message.type === "config_reload") {
+            // v0.3.0 事件已在收帧集内；业务处理于 DEBT-1 阶段 2 接入，此处先丢弃
+            this.context.logger.warn(`收到 ${message.type} 帧（业务处理未接入），丢弃`);
+            return;
+        }
         // broadcast_result / execute_command_result：按 id 关联在途请求
         this.settlePending(message.id, message.body);
     }
@@ -245,7 +252,7 @@ export class Relay {
         }
     }
 
-    private settlePending(id: string, body: ResultBody): void {
+    private settlePending(id: string, body: CommandResultBody): void {
         const pending = this.pending.get(id);
         if (pending === undefined) {
             this.context.logger.warn(`IPC 响应无在途请求，忽略：${id}`);

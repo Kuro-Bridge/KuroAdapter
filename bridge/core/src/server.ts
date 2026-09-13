@@ -247,6 +247,11 @@ export class KurobotServer {
             peer.connection.send(encodeFrame({ type: "pong", id: message.id, body: message.body }));
             return;
         }
+        if (message.type !== "chat") {
+            // v0.3.0 的 command / query 帧已在收帧集内；业务处理于 DEBT-1 阶段 2 接入，此处先丢弃
+            this.context.logger.warn(`收到 ${message.type} 帧（业务处理未接入），丢弃`);
+            return;
+        }
         // message.type === "chat"（平台 → 游戏）
         this.platformChatHandler?.(message.body);
     }

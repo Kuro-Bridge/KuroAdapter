@@ -1,8 +1,12 @@
 /**
- * WS 侧消息（kurobot-ws，draft-v0.1.md §2 + §6 v0.2 增量）
+ * WS 侧消息（kurobot-ws，draft-v0.1.md §2 + §6 v0.2 增量 + v0.3.0 增量）
  *
  * v0.2（MVP 阶段一）：chat 双向携带 channel；hello_ack ok 体携带 channelBindings（ADR-004）；
  * 新增 join / leave / status / bindings_updated 事件（Server→Peer）。
+ *
+ * v0.3.0（DEBT-1）：hello 增可选 token（鉴权，ADR-026 协商 + 未知帧容忍）；新增
+ * command / query 请求族（Peer→Server，UUID 请求-响应）与 command_result / query_result
+ * 响应（Server→Peer）；新增 death 事件（Server→Peer，按绑定频道 fan-out）。
  *
  * 注意：chat 在两个方向 body 形状不同（playerName / sender），
  * 消费方按方向选用 GameChatFrame / PlatformChatFrame（决策 D-01/D-09）。
@@ -10,7 +14,7 @@
  */
 import { z } from "zod";
 
-import { eventFrameSchema, requestFrameSchema } from "../frame.js";
+import { commandResultBodySchema, eventFrameSchema, requestFrameSchema } from "../frame.js";
 
 // ---- Peer → Server ----
 
@@ -19,6 +23,11 @@ const helloBodySchema = z.object({
     platform: z.string().min(1),
     version: z.string().min(1),
     protocolVersion: z.string().regex(/^\d+\.\d+\.\d+$/),
+    /**
+     * 鉴权 token（v0.3.0 可选）：服务端配置非空 token 时未带/带错 → hello_ack
+     * ok:false "auth failed" + close 1008；服务端缺省 "" = 不鉴权。
+     */
+    token: z.string().optional(),
 });
 
 /** 对端注册（请求，Server 必须回同 id 的 hello_ack） */
@@ -46,6 +55,36 @@ const platformChatBodySchema = z.object({
 export const platformChatFrame = eventFrameSchema("chat", platformChatBodySchema);
 export type PlatformChatBody = z.infer<typeof platformChatBodySchema>;
 export type PlatformChatFrame = z.infer<typeof platformChatFrame>;
+
+const commandSourceSchema = z.object({
+    /** 消息来源频道（绑定表标识，如群号） */
+    channel: z.string().min(1),
+    /** 发送者在该频道的用户标识（协议端负责从群消息提取） */
+    userId: z.string().min(1),
+});
+
+const commandBodySchema = z.object({
+    /** 待执行的命令行（不含前导斜杠，如 "whitelist list"） */
+    command: z.string().min(1),
+    /** 命令来源（必填：管理员判定在服务端 core 侧，协议端只负责如实提取） */
+    source: commandSourceSchema,
+});
+
+/** 群指令 → 执行游戏命令（请求；管理员判定/执行在服务端，响应为同 id command_result） */
+export const commandFrame = requestFrameSchema("command", commandBodySchema);
+export type CommandBody = z.infer<typeof commandBodySchema>;
+export type CommandSource = z.infer<typeof commandSourceSchema>;
+export type CommandFrame = z.infer<typeof commandFrame>;
+
+const queryBodySchema = z.object({
+    /** 查询类别：status = 最近一帧服务器状态快照；bindings = 当前绑定频道列表 */
+    kind: z.union([z.literal("status"), z.literal("bindings")]),
+});
+
+/** 状态/绑定查询（请求；core 本地作答，响应为同 id query_result） */
+export const queryFrame = requestFrameSchema("query", queryBodySchema);
+export type QueryBody = z.infer<typeof queryBodySchema>;
+export type QueryFrame = z.infer<typeof queryFrame>;
 
 // ---- Server → Peer ----
 
@@ -136,10 +175,48 @@ export const bindingsUpdatedFrame = eventFrameSchema("bindings_updated", binding
 export type BindingsUpdatedBody = z.infer<typeof bindingsUpdatedBodySchema>;
 export type BindingsUpdatedFrame = z.infer<typeof bindingsUpdatedFrame>;
 
+/** 群指令的执行结果（响应，同 id；body 与 IPC execute_command_result 共用命令结果体） */
+export const commandResultFrame = requestFrameSchema("command_result", commandResultBodySchema);
+export type CommandResultFrame = z.infer<typeof commandResultFrame>;
+
+const queryResultBodySchema = z.union([
+    z.object({
+        ok: z.literal(true),
+        /** data 形状由请求 kind 决定：status → StatusBody 同构；bindings → string[]（协议层不强校验） */
+        data: z.unknown(),
+    }),
+    z.object({ ok: z.literal(false), error: z.string().min(1) }),
+]);
+
+/** 查询结果（响应，同 id） */
+export const queryResultFrame = requestFrameSchema("query_result", queryResultBodySchema);
+export type QueryResultBody = z.infer<typeof queryResultBodySchema>;
+export type QueryResultFrame = z.infer<typeof queryResultFrame>;
+
+const deathBodySchema = z.object({
+    /** 目标频道（服务端按绑定表逐频道 fan-out，每频道一帧） */
+    channel: z.string().min(1),
+    /** 死亡玩家名（任务书原文命名；与 join/leave 的 playerName 不一致已记录并照办） */
+    player: z.string().min(1),
+    /** 死亡消息文本（Bukkit deathMessage 可为 null → 服务端以空串兜底，故允许空串） */
+    message: z.string(),
+});
+
+/** 玩家死亡（事件，按绑定频道 fan-out 对齐 join/leave） */
+export const deathFrame = eventFrameSchema("death", deathBodySchema);
+export type DeathBody = z.infer<typeof deathBodySchema>;
+export type DeathFrame = z.infer<typeof deathFrame>;
+
 // ---- 聚合（收帧侧「接受任意已知帧」用；zod 4 不支持嵌套判别路径，故平铺 union，决策 D-09）----
 
 /** kurobot 服务端视角的收帧集 */
-export const wsInboundFrame = z.union([helloFrame, pingFrame, platformChatFrame]);
+export const wsInboundFrame = z.union([
+    helloFrame,
+    pingFrame,
+    platformChatFrame,
+    commandFrame,
+    queryFrame,
+]);
 
 /** 协议端视角的收帧集 */
 export const wsOutboundFrame = z.union([
@@ -148,6 +225,9 @@ export const wsOutboundFrame = z.union([
     gameChatFrame,
     joinFrame,
     leaveFrame,
+    deathFrame,
     statusFrame,
     bindingsUpdatedFrame,
+    commandResultFrame,
+    queryResultFrame,
 ]);

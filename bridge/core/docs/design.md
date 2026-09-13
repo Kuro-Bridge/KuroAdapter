@@ -149,3 +149,70 @@ bridge/embedded 引导层（配置 → ready body）。
 - `config.ts`：`runtime.autoRestart` 用 zod `.default(true)` 双层默认（runtime 段缺省
   或字段缺省都得到 true），`KurobotConfig` 形状新增必填 runtime 段（构造点全走
   defaultConfig/cfg 助手）。
+
+## 债务清偿一（DEBT-1，协议 v0.3.0，2026-09-13）
+
+> 任务书：`docs/DEBT1-PROMPT.md`。鉴权、兼容协商、query 本地作答、command 权限与透传、
+> death fan-out、config_reload。协议帧形设计见 `bridge/protocol/docs/design.md` 的 DEBT-1 节。
+
+### 鉴权 token（hello 校验）
+
+- `CoreOptions` 增可选 `token`（`CoreContext` 存为 `readonly token: string`，缺省 `""` =
+  不鉴权；exactOptionalPropertyTypes 下经 `?? ""` 归一）。bootstrap 从配置注入。
+- `handleHello` 校验顺序：版本兼容（不兼容 → 既有 1002 路径）→ token（服务端配置非空
+  token 且 hello 未带/带错 → `hello_ack ok:false "auth failed"` + close **1008**）。
+- token 在 Node 进程生命周期内固定（boot 时注入）：`/kurobot reload` 不刷新 token
+  （改 token 需重启 Node；边界记录于 DEBT1-NOTES）。
+
+### 版本协商落地
+
+`server.ts` 的精确相等判断替换为 `isProtocolVersionCompatible(body.protocolVersion, PROTOCOL_VERSION)`；
+`hello_ack` ok 体回服务端实际版本（现状不变）。
+
+### WS 收帧改两段式解析（未知帧容忍的落点）
+
+`handleMessage` 改为「`wireFrameSchema` 先取 type/id → 按 type 分发到具体 schema safeParse」：
+已知类型（hello/ping/chat/command/query）解析失败 → warn 丢弃（既有行为不变）；未知类型 →
+容忍路径（请求帧回 `<type>_result {ok:false,"unknown frame type"}`；`_result` 后缀不回执防乒乓；
+事件帧 debug 忽略；均不断连，ADR-026）。
+
+### query 本地作答（零 IPC 变化）
+
+- status 缓存：`KurobotServer.sendStatus` 顺带缓存最近一帧（`latestStatus`，null = 尚未收到
+  任何 status）——缓存更新只挂在既有 Relay→sendStatus 路径上，不新增 IPC 帧也不改推送时机
+  （维持 M-04 事件驱动决策）。
+- `query status` → 命中缓存回 `{ok:true, data: StatusBody}`；未命中 `{ok:false,"no status yet"}`。
+- `query bindings` → `{ok:true, data: channelBindings()}`（与 hello_ack 同一闭包，实时取值）。
+
+### command 管理员判定与 IPC 透传
+
+- 协议层（`server.ts`）：新增 `onCommand(handler)` 订阅。handler 签名
+  `(body: CommandBody) => Promise<CommandResultBody>`；server 负责以同 id 回 `command_result`，
+  handler 异常（含 IpcRequestError）统一转为 `{ok:false, error}` 回执。server 零业务判定。
+- 业务层（`relay.ts`）：管理员判定在 handler 内完成——
+  - `business/admins.ts` 新增 `AdminTable`（与 BindingTable 同模式：构造注入初始值、
+    `replace` 随配置变更/重载刷新、`isAdmin(channel, userId)`）。
+  - 非管理员 → `{ok:false, error:"forbidden"}` + warn 日志（不触发 IPC）。
+  - 管理员 → 既有 IPC 请求机制（pending map 的 resolve 类型扩宽为 `CommandResultBody`，
+    承载 output）→ `execute_command_result` 的 ok 体（含 output）原样透传进 `command_result`；
+    IPC 失败/超时/ok:false 经既有拒绝路径由 server 转为 `{ok:false, error}`。
+
+### death fan-out
+
+Relay 收 IPC `player_death` → 复用 join/leave 同一条 `fanoutGameEvent` 路径按绑定频道逐帧
+调 `server.sendDeath({channel, player, message})`。字段命名沿任务书原文（`player`，与
+join/leave 的 `playerName` 不一致，protocol design 已记录）。
+
+### config_reload 处理（复用 watch 路径）
+
+Relay 收 IPC `config_reload`（事件帧，无 id）→ `configStore.load()` → 复用
+`handleConfigChange`（admins.replace + BindingTable.replace + 集合变化时推
+bindings_updated）→ load 失败 error 日志、保留旧值等下次修复。注意 handleConfigChange
+需**无条件**刷新 admins（绑定集合未变时 admins 仍可能已变）。
+
+### config schema 扩展
+
+`KurobotConfig` 增 `token: string`（缺省 `""`）与 `admins: readonly AdminMapping[]`
+（`{channel, users}`，缺省 `[]`；entry 按 channel 去重保序、entry 内 users 去重保序，
+语义对齐 channels）。**runtime 段原样保留**（DEBT-2 语义不动，复跑指引 2）。`defaultConfig`
+同步扩展（生成的默认配置文件自含字段说明作用）。

@@ -19,6 +19,18 @@ export const frameHeaderSchema = z.object({
 
 export type FrameHeader = z.infer<typeof frameHeaderSchema>;
 
+/**
+ * 通用线格式帧（两段式解析的第一段，ADR-026）：只约束帧骨架（type 受 snake_case、
+ * id 存在时须 UUID、body 任意），供消费方「先取 type、再分发到具体 schema」。
+ * 未知帧容忍（WS 服务端收帧侧）据此区分请求帧（带 id）与事件帧（无 id）。
+ */
+export const wireFrameSchema = z.object({
+    header: frameHeaderSchema,
+    body: z.unknown(),
+});
+
+export type WireFrame = z.infer<typeof wireFrameSchema>;
+
 /** 扁平事件消息 */
 export interface EventMessage<T extends string, B> {
     type: T;
@@ -82,3 +94,16 @@ export const resultBodySchema = z.union([
 ]);
 
 export type ResultBody = z.infer<typeof resultBodySchema>;
+
+/**
+ * 请求-响应的命令结果体（v0.3.0）：ok 分支增可选 `output`（命令输出行，收集型
+ * CommandSender 回传；空输出不产生字段——JSON.stringify 落盘时 undefined 键自然省略）。
+ * IPC `execute_command_result` 与 WS `command_result` 共用此结果体；`broadcast_result`
+ * 保持无 output 的通用结果体。
+ */
+export const commandResultBodySchema = z.union([
+    z.object({ ok: z.literal(true), output: z.array(z.string()).optional() }),
+    z.object({ ok: z.literal(false), error: z.string().min(1) }),
+]);
+
+export type CommandResultBody = z.infer<typeof commandResultBodySchema>;

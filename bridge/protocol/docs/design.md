@@ -65,7 +65,7 @@
 > 任务书：`docs/DEBT1-PROMPT.md`。把「只有事件集的 v0.2」升级为「带鉴权、兼容协商、请求-响应族与权限模型的 v0.3.0」。
 
 1. **版本协商改兼容区间**：hello 校验从「精确相等」改为「**主版本号相同即兼容**」（0.2.0 对端可连 0.3.0 服务端；1.x 拒绝）。规则实现为协议包纯函数 `isProtocolVersionCompatible(peerVersion, serverVersion)`（解析 `^\d+\.\d+\.\d+$` 三元组比主版本；任一解析失败 = 不兼容——虽然 hello schema 已强制格式，防御性兜底）。不兼容仍走既有拒绝路径（`hello_ack ok:false` + close 1002 + reason）。`hello_ack` 回服务端实际版本（现状保持）。
-2. **未知帧容忍策略**（协商区间的安全网，WS 服务端收帧侧行为）：未识别的**请求帧**（header 带 UUID id）→ 回同 id 的 `<type>_result` 帧体 `{ok:false, error:"unknown frame type"}`，不断连；未识别的**事件帧**（无 id）→ 忽略 + debug 日志，不断连。协议包为此导出**通用线格式帧 schema**（`wireFrameSchema`：`{header:{type,id?}, body:unknown}`，type 仍受 snake_case 约束）供消费方「先取 type、再分发到具体 schema」的两段式解析；容忍行为本身在 core（server.ts）实现。IPC 侧不做容忍（Java 与 Node 同仓同版发布，属 lockstep 通道，未知帧 = 版本错位 bug，保持 warn+丢弃响亮暴露）。
+2. **未知帧容忍策略**（协商区间的安全网，WS 服务端收帧侧行为）：未识别的**请求帧**（header 带 UUID id）→ 回同 id 的 `<type>_result` 帧体 `{ok:false, error:"unknown frame type"}`，不断连；未识别的**事件帧**（无 id）→ 忽略 + debug 日志，不断连。补充规则（ADR-026）：未知 type 以 `_result` 结尾（对端回了我们不认识的响应帧）视为响应帧**不回执**、仅 debug 忽略——避免「响应回执响应」的乒乓循环。协议包为此导出**通用线格式帧 schema**（`wireFrameSchema`：`{header:{type,id?}, body:unknown}`，type 仍受 snake_case 约束）供消费方「先取 type、再分发到具体 schema」的两段式解析；容忍行为本身在 core（server.ts）实现。IPC 侧不做容忍（Java 与 Node 同仓同版发布，属 lockstep 通道，未知帧 = 版本错位 bug，保持 warn+丢弃响亮暴露）。
 3. **hello 可选 token**：`hello` body 增可选 `token: string`。鉴权语义（draft §4.1）：服务端配置非空 token 且 hello 未带/带错 → `hello_ack ok:false "auth failed"` + close 1008（policy violation，区别于版本不匹配的 1002）。缺省 `""` = 不鉴权（向后兼容）。不做 token 过期/轮换（本机/可信内网场景）。
 4. **`command` 请求族（Peer→Server）**：请求 body `{command, source: {channel, userId}}`（source 必填——协议端负责从群消息提取发送来源）；响应 `command_result`（同 id）body 复用 IPC `execute_command_result` 的结果体（ok 分支带可选 `output: string[]`，error 分支 `{ok:false, error}`）。管理员判定/命令执行在 core 与 Java 桥接层，协议只定形。
 5. **`query` 请求族（Peer→Server）**：请求 body `{kind: "status" | "bindings"}`；响应 `query_result`（同 id）body `{ok:true, data}` | `{ok:false, error}`，`data: unknown`——具体形状由 kind 决定（status → StatusBody 同构、bindings → string[]），关联靠同 id；协议层不强校验 data 形状（消费方按请求的 kind 解释，避免一帧多态 schema 的复杂度）。
@@ -73,5 +73,5 @@
 7. **`config_reload` IPC 事件（Java→Node）**：body 为空对象 `{}`——重载无参数；未来若需携带来源等再以非必填字段扩展（zod 默认剥离未知键，旧 Node 收到带额外字段的帧不炸）。
 8. **`execute_command_result` body 扩展 `output`**：ok 分支增可选 `output: string[]`（命令输出行，Java 收集型 CommandSender 回传）；缺省不带（空输出不产生字段）。该结果体同时复用为 WS `command_result` body。
 9. **聚合 union 更新**：`wsInboundFrame` 增 command/query；`wsOutboundFrame` 增 command_result/query_result/death；`ipcNodeInboundFrame` 增 player_death/config_reload；`ipcJavaInboundFrame` 不变。
-10. **PROTOCOL_VERSION `0.2.0` → `0.3.0`**；`WS_SUBPROTOCOL = "kurobot-ws.v1"` 不动（大版本未变）。
+10. **PROTOCOL_VERSION `0.2.1` → `0.3.0`**（0.2.1 为 DEBT-2 顺延后的实际基线）；`WS_SUBPROTOCOL = "kurobot-ws.v1"` 不动（大版本未变）。
 

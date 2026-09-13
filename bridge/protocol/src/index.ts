@@ -4,28 +4,45 @@
  * 这里是消息类型的唯一来源（硬约束，见 AGENTS.md）：
  * 任何文件禁止手写消息类型，必须 `import { ... } from "@kurobot/protocol"`。
  *
- * 原型最小集 + v0.2 增量见各子模块；docs/protocol/draft-v0.1.md 是语义说明。
+ * 原型最小集 + v0.2 增量 + v0.3.0 增量见各子模块；docs/protocol/draft-v0.1.md 是语义说明。
  */
 
-import type { EventMessage, FrameHeader, RequestMessage, ResultBody } from "./frame.js";
+import type {
+    CommandResultBody,
+    EventMessage,
+    FrameHeader,
+    RequestMessage,
+    ResultBody,
+    WireFrame,
+} from "./frame.js";
 import {
+    commandResultBodySchema,
     encodeFrame,
     eventFrameSchema,
     frameHeaderSchema,
     requestFrameSchema,
     resultBodySchema,
+    wireFrameSchema,
 } from "./frame.js";
-import { PROTOCOL_NAME, PROTOCOL_VERSION, WS_SUBPROTOCOL } from "./meta.js";
+import {
+    isProtocolVersionCompatible,
+    PROTOCOL_NAME,
+    PROTOCOL_VERSION,
+    WS_SUBPROTOCOL,
+} from "./meta.js";
 
 export type {
     BroadcastBody,
     BroadcastRequestFrame,
     BroadcastResultFrame,
+    ConfigReloadFrame,
     ExecuteCommandBody,
     ExecuteCommandRequestFrame,
     ExecuteCommandResultFrame,
     GameChatEventBody,
     GameChatEventFrame,
+    PlayerDeathEventBody,
+    PlayerDeathEventFrame,
     PlayerJoinEventBody,
     PlayerJoinEventFrame,
     PlayerQuitEventBody,
@@ -41,11 +58,13 @@ export type {
 export {
     broadcastRequestFrame,
     broadcastResultFrame,
+    configReloadFrame,
     executeCommandRequestFrame,
     executeCommandResultFrame,
     gameChatEventFrame,
     ipcJavaInboundFrame,
     ipcNodeInboundFrame,
+    playerDeathEventFrame,
     playerJoinEventFrame,
     playerQuitEventFrame,
     readyFrame,
@@ -55,6 +74,12 @@ export {
 export type {
     BindingsUpdatedBody,
     BindingsUpdatedFrame,
+    CommandBody,
+    CommandFrame,
+    CommandResultFrame,
+    CommandSource,
+    DeathBody,
+    DeathFrame,
     GameChatBody,
     GameChatFrame,
     HelloAckBody,
@@ -73,6 +98,10 @@ export type {
     PlatformChatFrame,
     PongBody,
     PongFrame,
+    QueryBody,
+    QueryFrame,
+    QueryResultBody,
+    QueryResultFrame,
     StatusBody,
     StatusFrame,
 } from "./messages/ws.js";
@@ -80,6 +109,9 @@ export type {
 // ---- WS 侧消息 ----
 export {
     bindingsUpdatedFrame,
+    commandFrame,
+    commandResultFrame,
+    deathFrame,
     gameChatFrame,
     helloAckFrame,
     joinFrame,
@@ -87,20 +119,25 @@ export {
     pingFrame,
     platformChatFrame,
     pongFrame,
+    queryFrame,
+    queryResultFrame,
     statusFrame,
     wsInboundFrame,
     wsOutboundFrame,
 } from "./messages/ws.js";
-export type { EventMessage, FrameHeader, RequestMessage, ResultBody };
-// ---- 元信息 ----
+export type { CommandResultBody, EventMessage, FrameHeader, RequestMessage, ResultBody, WireFrame };
 // ---- 帧格式 ----
+// ---- 元信息 ----
 export {
+    commandResultBodySchema,
     encodeFrame,
     eventFrameSchema,
     frameHeaderSchema,
+    isProtocolVersionCompatible,
     PROTOCOL_NAME,
     PROTOCOL_VERSION,
     requestFrameSchema,
     resultBodySchema,
     WS_SUBPROTOCOL,
+    wireFrameSchema,
 };
