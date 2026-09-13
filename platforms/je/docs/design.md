@@ -176,6 +176,43 @@
 维持「不引 MockBukkit」；看护器/退避/PID 的可测逻辑全部落在 :core（NodeSupervisorTest、
 NodeIpcTest 扩展），:paper 仍靠沙盒验收兜底。
 
+## 债务清偿一（DEBT-1，2026-09-13）：player_death / 输出收集 / reload / relay 权限
+
+> 任务书：`docs/DEBT1-PROMPT.md` §3 阶段 4。在 DEBT-2 重构后的 NodeIpc/看护器形状上实现
+> （复跑指引 5）。协议版本硬编码副本同步 0.3.0。
+
+### :core IPC 扩展（零 Bukkit API）
+
+- 出帧新增：`sendPlayerDeath(player, message)`（message 允许空串——Bukkit deathMessage
+  可为 null，空串兜底）与 `sendConfigReload()`（空 body 事件帧，语义对齐 shutdown 的
+  单向通知——不做 Java→Node 请求-响应机制）。
+- `execute_command_result` 增可选 `output: string[]`：`InboundFrame.Result` 增 `output`
+  字段（仅 execute_command_result 解析，broadcast_result 不解析——镜像 Node 侧 zod 的
+  按帧型校验）；`NodeIpc.executeCommand` 返回类型升级 `CompletableFuture<Void>` →
+  `CompletableFuture<List<String>>`（ok → 输出行，null 归一空列表；!ok → IpcException，
+  语义对齐 broadcast）。
+- `IpcResult` 回执扩展：`ok()` 改为 default 委托 `ok(List<String> output)`；null/空列表
+  不产生 output 字段（协议：空输出不产生字段）。
+
+### :paper
+
+- `DeathListener`（新）：`PlayerDeathEvent` → deathMessage plain 序列化（null → ""）→
+  `sendPlayerDeath`；fan-out 归 Node 侧绑定表（零业务）。
+- `NodeRequestHandler.onExecuteCommand` 升级：从「调度成功即 ok」改为——主线程任务内以
+  **CollectingCommandSender**（:paper 新类，实现 CommandSender：收集全部 sendMessage
+  变体的文本行；权限判定恒 true = 控制台语义，与原 ConsoleSender 等价）执行命令，执行完
+  `result.ok(output)`。回执时序变化：Node 侧等待真实执行完成（主线程卡死 >10s 走既有
+  IPC 请求超时）。
+- `KurobotCommand` 增 `reload` 子命令（kurobot.admin）→ `sendConfigReload()` → 即时回
+  「已通知重载」；重载效果（绑定变更推送）由 Node 侧 bindings_updated 路径体现。
+- `ChatListener` 增 `kurobot.relay` 权限检查：false → 该玩家聊天不上报（default: true
+  既有声明不变，negate 即静音语义）；paper-plugin.yml 补注释说明。
+
+### 测试政策
+
+:core JUnit 补 codec 新帧编解码 / Result.output 解析 / executeCommand 输出 future；
+:paper 维持零单测（沙盒验收兜底），CollectingCommandSender 行为在沙盒 §4.4 验证。
+
 ## 已知坑（详见 PROTOTYPE-NOTES / MVP1-NOTES）
 
 - Spotless palantir 钉 2.71.0（JDK 25 兼容线）；`-Xlint:all -Werror`。
