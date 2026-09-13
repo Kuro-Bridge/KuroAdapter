@@ -101,6 +101,17 @@ function connect() {
         }
         if (type === "bindings_updated") {
             log(`收到绑定变更：[${frame.body.channelBindings.join(",")}]`);
+            // 沙盒验收（§4.3b）：自己被绑定后再发一条平台消息，验证「写绑定 → 消息进游戏」
+            if (frame.body.channelBindings.includes(STUB_CHANNEL)) {
+                sendFrame(ws, {
+                    type: "chat",
+                    body: {
+                        channel: STUB_CHANNEL,
+                        sender: "stub-群友",
+                        content: "绑定已生效，这是变更后的第一条消息",
+                    },
+                });
+            }
             return;
         }
         if (type === "pong") {

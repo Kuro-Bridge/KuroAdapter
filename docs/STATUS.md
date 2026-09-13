@@ -76,3 +76,29 @@
 - `scripts/paper-start.sh|paper-stop.sh`：沙盒启停（Windows 踩坑全记录于 NOTES）。
 
 **留给正式版的 5 个 ADR 候选**（详见 NOTES）：A 孙进程协议端模型（已验证）、B 单程握手、C 协议解析层常驻、D 帧格式统一规则、E IPC 断连的降级语义。**MVP 债务 12 项**（心跳超时/重连/Watchdog/业务空壳等）详见 NOTES 债务清单。
+
+## MVP 阶段一结论（2026-09-13，master）
+
+> 任务书见 `docs/MVP1-PROMPT.md`，全部决策与沙盒实录见 `docs/MVP1-NOTES.md`。
+
+**「业务为空壳」推进到「业务最小可用」——完成。** 四个已实证候选转正为 ADR-022~025（孙进程协议端 /
+单程握手 / 协议解析层 transform / 统一帧格式与 id 规则），ADR-022 含单进程回退条件。验收清单全过：
+
+- **协议 v0.2**：chat/broadcast 携带 channel、hello_ack 携带 channelBindings（ADR-004 落地）、
+  新增 join/leave/status/bindings_updated 事件（WS+IPC 同步）、PROTOCOL_VERSION 0.2.0。
+- **core 正式化**：Clock/TimerScheduler 注入（core 仍零 Node API）；hello 等待超时（10s/1002）、
+  心跳空闲检测（30s 可配/1001，任何入帧重置）均有 vitest 证据；IPC 请求超时（10s 对齐 Java）；
+  断连降级候选 E 落地（`IpcChannel.isOpen`/`Relay.ipcOpen`/send* 返回送达数，Java 侧
+  sendGameChat 返回 boolean）。
+- **业务最小闭环**：`plugins/kurobot/config.json`（缺失生成默认、mtime 轮询热重载）→ BindingTable
+  → 转发规则（未绑定频道丢弃+debug 日志、游戏事件按绑定频道逐帧 fan-out、配置变更 →
+  bindings_updated 推送 + hello_ack 快照联动）。Relay 假规则已删。
+- **Java 桥接**：ConnectionListener（join/quit 帧 + 进出服 status 快照）、/kurobot send 断连明确
+  报错（原型债务偿还）。阶段 4 首次实践 subagent 派发 + 主侧复核流程。
+- **沙盒端到端 a-e 全过**（实录表见 MVP1-NOTES）：空绑定丢弃有因 / 写绑定消息进游戏+双向通 /
+  配置变更 ≤6s 推送 / 强杀 node 服务器不崩+send 明确报错 / stop 级联关机无孤儿。
+- **join/leave 降级验收**（§4.4 预授权）：vitest + 集成测试证据齐，真实玩家冒烟留给用户。
+
+门禁终态：`pnpm check` / `pnpm test`（70 用例）/ `pnpm -r build` / `gradlew build`（:core 36 用例，
+含真管道集成测试）全绿。MVP-2 债务（白名单/权限、Watchdog、tools/embed、重连、协议 command/query
+族等）见 MVP1-NOTES 清单——未写 MVP2-PROMPT（范围属用户决策）。

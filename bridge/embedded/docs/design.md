@@ -63,4 +63,9 @@ src/
   Windows/网络盘的 fs.watch 事件语义不可靠，轮询实现更简单可测（任务书 §1.2 二选一的决策）。
 - **stub 升级 v0.2（阶段 1，已落地）**：hello 协议版本 0.2.0；平台消息携带
   `channel: "stub-channel"`（沙盒验收时把该频道写进配置绑定表即端到端连通）；
-  处理 join/leave/status/bindings_updated 帧（stderr 打印，供验收 grep）。
+  处理 join/leave/status/bindings_updated 帧（stderr 打印，供验收 grep）；
+  收到含自己频道的 bindings_updated 后补发一条平台消息（验收配套行为：不重启即可验证
+  「写绑定 → 消息进游戏」，见 MVP1-NOTES M-16）。
+- **实际落地补充**：`NodeConfigStore` 轮询用 mtimeMs+size 双指标（单 mtime 在编辑器原子替换
+  空窗会误判）；默认配置 `writeFile(flag:"wx")` 生成，绝不覆盖服主手写内容；bootstrap 初始
+  load 失败以空绑定降级运行（配置修复后 watch 自动生效）。

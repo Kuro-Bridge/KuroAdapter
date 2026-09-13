@@ -79,22 +79,27 @@ Node 实现在 embedded 引导层。
 - **IPC 请求超时（默认 10s，对齐 Java 侧）**：`Relay.forwardToGame` 在途请求挂定时器，超时以
   `IpcRequestError`（reason=timeout）拒绝。
 
-### IPC 断连降级（阶段 2，候选 E）
+### IPC 断连降级（阶段 2，候选 E，已落地）
 
-`sendGameChat` 等 IPC 事件类出帧在通道断开时不再静默丢弃：`IpcChannel` 增加只读健康状态
-`isOpen: boolean`；Relay 暴露 `get health(): { ipcOpen: boolean }`。上层（/kurobot send 的
-回执路径）可感知失败。消息排队/补发留 MVP-2。
+三层可观测信号（不再静默丢弃）：`IpcChannel.isOpen`（只读健康快照）、`Relay.ipcOpen`（含
+dispose 语义）、`KurobotServer.send*` 返回送达的已握手对端数（0 = 无人接收）。Java 侧配套：
+`NodeIpc.sendGameChat` 返回 boolean，`/kurobot send` 据此明确报错。消息排队/补发留 MVP-2。
 
-### 业务最小闭环（阶段 3）
+### 业务最小闭环（阶段 3，已落地）
 
-- `src/business/config.ts`：`ConfigStore` 注入接口（`load(): KurobotConfig` /
-  `watch(onChange)`），core 不碰 fs；配置形状 `KurobotConfig { channels: string[] }`。
-- `src/business/bindings.ts`：`BindingTable` 纯逻辑（channels 去重集合；`has`/`list`/`replace`）。
+- `src/business/config.ts`：`ConfigStore` 注入接口（`load(): Promise<KurobotConfig>` /
+  `watch(onChange): 取消订阅`——实现时 load 定形为异步，Node 侧 fs/promises 天然异步；宿主可
+  同步实现后包 Promise 返回）、`parseConfig`（zod：`{channels: string[]}`，频道非空、去重保序、
+  多余字段剥离）、`ConfigError`、`defaultConfig`。
+- `src/business/bindings.ts`：`BindingTable` 纯逻辑（去重保序；`has`/`channels`/`replace`——
+  replace 按集合语义判变化，重排不触发推送）。
 - `src/business/forwarding.ts`：转发规则纯逻辑：
-  - `platformToGame(channels, chat)`：未绑定频道 → 丢弃（返回 none + debug 日志由调用方打）。
-  - `gameToChannels(channels)`：游戏事件 → 全部绑定频道（fan-out 目标列表）。
-- Relay 接入：替换 spike 占位频道假规则；配置变更 → `BindingTable.replace` →
-  推 `bindings_updated` 给已握手对端 + hello_ack 的 channelBindings 快照随之更新。
+  - `platformChatTarget(channels, chat)`：未绑定频道 → null（丢弃，Relay 记 debug 日志说明原因）。
+  - `gameEventChannels(channels)`：游戏事件 → 全部绑定频道（fan-out 目标列表；未来按频道/事件
+    差异化规则在此扩展）。
+- Relay 接入：`RelayOptions` 增 `bindings` + `configStore`；配置变更 → `BindingTable.replace`
+  → 集合变化时推 `bindings_updated`；hello_ack 的 channelBindings 经 `ServerOptions.channelBindings`
+  闭包实时取值（配置变更后新握手对端自动拿新列表）。
 
 ### v0.2 协议适配（阶段 1，已落地）
 
