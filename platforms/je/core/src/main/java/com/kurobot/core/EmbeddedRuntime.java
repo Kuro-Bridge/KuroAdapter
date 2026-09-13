@@ -50,8 +50,8 @@ public final class EmbeddedRuntime {
         InputStream open(String name) throws IOException;
     }
 
-    /** 安装结果：node 可执行文件与 bundle 的磁盘路径（绝对路径）。 */
-    public record Installed(Path nodeExecutable, Path bundle) {}
+    /** 安装结果：node 可执行文件与 bundle 的磁盘路径（绝对路径）+ manifest 声明的 node 版本。 */
+    public record Installed(Path nodeExecutable, Path bundle, String nodeVersion) {}
 
     /** manifest 内容：node 版本（仅日志展示）与 文件名 → sha256。 */
     private record Manifest(String nodeVersion, TreeMap<String, String> files) {}
@@ -91,7 +91,7 @@ public final class EmbeddedRuntime {
                 continue;
             }
             if (Files.exists(target)) {
-                log.accept("embedded 文件哈希不符（版本升级或损坏），重新解压：" + name);
+                log.accept("检测到打包内容变更（升级），已重建 plugins/kurobot/bin 内文件：" + name);
             } else {
                 log.accept("embedded 文件缺失，从 JAR 解压：" + name);
             }
@@ -100,7 +100,7 @@ public final class EmbeddedRuntime {
         }
         log.accept("embedded 运行时就绪（node " + manifest.nodeVersion() + "）：解压 " + extracted + " / 复用 " + reused + " → "
                 + normalizedBin);
-        return new Installed(targets.get(FILE_NODE_EXE), targets.get(FILE_BUNDLE));
+        return new Installed(targets.get(FILE_NODE_EXE), targets.get(FILE_BUNDLE), manifest.nodeVersion());
     }
 
     private static Manifest readManifest(ResourceSource source) throws IOException {

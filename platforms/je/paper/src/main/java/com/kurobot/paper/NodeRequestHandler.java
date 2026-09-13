@@ -23,9 +23,9 @@ public final class NodeRequestHandler implements NodeIpcListener {
     }
 
     @Override
-    public void onReady(int wsPort) {
-        // 就绪主日志由主类的 start future 回调打印；此处仅记录回调到达（同一线程，紧邻其后）
-        plugin.getLogger().info(() -> "[KuroBot] onReady 回调到达：wsPort=" + wsPort);
+    public void onReady(int wsPort, boolean autoRestart) {
+        // 就绪主日志与汇总行由主类的 onNodeReady 打印（含 autoRestart 看护开关的消费）
+        plugin.onNodeReady(wsPort, autoRestart);
     }
 
     @Override
@@ -55,5 +55,12 @@ public final class NodeRequestHandler implements NodeIpcListener {
     public void onStderrLine(String line) {
         // Node 侧日志行自带 [KuroBot][node][LEVEL] 前缀（bridge/embedded 的 logger），原样中继
         plugin.getLogger().info(line);
+    }
+
+    @Override
+    public void onProcessExited(Integer exitCode, String cause) {
+        // 看护决策在 :core NodeSupervisor（重启/放弃）；此处仅留下宿主可观测的记录
+        plugin.getLogger()
+                .info(() -> "[KuroBot] Node 进程退出通知：exit=" + (exitCode == null ? "未知" : exitCode) + "，原因=" + cause);
     }
 }

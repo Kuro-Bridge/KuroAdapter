@@ -19,6 +19,11 @@ import { eventFrameSchema, requestFrameSchema, resultBodySchema } from "../frame
 
 const readyBodySchema = z.object({
     wsPort: z.number().int().positive(),
+    /**
+     * 宿主自动重启开关（DEBT-2）：业务配置 runtime.autoRestart 经 ready 上报给 Java。
+     * 可选、缺省 true（缺省语义归 Node 侧 schema；Java 侧 null 按 true 处理）。
+     */
+    autoRestart: z.boolean().optional(),
 });
 
 /** WS 服务端已就绪（事件，携带动态端口） */

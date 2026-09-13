@@ -122,7 +122,7 @@ class NodeIpcBundleIntegrationTest {
         final LinkedBlockingQueue<NodeIpcListenerBroadcastCall> broadcastCalls = new LinkedBlockingQueue<>();
 
         @Override
-        public void onReady(int wsPort) {
+        public void onReady(int wsPort, boolean autoRestart) {
             // 主断言走 start() future；此处无需处理
         }
 
@@ -139,6 +139,11 @@ class NodeIpcBundleIntegrationTest {
         @Override
         public void onStderrLine(String line) {
             stderrLines.add(line);
+        }
+
+        @Override
+        public void onProcessExited(Integer exitCode, String cause) {
+            log.add("[test] onProcessExited: exit=" + exitCode + " cause=" + cause);
         }
     }
 

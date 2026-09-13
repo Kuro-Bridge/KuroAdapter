@@ -113,7 +113,9 @@ final class EmbeddedRuntimeTest {
         EmbeddedRuntime.install(tempDir, standardSource(), logs::add);
 
         assertEquals("fake-node-exe", Files.readString(installed.nodeExecutable()));
-        assertTrue(logs.stream().anyMatch(line -> line.contains("哈希不符（版本升级或损坏），重新解压：node.exe")));
+        assertTrue(
+                logs.stream().anyMatch(line -> line.contains("检测到打包内容变更（升级），已重建") && line.contains("node.exe")),
+                "哈希不符重建应有升级提示文案，实际：" + logs);
     }
 
     @Test

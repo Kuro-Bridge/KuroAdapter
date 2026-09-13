@@ -127,6 +127,28 @@ class IpcFrameCodecTest {
                 IpcFrameCodec.decode("{\"header\":{\"type\":\"ready\"},\"body\":{\"wsPort\":49152}}");
         assertTrue(decoded.isPresent());
         assertTrue(decoded.get() instanceof InboundFrame.Ready ready && ready.wsPort() == 49152);
+        assertTrue(
+                decoded.get() instanceof InboundFrame.Ready ready && ready.autoRestart() == null,
+                "autoRestart 缺省（v0.2.1 前 Node）应为 null，消费方按 true 处理");
+    }
+
+    @Test
+    void decodeReadyAutoRestartOptionalBoolean() {
+        Optional<InboundFrame> on =
+                IpcFrameCodec.decode("{\"header\":{\"type\":\"ready\"},\"body\":{\"wsPort\":1,\"autoRestart\":true}}");
+        assertTrue(on.isPresent()
+                && on.get() instanceof InboundFrame.Ready ready
+                && Boolean.TRUE.equals(ready.autoRestart()));
+        Optional<InboundFrame> off =
+                IpcFrameCodec.decode("{\"header\":{\"type\":\"ready\"},\"body\":{\"wsPort\":1,\"autoRestart\":false}}");
+        assertTrue(off.isPresent()
+                && off.get() instanceof InboundFrame.Ready ready
+                && Boolean.FALSE.equals(ready.autoRestart()));
+        assertTrue(
+                IpcFrameCodec.decode(
+                                "{\"header\":{\"type\":\"ready\"},\"body\":{\"wsPort\":1,\"autoRestart\":\"yes\"}}")
+                        .isEmpty(),
+                "autoRestart 非布尔必须拒绝整帧");
     }
 
     @Test

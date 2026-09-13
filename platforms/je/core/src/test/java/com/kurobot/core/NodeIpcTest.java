@@ -12,6 +12,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
@@ -24,6 +25,7 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 /** NodeIpc 行为测试：假进程 + 帧管道模拟 Node，覆盖启动 / 请求 / 容错 / 关机全路径。 */
 class NodeIpcTest {
@@ -42,9 +44,10 @@ class NodeIpcTest {
         final LinkedBlockingQueue<String> stderrLines = new LinkedBlockingQueue<>();
         final LinkedBlockingQueue<BroadcastCall> broadcastCalls = new LinkedBlockingQueue<>();
         final LinkedBlockingQueue<CommandCall> executeCalls = new LinkedBlockingQueue<>();
+        final LinkedBlockingQueue<ExitCall> exitCalls = new LinkedBlockingQueue<>();
 
         @Override
-        public void onReady(int wsPort) {
+        public void onReady(int wsPort, boolean autoRestart) {
             ready.complete(wsPort);
         }
 
@@ -63,9 +66,16 @@ class NodeIpcTest {
             stderrLines.add(line);
         }
 
+        @Override
+        public void onProcessExited(Integer exitCode, String cause) {
+            exitCalls.add(new ExitCall(exitCode, cause));
+        }
+
         record BroadcastCall(String message, IpcResult result) {}
 
         record CommandCall(String command, IpcResult result) {}
+
+        record ExitCall(Integer exitCode, String cause) {}
     }
 
     private NodeIpc newIpc(FakeProcess process, Path stubPath) {
@@ -412,8 +422,101 @@ class NodeIpcTest {
         ipc.shutdown("done");
     }
 
-    // ---- shutdown() ----
+    // ---- 退出通知（DEBT-2 看护器输入）----
 
+    @Test
+    void crashAfterReadyNotifiesExitWithCodeAndCause() throws Exception {
+        FakeProcess process = new FakeProcess();
+        NodeIpc ipc = launchReady(process);
+
+        process.exit(137);
+
+        RecordingListener.ExitCall exit = listener.exitCalls.poll(5, TimeUnit.SECONDS);
+        assertNotNull(exit, "异常退出应触发 onProcessExited");
+        assertEquals(137, exit.exitCode());
+        assertEquals("stdout EOF", exit.cause());
+        ipc.shutdown("done"); // 幂等回收；优雅路径不应再次通知
+        assertNull(listener.exitCalls.poll(300, TimeUnit.MILLISECONDS), "shutdown 不应重复通知");
+    }
+
+    @Test
+    void gracefulShutdownDoesNotNotifyExit() throws Exception {
+        FakeProcess process = new FakeProcess();
+        NodeIpc ipc = launchReady(process);
+
+        ipc.shutdown("graceful");
+
+        assertNull(listener.exitCalls.poll(500, TimeUnit.MILLISECONDS), "优雅关停不应触发退出通知");
+    }
+
+    @Test
+    void exitNotificationIsSentExactlyOncePerChannel() throws Exception {
+        FakeProcess process = new FakeProcess();
+        NodeIpc ipc = launchReady(process);
+        process.exit(3);
+        assertNotNull(listener.exitCalls.poll(5, TimeUnit.SECONDS));
+
+        ipc.shutdown("after crash");
+        assertNull(listener.exitCalls.poll(300, TimeUnit.MILLISECONDS), "通道终结幂等：不重复通知");
+    }
+
+    // ---- PID 文件（DEBT-2 进程卫生）----
+
+    @Test
+    void pidFileWrittenOnSpawnAndDeletedOnGracefulShutdown(@TempDir Path tempDir) throws Exception {
+        Path pidFile = tempDir.resolve("node.pid");
+        FakeProcess process = new FakeProcess();
+        NodeIpc ipc = newIpc(process, null);
+        ipc.setPidFile(pidFile);
+
+        CompletableFuture<Integer> future = ipc.start();
+        process.stdout.write(readyFrame(READY_PORT));
+        future.get(5, TimeUnit.SECONDS);
+
+        assertEquals("424242", Files.readString(pidFile).trim(), "spawn 成功应写入 winpid");
+
+        ipc.shutdown("done");
+        assertFalse(Files.exists(pidFile), "优雅关停应删除 PID 文件");
+    }
+
+    @Test
+    void pidResidueIsHintedOnNextSpawn(@TempDir Path tempDir) throws Exception {
+        Path pidFile = tempDir.resolve("node.pid");
+        Files.writeString(pidFile, "111\n");
+
+        FakeProcess process = new FakeProcess();
+        NodeIpc ipc = newIpc(process, null);
+        ipc.setPidFile(pidFile);
+        CompletableFuture<Integer> future = ipc.start();
+        process.stdout.write(readyFrame(READY_PORT));
+        future.get(5, TimeUnit.SECONDS);
+
+        assertTrue(
+                logs.stream().anyMatch(line -> line.contains("残留 PID 文件") && line.contains("异常退出")),
+                "残留 PID 文件应有提示日志，实际：" + logs);
+        assertEquals("424242", Files.readString(pidFile).trim(), "残留文件应被新 winpid 覆盖");
+        ipc.shutdown("done");
+    }
+
+    @Test
+    void pidFileKeptAfterCrashAsResidueEvidence(@TempDir Path tempDir) throws Exception {
+        Path pidFile = tempDir.resolve("node.pid");
+        FakeProcess process = new FakeProcess();
+        NodeIpc ipc = newIpc(process, null);
+        ipc.setPidFile(pidFile);
+        CompletableFuture<Integer> future = ipc.start();
+        process.stdout.write(readyFrame(READY_PORT));
+        future.get(5, TimeUnit.SECONDS);
+
+        process.exit(9);
+        assertNotNull(listener.exitCalls.poll(5, TimeUnit.SECONDS));
+
+        assertTrue(Files.exists(pidFile), "异常退出不删 PID 文件（残留即证据）");
+        assertEquals("424242", Files.readString(pidFile).trim());
+        ipc.shutdown("done");
+    }
+
+    // ---- shutdown() ----
     @Test
     void shutdownIsGracefulAndIdempotent() throws Exception {
         FakeProcess process = new FakeProcess();

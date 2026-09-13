@@ -38,6 +38,8 @@ public final class KurobotCommand extends Command {
             String text = String.join(" ", Arrays.copyOfRange(args, 1, args.length));
             if (ipc.sendGameChat(sender.getName(), text)) {
                 sender.sendMessage(Component.text("已发送"));
+            } else if (plugin.isSupervisorGivenUp()) {
+                sender.sendMessage(Component.text("发送失败：Node 进程反复崩溃，自动重启已放弃（需修复后重启服务器或重载插件）"));
             } else {
                 sender.sendMessage(Component.text("发送失败：Node IPC 通道不可用，消息已丢弃"));
             }

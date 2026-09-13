@@ -14,7 +14,7 @@
  */
 
 const PEER_ID = `stub-${process.pid}`;
-const PROTOCOL_VERSION = "0.2.0";
+const PROTOCOL_VERSION = "0.2.1";
 const WS_SUBPROTOCOL = "kurobot-ws.v1";
 const STUB_CHANNEL = "stub-channel";
 const HEARTBEAT_INTERVAL_MS = 5000;

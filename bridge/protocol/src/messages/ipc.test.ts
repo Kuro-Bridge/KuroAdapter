@@ -30,6 +30,23 @@ describe("IPC ready（Node→Java）", () => {
                 .success,
         ).toBe(false);
     });
+
+    it("autoRestart 可选（v0.2.1）：缺省/true/false 均过，非布尔被拒", () => {
+        const base = { header: { type: "ready" }, body: { wsPort: 1 } };
+        expect(readyFrame.safeParse(base).success).toBe(true);
+        expect(
+            readyFrame.safeParse({ ...base, body: { wsPort: 1, autoRestart: true } }).success,
+        ).toBe(true);
+        const parsed = readyFrame.safeParse({
+            header: { type: "ready" },
+            body: { wsPort: 1, autoRestart: false },
+        });
+        expect(parsed.success).toBe(true);
+        expect(parsed.success && parsed.data.body.autoRestart).toBe(false);
+        expect(
+            readyFrame.safeParse({ ...base, body: { wsPort: 1, autoRestart: "yes" } }).success,
+        ).toBe(false);
+    });
 });
 
 describe("IPC 请求-响应（UUID 关联）", () => {

@@ -155,7 +155,12 @@ final class IpcFrameCodec {
         if (port == null || !port.isIntegralNumber() || port.asInt() <= 0) {
             return Optional.empty();
         }
-        return Optional.of(new InboundFrame.Ready(port.asInt()));
+        // autoRestart 可选（v0.2.1）：缺省 null，消费方按 true 处理；非布尔即整帧非法
+        JsonNode autoRestart = body.get("autoRestart");
+        if (autoRestart != null && !autoRestart.isBoolean()) {
+            return Optional.empty();
+        }
+        return Optional.of(new InboundFrame.Ready(port.asInt(), autoRestart == null ? null : autoRestart.asBoolean()));
     }
 
     private static Optional<InboundFrame> decodeRequest(String type, String field, JsonNode header, JsonNode body) {

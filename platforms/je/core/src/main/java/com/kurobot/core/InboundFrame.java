@@ -7,8 +7,12 @@ package com.kurobot.core;
  * （broadcast / execute_command）的响应帧——双向请求复用同一帧格式。
  */
 sealed interface InboundFrame {
-    /** ready 事件：Node 引导完成，WS 动态端口就绪。 */
-    record Ready(int wsPort) implements InboundFrame {}
+    /**
+     * ready 事件：Node 引导完成，WS 动态端口就绪。
+     *
+     * @param autoRestart 宿主自动重启开关（v0.2.1 可选字段；null = 未上报，按缺省 true 处理）
+     */
+    record Ready(int wsPort, Boolean autoRestart) implements InboundFrame {}
 
     /** broadcast / execute_command 请求（payload = message / command，非空）。 */
     record Request(String type, String id, String payload) implements InboundFrame {}

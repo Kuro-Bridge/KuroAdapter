@@ -7,6 +7,7 @@ import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.io.Writer;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.HashMap;
@@ -73,6 +74,8 @@ public final class NodeIpc implements AutoCloseable {
     private volatile Duration shutdownGrace = Duration.ofSeconds(5);
     private volatile Duration shutdownForceWait = Duration.ofSeconds(2);
     private volatile Path workingDirectory;
+    /** PID 文件路径（DEBT-2 进程卫生）；null = 不启用。start 前经 {@link #setPidFile(Path)} 设置。 */
+    private volatile Path pidFile;
 
     /**
      * @param nodeExecutable node 可执行文件路径
@@ -215,6 +218,7 @@ public final class NodeIpc implements AutoCloseable {
         }
         waitForExitBounded();
         tearDownChannel("shutdown(" + safeReason + ")");
+        deletePidFile();
         scheduler.shutdownNow();
         logInfo("Node IPC 已关闭：" + safeReason);
     }
@@ -252,6 +256,15 @@ public final class NodeIpc implements AutoCloseable {
         this.workingDirectory = Objects.requireNonNull(directory, "directory");
     }
 
+    /**
+     * PID 文件（DEBT-2，须在 {@link #start()} 前调用）：spawn 成功写入 winpid，优雅关停
+     * （{@link #shutdown(String)}）删除；异常退出不删——残留即「上次可能异常退出」的证据，
+     * 下次 spawn 前检测到残留会 INFO 提示。null/不调用 = 不启用。
+     */
+    public void setPidFile(Path file) {
+        this.pidFile = Objects.requireNonNull(file, "file");
+    }
+
     // ---- 启动 ----
 
     private void spawn() {
@@ -259,6 +272,7 @@ public final class NodeIpc implements AutoCloseable {
             startFuture.completeExceptionally(new IpcException("NodeIpc 已 shutdown，无法启动"));
             return;
         }
+        checkPidResidue();
         List<String> command = List.of(nodeExecutable, bundlePath.toString());
         Map<String, String> extraEnv = new HashMap<>();
         if (stubPath != null) {
@@ -274,11 +288,50 @@ public final class NodeIpc implements AutoCloseable {
         process = spawned;
         stdinWriter = new BufferedWriter(new OutputStreamWriter(spawned.getOutputStream(), StandardCharsets.UTF_8));
         channelOpen.set(true);
+        writePidFile(spawned);
         logInfo("Node 进程已拉起：" + command);
         Thread.ofVirtual().name("kurobot-ipc-stdout").start(this::readStdoutLoop);
         Thread.ofVirtual().name("kurobot-ipc-stderr").start(this::readStderrLoop);
         Duration timeout = startTimeout;
         scheduler.schedule(this::onStartTimeout, timeout.toMillis(), TimeUnit.MILLISECONDS);
+    }
+
+    /** 残留 PID 文件提示（上次可能异常退出）；只提示不强删，写入时自然覆盖。 */
+    private void checkPidResidue() {
+        Path file = pidFile;
+        if (file == null || !Files.isRegularFile(file)) {
+            return;
+        }
+        logWarn("发现残留 PID 文件（上次可能异常退出）：" + file);
+    }
+
+    /** spawn 成功后写 winpid（{@code Process.pid()} 即操作系统 PID）。写失败仅告警，不影响启动。 */
+    private void writePidFile(Process spawned) {
+        Path file = pidFile;
+        if (file == null) {
+            return;
+        }
+        try {
+            if (file.getParent() != null) {
+                Files.createDirectories(file.getParent());
+            }
+            Files.writeString(file, spawned.pid() + System.lineSeparator(), StandardCharsets.UTF_8);
+        } catch (IOException | RuntimeException e) {
+            logWarn("写入 PID 文件失败（不影响运行）：" + file + "，" + e.getMessage());
+        }
+    }
+
+    /** 优雅关停路径删除 PID 文件；异常退出的残留故意保留（下次启动提示用）。 */
+    private void deletePidFile() {
+        Path file = pidFile;
+        if (file == null) {
+            return;
+        }
+        try {
+            Files.deleteIfExists(file);
+        } catch (IOException | RuntimeException e) {
+            logWarn("删除 PID 文件失败：" + file + "，" + e.getMessage());
+        }
     }
 
     private void onStartTimeout() {
@@ -336,20 +389,20 @@ public final class NodeIpc implements AutoCloseable {
 
     private void dispatch(InboundFrame frame) {
         switch (frame) {
-            case InboundFrame.Ready ready -> handleReady(ready.wsPort());
+            case InboundFrame.Ready ready -> handleReady(ready.wsPort(), ready.autoRestart());
             case InboundFrame.Request request -> handleRequest(request);
             case InboundFrame.Result result -> settleResult(result);
         }
     }
 
-    private void handleReady(int wsPort) {
+    private void handleReady(int wsPort, Boolean autoRestart) {
         if (!readyReceived.compareAndSet(false, true)) {
             logWarn("忽略重复的 ready 帧：wsPort=" + wsPort);
             return;
         }
-        logInfo("Node ready：wsPort=" + wsPort);
+        logInfo("Node ready：wsPort=" + wsPort + "，autoRestart=" + (autoRestart == null ? "缺省(true)" : autoRestart));
         startFuture.complete(wsPort);
-        notifyListener("onReady", () -> listener.onReady(wsPort));
+        notifyListener("onReady", () -> listener.onReady(wsPort, autoRestart == null || autoRestart));
     }
 
     private void handleRequest(InboundFrame.Request request) {
@@ -510,13 +563,22 @@ public final class NodeIpc implements AutoCloseable {
         }
     }
 
-    /** 通道终结（幂等）：关 stdin、失败 start future 与全部在途请求。可从任意线程调用。 */
+    /**
+     * 通道终结（幂等）：关 stdin、失败 start future 与全部在途请求；非优雅路径（进程异常
+     * 退出 / stdin 写失败）另做两件事——存活进程 destroyForcibly（防双进程残留）与
+     * {@link NodeIpcListener#onProcessExited} 退出通知（看护器输入，优雅关停不通知）。
+     * 可从任意线程调用。
+     */
     private void tearDownChannel(String cause) {
         if (!channelTornDown.compareAndSet(false, true)) {
             return;
         }
         channelOpen.set(false);
         closeStdin();
+        Process current = process;
+        if (current != null && current.isAlive()) {
+            current.destroyForcibly();
+        }
         String exitSuffix = describeExit();
         if (!startFuture.isDone()) {
             startFuture.completeExceptionally(new IpcException("Node 进程在 ready 前断开（" + cause + exitSuffix + "）"));
@@ -526,6 +588,25 @@ public final class NodeIpc implements AutoCloseable {
             if (pending.remove(entry.getKey(), entry.getValue())) {
                 entry.getValue().completeExceptionally(failure);
             }
+        }
+        if (!shutdownStarted.get()) {
+            notifyListener("onProcessExited", () -> listener.onProcessExited(exitCodeOrNull(), cause));
+        }
+        // 异常退出路径没人调 shutdown——通道已死，本实例的调度任务（start 超时/请求超时）全部作废，
+        // 就地释放，避免看护器每次重启泄漏一个调度器线程（优雅路径 shutdown() 里的重复调用幂等无害）
+        scheduler.shutdownNow();
+    }
+
+    /** 退出码：进程已退出取 exitValue；未退出（刚 destroyForcibly）/无进程时 null。 */
+    private Integer exitCodeOrNull() {
+        Process current = process;
+        if (current == null) {
+            return null;
+        }
+        try {
+            return current.isAlive() ? null : current.exitValue();
+        } catch (RuntimeException e) {
+            return null;
         }
     }
 
