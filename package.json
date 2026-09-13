@@ -22,7 +22,7 @@
         "test": "vitest run",
         "test:watch": "vitest",
         "test:coverage": "vitest run --coverage",
-        "build:jar": "pnpm -r build && cd platforms/je && ./gradlew :paper:shadowJar"
+        "build:jar": "pnpm -r build && node scripts/embed.ts && cd platforms/je && gradlew.bat :paper:shadowJar"
     },
     "devEngines": {
         "packageManager": {

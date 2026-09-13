@@ -118,7 +118,7 @@ kurobot/
 │   ├── protocol/            # @kurobot/protocol：zod schema SSOT
 │   ├── core/                # @kurobot/bridge-core（平台无关）
 │   └── embedded/            # 嵌入式瘦身对端（esbuild 单文件，打进 JAR）
-├── scripts/                 # 构建/工具脚本（tools/ 已删，待重建时归此）
+├── scripts/                 # 构建/工具脚本（embed.ts：嵌入式打包；paper 启停沙盒）
 └── sandbox/                 # 运行产物全 gitignore（Paper 服务端等）
 ```
 
@@ -148,7 +148,9 @@ kurobot/
 - `node.exe`（MIT）→ 进 JAR；`wrapper.node`（腾讯闭源）→ **不进 JAR**，运行期从 QQ 安装目录发现拷贝；stub 闭源件走 release 附带。
 - 动态端口（`listen(0)`）避免僵尸进程端口占用问题。
 - 子进程生命周期：stdin EOF 自杀 + PID 文件 + Watchdog 心跳 + 崩溃兜底。
-- 嵌入式打包（`tools/embed` 已删除待重建）：拉 npm tarball + Node 运行时 → `bridge/embedded` 产物 + `node.exe` 打包进 `platforms/je`。
+- 嵌入式打包：`scripts/embed.ts` 下载/校验 node 官方 dist（win-x64，sha256 对 SHASUMS256.txt）
+  → 连同 `bridge/embedded` 产物拷入 `platforms/je/paper/src/main/resources/embedded/`
+  （含 manifest.json 清单，运行期解压比对）；多平台矩阵记债务。
 
 ## 10. 协议
 

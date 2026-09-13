@@ -69,3 +69,16 @@ src/
 - **实际落地补充**：`NodeConfigStore` 轮询用 mtimeMs+size 双指标（单 mtime 在编辑器原子替换
   空窗会误判）；默认配置 `writeFile(flag:"wx")` 生成，绝不覆盖服主手写内容；bootstrap 初始
   load 失败以空绑定降级运行（配置修复后 watch 自动生效）。
+
+## MVP 阶段二（2026-09-13）
+
+> 任务书：`docs/MVP2-PROMPT.md`（打包闭环）。本包源码零改动，本节记录形态变化。
+
+- **产物进 JAR**：`dist/index.mjs` 经 `scripts/embed.ts` 拷入
+  `platforms/je/paper/src/main/resources/embedded/index.mjs`（随 manifest.json 带 sha256），
+  运行期由 :paper 解压到 `plugins/kurobot/bin/` 后拉起（详见 platforms/je design 的
+  「MVP 阶段二」节）。本包构建方式（esbuild 单文件）不变。
+- **运行环境**：从「mise node + KUROBOT_BUNDLE 环境变量」变为「JAR 自带 node.exe 26.7.0」；
+  环境变量保留为开发覆盖。cwd 语义不变（=服务器根，配置在 `plugins/kurobot/config.json`）。
+- **stub 不进 JAR**（测试件）：JAR 模式未设 `KUROBOT_STUB_PEER` 时不拉 stub，
+  即 external 协议端形态；沙盒验收经该环境变量指向仓库内 `stub/peer.mjs`。
