@@ -11,10 +11,15 @@
  *
  * 协议 v0.3.0（DEBT-1）：主版本兼容协商（hello 版本可用 env 覆盖）；hello 可携带 token；
  * 新增验收钩子与交互命令（command/query/未知帧）。在 DEBT-2 的自杀逻辑之上叠加，勿回退。
+ * 协议 v0.3.1（MVP-3）：hello 可携带 client 自报身份；支持独立进程连入（external 对端
+ * 形态模拟）。
  *
  * env 钩子（无人值守沙盒验收）：
  * - KUROBOT_STUB_PROTOCOL_VERSION  覆盖 hello.protocolVersion（验协商拒绝 / 0.2.0 兼容连入）
  * - KUROBOT_STUB_TOKEN             hello 携带 token
+ * - KUROBOT_STUB_CLIENT            hello 携带 client 自报身份（如 napukettoqq/1.0）
+ * - KUROBOT_STUB_WS_URL            覆盖连接地址（缺省 ws://127.0.0.1:<argv[2]>）——独立进程
+ *                                  模拟 external 对端连入（设此变量时 argv 端口可省略）
  * - KUROBOT_STUB_ADMIN_SOURCE      command 的 source 覆盖，格式 channel:userId
  *                                  （缺省 stub-channel:stub-admin，与沙盒配置 admins 对齐）
  * - KUROBOT_STUB_SEND_COMMAND      握手成功后自动发送的命令（";" 分隔多条，逐条等待结果）
@@ -26,14 +31,14 @@
  * - query <status|bindings>
  * - unknown <event|request>
  *
- * 用法：node peer.mjs <wsPort>
+ * 用法：node peer.mjs <wsPort>（或设 KUROBOT_STUB_WS_URL 后省略端口）
  * 零依赖：Node 26 内置全局 WebSocket（Undici）。
  */
 
 import { createInterface } from "node:readline";
 
 const PEER_ID = `stub-${process.pid}`;
-const PROTOCOL_VERSION = "0.3.0";
+const PROTOCOL_VERSION = "0.3.1";
 const WS_SUBPROTOCOL = "kurobot-ws.v1";
 const STUB_CHANNEL = "stub-channel";
 const HEARTBEAT_INTERVAL_MS = 5000;
@@ -46,6 +51,25 @@ const HELLO_VERSION =
         ? envProtocolVersion
         : PROTOCOL_VERSION;
 const HELLO_TOKEN = process.env.KUROBOT_STUB_TOKEN ?? "";
+
+/** hello 的 client 自报身份（v0.3.1，MVP-3）：仅服务端连接日志辨识用 */
+const envClient = process.env.KUROBOT_STUB_CLIENT;
+const HELLO_CLIENT = envClient !== undefined && envClient !== "" ? envClient : "";
+
+/**
+ * 连接地址（MVP-3）：KUROBOT_STUB_WS_URL 覆盖（external 对端形态，独立进程连入）；
+ * 缺省维持现状 ws://127.0.0.1:<argv[2]>（孙进程拉起形态）。
+ */
+const envWsUrl = process.env.KUROBOT_STUB_WS_URL;
+const port = process.argv[2];
+if ((envWsUrl === undefined || envWsUrl === "") && (port === undefined || Number.isNaN(Number(port)))) {
+    process.stderr.write(
+        "[KuroBot][stub] 用法：node peer.mjs <wsPort>（或设 KUROBOT_STUB_WS_URL 指定连接地址）\n",
+    );
+    process.exit(2);
+}
+const CONNECT_URL =
+    envWsUrl !== undefined && envWsUrl !== "" ? envWsUrl : `ws://127.0.0.1:${port}`;
 
 /** command 帧的来源（channel:userId）；缺省与沙盒配置 admins 对齐 */
 function parseAdminSource(raw) {
@@ -60,12 +84,6 @@ function parseAdminSource(raw) {
 }
 
 const ADMIN_SOURCE = parseAdminSource(process.env.KUROBOT_STUB_ADMIN_SOURCE);
-
-const port = process.argv[2];
-if (port === undefined || Number.isNaN(Number(port))) {
-    process.stderr.write("[KuroBot][stub] 用法：node peer.mjs <wsPort>\n");
-    process.exit(2);
-}
 
 function log(message) {
     process.stderr.write(`[KuroBot][stub] ${message}\n`);
@@ -200,13 +218,13 @@ function handleLine(ws, line) {
 }
 
 function connect() {
-    const ws = new WebSocket(`ws://127.0.0.1:${port}`, WS_SUBPROTOCOL);
+    const ws = new WebSocket(CONNECT_URL, WS_SUBPROTOCOL);
     currentWs = ws;
 
     ws.addEventListener("open", () => {
         consecutiveFailures = 0;
         backoffMs = 1000;
-        log(`已连入 ws://127.0.0.1:${port}（子协议 ${WS_SUBPROTOCOL}），发送 hello`);
+        log(`已连入 ${CONNECT_URL}（子协议 ${WS_SUBPROTOCOL}），发送 hello`);
         const helloBody = {
             peerId: PEER_ID,
             platform: "stub",
@@ -215,6 +233,9 @@ function connect() {
         };
         if (HELLO_TOKEN !== "") {
             helloBody.token = HELLO_TOKEN;
+        }
+        if (HELLO_CLIENT !== "") {
+            helloBody.client = HELLO_CLIENT;
         }
         sendFrame(ws, { type: "hello", id: crypto.randomUUID(), body: helloBody });
         heartbeatTimer = setInterval(() => {
@@ -357,6 +378,7 @@ readline.on("close", () => {
 
 log(
     `stub 协议端启动（peerId=${PEER_ID}，channel=${STUB_CHANNEL}，hello 版本=${HELLO_VERSION}` +
-        `${HELLO_TOKEN === "" ? "" : "，token=已设置"}，source=${ADMIN_SOURCE.channel}:${ADMIN_SOURCE.userId}）`,
+        `${HELLO_TOKEN === "" ? "" : "，token=已设置"}${HELLO_CLIENT === "" ? "" : `，client=${HELLO_CLIENT}`}` +
+        `，连接=${CONNECT_URL}，source=${ADMIN_SOURCE.channel}:${ADMIN_SOURCE.userId}）`,
 );
 connect();
