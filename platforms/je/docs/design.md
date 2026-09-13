@@ -152,6 +152,25 @@
 - **升级提示**：`EmbeddedRuntime` 哈希不符重建路径的日志文案改为
   「检测到打包内容变更（升级），已重建 plugins/kurobot/bin/<名>」。
 
+### 实现回填（相对本节设计的差异，2026-09-13 验收后）
+
+- **onReady 签名**：`NodeIpcListener.onReady(int wsPort, boolean autoRestart)`——
+  ready.autoRestart 在 NodeIpc.handleReady 归一化（null→true，兼容旧 Node）后随回调
+  下发；设计里「Ready record 加 Boolean」的形状落位为接口签名（KuroBotPlugin.onNodeReady
+  消费，setAutoRestart 更新看护器）。放弃 start future 携带（保持
+  `CompletableFuture<Integer>` 形状）。
+- **teardown 链扩充**：非优雅拆除（stdout EOF / stdin 写失败）时——存活进程
+  destroyForcibly（防看护器重启出双进程）+ `scheduler.shutdownNow()` 就地释放（异常
+  路径无人调 shutdown，否则每次崩溃泄漏一个调度器线程）。优雅路径行为不变。
+- **看护器接线**：:paper 专用虚拟线程 ScheduledExecutorService 适配 DelayScheduler；
+  :core 日志行 `[NodeSupervisor][SEVERE]` 由 relayIpcLog 分流到 logger.severe（既有
+  `[NodeIpc][WARN]` 分流同款）。KurobotCommand 在 given-up 时返回专属报错文案。
+- **重要发现（影响孤儿治理定位）**：Node 26（libuv）Windows 下子进程随父级联死亡——
+  taskkill 强杀 node 后 stub 立即消失（sandbox+最小环境双实测），MVP1 的「stub 无限
+  重连孤儿」不再出现；stub 重连上限退居纵深防御（DEBT2-NOTES 发现 A）。
+- **沙盒复现手段**：`KUROBOT_NODE=<坏路径>` 经 paper-start.sh 透传注入 → 6s 走完
+  3 次失败 → SEVERE 放弃（放弃终态的沙盒验证路径）。
+
 ### :paper 单元测试政策
 
 维持「不引 MockBukkit」；看护器/退避/PID 的可测逻辑全部落在 :core（NodeSupervisorTest、

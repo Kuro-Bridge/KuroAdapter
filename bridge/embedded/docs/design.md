@@ -102,3 +102,15 @@ src/
   （连续重连失败 10 次，最后一次错误）并以**退出码 1** 退出。心跳建立后的运行期断开
   （服务器重启场景）也走重连，同样受 10 次上限约束——stub 是测试件，简单一致优先。
 - 影响面：集成测试若有依赖「stub 无限重连」的预期需同步；正常路径（node 活着）不受影响。
+
+### 实现回填（2026-09-13 验收后）
+
+- autoRestart 上报落地：ready body 携带 `initialConfig.runtime.autoRestart`；配置加载
+  失败降级路径显式构造 `{ channels: [], runtime: { autoRestart: true } }`。
+- stub 自杀落地：`MAX_CONSECUTIVE_FAILURES = 10`；close 累加 / open 清零；退出前打印
+  「连续 10 次重连失败（最后一次：…），放弃重连并退出」；error 事件 message 为空串时用
+  `||` 落到 error 对象/unknown（Undici 实测）。
+- **重要发现（DEBT2-NOTES A）**：Node 26 在 Windows 对 spawn 的子进程施加 Job Object
+  （kill-on-close）——强杀 node 后 stub 立即级联退出，孤儿不存活；本节自杀上限为纵深
+  防御（external 对端形态 / 运行时行为变化时为主防线）。独立验证（bash 直spawn stub
+  连死端口）确认 10 次失败 → 退出码 1 全程 ~181s。

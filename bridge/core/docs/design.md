@@ -141,3 +141,11 @@ chat/broadcast 携带 channel、hello_ack 携带 channelBindings（`ServerOption
 多余字段剥离语义不变）。本包只做 schema 与默认值；ready 帧扩展在 `@kurobot/protocol`
 （`readyBodySchema` 加 `autoRestart` 可选字段，版本 0.2.0 → 0.2.1 patch 顺延），上报在
 bridge/embedded 引导层（配置 → ready body）。
+
+### 实现回填（2026-09-13 验收后）
+
+- 断连清理链核对结论：实现**零改动**即满足全部一致性用例（reconnect.test.ts 8 例）——
+  onClose 清理/闭包实时快照/send 送达数语义本就闭合，本册补的是测试背书。
+- `config.ts`：`runtime.autoRestart` 用 zod `.default(true)` 双层默认（runtime 段缺省
+  或字段缺省都得到 true），`KurobotConfig` 形状新增必填 runtime 段（构造点全走
+  defaultConfig/cfg 助手）。

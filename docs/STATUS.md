@@ -128,3 +128,37 @@
   （:core 44 用例）全绿；`unzip -l` 证据：JAR（41MB）内含 embedded 四件。
 
 napukettoqq 协议端接入与多平台 node 矩阵留给后续阶段（债务清单见 MVP2-NOTES）。
+
+## 债务清偿二结论（2026-09-13，master）
+
+> 任务书见 `docs/DEBT2-PROMPT.md`，全部决策与沙盒实录见 `docs/DEBT2-NOTES.md`。
+> 前置说明：DEBT-1 未执行（并行会话让行，仅文档入库），协议变更按预案以实际基线
+> 0.2.0 → 0.2.1 patch 顺延；DEBT-1 复跑时继续 0.2.1 → 0.3.0。
+
+**「node 死了就死、构建只能 Windows」收尾为「崩溃自愈、进程卫生、双壳构建、行尾无忧」
+的健壮基座——完成。** 验收清单 §4.1~§4.11 全过（实录表见 DEBT2-NOTES）：
+
+- **进程看护闭环**：:core `NodeIpc` 进程退出通知（exitCode + cause，优雅关停不通知；
+  非优雅拆除就地 destroyForcibly 防双进程 + 调度器释放）+ 新 `NodeSupervisor` 看护器
+  （1s/5s/15s 退避重启、10 分钟窗累计 3 次失败 → SEVERE 放弃终态、autoRestart=false
+  只通知不重启）；:paper onDisable 停看护，重启经 factory 重建实例。
+- **协议 0.2.1（唯一变更）**：ready 帧可选字段 `autoRestart`（Node 业务配置 SSOT，
+  Java 消费宿主参数）；config schema 增 `runtime.autoRestart`（缺省 true）。
+- **进程卫生**：`plugins/kurobot/node.pid`（spawn 写 winpid / 优雅关停删 / 残留 INFO
+  提示异常退出）；放弃终态下 `/kurobot send` 明确报「自动重启已放弃」。
+- **可观测**：启动就绪汇总行「就绪：插件 vX / node vY / 协议 vZ」（协议版本 :core
+  硬编码副本 KurobotVersions）；embedded 哈希不符重建改「检测到打包内容变更（升级），
+  已重建」文案。
+- **重连一致性测试背书**：core 断连清理与重连快照/送达数/20 轮零泄漏 vitest 8 例
+  （实现零改动——设计清理链闭合的回归证明）。
+- **工程收尾**：`scripts/build-jar.mjs` 跨壳编排（Git Bash 与 cmd 双壳实测 exit=0，
+  POSIX 贡献者债务关闭）；embed 严格模式 `KUROBOT_NODE_DIST_STRICT=1` + 回退 WARN；
+  `.gitattributes` 补二进制例外（renormalize 零波及）。
+- **重要架构发现**：Node 26（libuv）在 Windows 上子进程随父级联死亡——「强杀 node 留
+  stub 孤儿」前提不再成立；stub 重连 10 次自杀保留为纵深防御（独立验证 10 次失败
+  → 打印原因 → 退出码 1）。另：MSYS pid 坑、异步测试快照竞态、spotless up-to-date
+  三坑实录见 DEBT2-NOTES 架构发现 B/C/D。
+
+门禁终态：`pnpm check` / `pnpm test`（93 用例）/ `pnpm -r build` / `gradlew build` +
+`:core:test --rerun`（:core 57 用例）全绿。下一步：MVP-3（napukettoqq 接入 + 多平台
+矩阵）开题；DEBT-1（协议/业务补全）按其 NOTES 指引复跑。

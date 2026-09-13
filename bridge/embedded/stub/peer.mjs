@@ -151,7 +151,8 @@ function connect() {
     };
     ws.addEventListener("close", scheduleReconnect);
     ws.addEventListener("error", (event) => {
-        lastErrorText = String(event.message ?? event.error ?? "unknown");
+        // Undici 的 error 事件 message 常为空串——用 || 落到 error 对象/unknown
+        lastErrorText = String(event.message || event.error || "unknown");
         log(`连接错误：${lastErrorText}`);
     });
 }

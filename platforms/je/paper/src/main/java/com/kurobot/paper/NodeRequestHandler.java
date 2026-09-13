@@ -60,7 +60,6 @@ public final class NodeRequestHandler implements NodeIpcListener {
     @Override
     public void onProcessExited(Integer exitCode, String cause) {
         // 看护决策在 :core NodeSupervisor（重启/放弃）；此处仅留下宿主可观测的记录
-        plugin.getLogger()
-                .info(() -> "Node 进程退出通知：exit=" + (exitCode == null ? "未知" : exitCode) + "，原因=" + cause);
+        plugin.getLogger().info(() -> "Node 进程退出通知：exit=" + (exitCode == null ? "未知" : exitCode) + "，原因=" + cause);
     }
 }
