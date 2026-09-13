@@ -82,3 +82,23 @@ src/
   环境变量保留为开发覆盖。cwd 语义不变（=服务器根，配置在 `plugins/kurobot/config.json`）。
 - **stub 不进 JAR**（测试件）：JAR 模式未设 `KUROBOT_STUB_PEER` 时不拉 stub，
   即 external 协议端形态；沙盒验收经该环境变量指向仓库内 `stub/peer.mjs`。
+
+## 债务清偿二（DEBT-2，2026-09-13）：autoRestart 上报 + stub 重连上限
+
+> 任务书：`docs/DEBT2-PROMPT.md` §1.2。两件小事，均不触碰 core。
+
+### bootstrap 上报 autoRestart（协议 0.2.1）
+
+- `main()` 发 ready 帧时带 `autoRestart`：取自配置 `runtime.autoRestart`（core 的
+  `parseConfig` 已扩展、缺省 true）。配置加载失败降级路径（空绑定）同样带缺省 true。
+- 版本号顺延随 `@kurobot/protocol` 0.2.0 → 0.2.1；bootstrap 日志里的协议版本随之更新。
+
+### stub 重连上限：10 次连续失败自杀（孤儿治理）
+
+- 背景（MVP1-NOTES 架构发现）：Windows 无父子级联终止，宿主强杀 node 后 stub 孤儿
+  会无限重连。治理选 stub 侧计数自杀，**不做** Job Object / 父进程死亡检测（测试件
+  复杂度不值；真实对端 napukettoqq 的重连策略属其自身实现）。
+- 行为：`connect` 前重连计数 +1，`open` 成功清零；**连续 10 次未成功连入** → 打印原因
+  （连续重连失败 10 次，最后一次错误）并以**退出码 1** 退出。心跳建立后的运行期断开
+  （服务器重启场景）也走重连，同样受 10 次上限约束——stub 是测试件，简单一致优先。
+- 影响面：集成测试若有依赖「stub 无限重连」的预期需同步；正常路径（node 活着）不受影响。

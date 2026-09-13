@@ -106,3 +106,38 @@ dispose 语义）、`KurobotServer.send*` 返回送达的已握手对端数（0 
 chat/broadcast 携带 channel、hello_ack 携带 channelBindings（`ServerOptions.channelBindings`
 注入快照）、新增 join/leave/status/bindings_updated 的 send* 出帧；阶段 1 的 fan-out 用占位
 频道假规则（`relay.ts` 的 FANOUT_PLACEHOLDER_CHANNEL），阶段 3 绑定表落地后移除。
+
+## 债务清偿二（DEBT-2，2026-09-13）：断连清理与重连一致性
+
+> 任务书：`docs/DEBT2-PROMPT.md` §1.2。范围限定：**只做清理与一致性的测试背书与补缺**，
+> 不重构对端模型（单/多对端能力维持现状），不做消息排队补发。
+
+### 现状梳理（设计核对结论）
+
+- `KurobotServer.handleConnection` 的 `onClose` 已做：hello/idle 定时器取消 + peers 删除。
+  握手被拒路径（`rejectHello`）先 cancelTimers 再 close，onClose 幂等二次清理无害。
+- `Relay` 的 IPC onClose 已做：在途请求全部拒绝 + 定时器取消（`markDisposed`）。
+- `server.stop()` 走 `connection.close(1001)` → onClose 清理；对异步 close 的真实实现，
+  peers 先 clear、迟到 onClose 闭包仍能取消自身定时器（peer 引用捕获）——无泄漏路径。
+
+### 本册补齐与证据（vitest）
+
+断连状态一致性此前**无测试背书**，本册补 `reconnect` 行为测试（新文件或并入 server.test）：
+
+1. **断开 → 重连 → 重新握手**：新连接全新 PeerState，hello_ack 携带**当前**绑定快照
+   （配置在断开期间变更，新握手拿到新列表——`channelBindings` 闭包实时取值语义的回归证明）。
+2. **送达数归零语义**：对端断开后 `send*` 返回 0（不抛错）；重连握手后恢复非 0。
+3. **hello 超时/空闲超时断开后重连**：被服务端关掉的连接（1001/1002）同样触发完整清理，
+   新连接不受旧状态污染（established 计数、定时器 pending=0）。
+4. **反复 N 轮（连入→握手→断开）零泄漏**：`ManualScheduler.pendingCount === 0` 断言。
+5. **Relay 侧**：IPC 断开时挂起请求拒绝且定时器取消（已有部分用例，补「断开→新 Relay
+   实例（重启后）恢复转发」路径：dispose 状态不残留、新实例不受旧实例污染）。
+
+发现缺口才改实现；预计实现零改动或极小补丁（设计上清理链已闭合）。
+
+### ready.autoRestart 上报（协议 0.2.1）
+
+`config.ts` 的 `parseConfig` 扩展：`runtime: { autoRestart: boolean }` 可选字段（缺省 true，
+多余字段剥离语义不变）。本包只做 schema 与默认值；ready 帧扩展在 `@kurobot/protocol`
+（`readyBodySchema` 加 `autoRestart` 可选字段，版本 0.2.0 → 0.2.1 patch 顺延），上报在
+bridge/embedded 引导层（配置 → ready body）。

@@ -90,6 +90,73 @@
 `scripts/paper-start.sh`：不再强制导出 `KUROBOT_NODE`/`KUROBOT_BUNDLE`（保留透传能力），
 补 `KUROBOT_STUB_PEER` 缺省值（仓库内 stub 路径）——验收「JAR 真装路径」。
 
+## 债务清偿二（DEBT-2，2026-09-13）：进程健壮性
+
+> 任务书：`docs/DEBT2-PROMPT.md`。目标：node 死了自动重启（看护器）、进程卫生（PID 文件、
+> 退出通知）、就绪可观测（汇总行、升级提示）。本节是动代码前的设计定稿。
+
+### NodeIpc 进程退出通知（:core）
+
+- `NodeIpcListener` 新增 `onProcessExited(Integer exitCode, String cause)`：**通道拆除**
+  （既有 `tearDownChannel`，幂等）时通知一次。`exitCode` 可为 null——进程尚未退出
+  （如 stdin 写失败但进程存活，此时 NodeIpc 先 `destroyForcibly()` 防双进程）或退出码
+  不可取；`cause` 为 teardown 原因（"stdout EOF" / "stdin 写入失败" / "shutdown(...)"）。
+- **优雅关停不发退出通知**：`shutdown()` 设 graceful 标记后走同一条 teardown链，
+  看护器不应被正常关机触发（回调仍会发给 listener，由看护器的停止状态忽略——双保险）。
+- 线程契约不变：回调在既有 IPC 读取线程（stdout 循环）语义上执行。
+
+### NodeSupervisor 看护器（:core，零 Bukkit API，可 JUnit）
+
+- **职责边界**：进程管理（宿主职责），不碰业务。输入是退出通知，输出是重启动作或放弃。
+- 构造注入：`NodeIpcFactory`（每次重启新建 NodeIpc 实例——NodeIpc 一次性设计，`start()`
+  只能成功一次）、listener、log、`SleepScheduler` 函数接口（`(delayMs, runnable) -> cancel`，
+  :paper 给 `ScheduledExecutorService`，测试给同步/手动实现）、`SupervisorOptions`
+  （`autoRestart` 缺省 true、退避档位、窗口参数，测试可缩短）。
+- **状态机**：`running → restarting → running → …`；终态两个：`stopped`（onDisable，
+  取消挂起的重启定时器）与 `given-up`（放弃，服务器不崩、send 明确报错）。
+- **退避与放弃**：连续失败计数（成功 ready 后归零——进程稳定运行视为恢复）→ 退避
+  1s → 5s → 15s（封顶）。**放弃判定独立于退避**：滑动 10 分钟窗口内累计失败 ≥3 次
+  （失败时间戳入窗口，重启成功不擦除窗口——「累计」而非「连续」）→ SEVERE 放弃，
+  日志提示手动恢复路径（重启服务器或 `/reload confirm` 重载插件）。
+- **重启动作**：经 factory 新建 NodeIpc → 注入 pid 文件路径（同上一实例）→ `start()`。
+  `autoRestart=false`：退出通知仅 INFO 日志，不重启（验收 §4.3 的 false 分支）。
+- 退避间隔计算抽纯函数 `backoffDelayMs(consecutiveFailures)` 供 JUnit 直接断言。
+
+### PID 文件（:core NodeIpc 承担）
+
+- `setPidFile(Path)`（public，start 前调用；null = 不启用）→ spawn 成功即写 winpid
+  （`Process.pid()`）到 `plugins/kurobot/node.pid`（路径由 :paper 传入）。
+- **优雅关停删除**（shutdown 内，waitForExit 之后）；**异常退出（teardown）不删**——
+  残留正是「上次可能异常退出」的证据：下次 spawn 前发现残留文件 → INFO 提示。
+- 明确不做（任务书 §1.2 拍板）：跨进程互斥/防双实例——Paper 插件单实例由容器保证。
+
+### ready.autoRestart 契约（本册唯一协议变更）
+
+- 协议版本 0.2.0 → **0.2.1**（patch 顺延；DEBT-1 未执行，按实际基线）。
+- `ready` body 加**可选**字段 `autoRestart: boolean`（缺省 true）：schema 与默认值都在
+  Node 侧（业务配置 SSOT），Java 只消费宿主参数——与 wsPort 同性质，不违反「Java 不做业务」。
+- Java 侧 `InboundFrame.Ready` 加 `Boolean autoRestart()`（Jackson 镜像，缺省 null →
+  消费方按 true 处理）；:paper 据此设看护器开关。
+- 旧 Node（不发该字段）在新 Java 下行为不变（null → true），前向兼容。
+
+### :paper 接线与可观测
+
+- `KuroBotPlugin.startNodeIpc` 改为组装 `NodeSupervisor`（factory 闭包内更新 volatile
+  `ipc` 字段——重启后监听器/命令自动指向新实例）；`onDisable` 先 `supervisor.stop()`
+  再 `ipc.shutdown("plugin disable")`。
+- **就绪汇总行**：ready 回调后输出一行 `就绪：插件 vX / node vY / 协议 vZ`。版本来源：
+  插件版本 = paper-plugin.yml 的 version（`getPluginMeta()`）；node 版本 = JAR 模式取
+  `EmbeddedRuntime.Installed.nodeVersion()`（install 结果新增），开发覆盖模式无 manifest
+  → 显示 `dev`（D2 决策记录）；协议版本 = :core 常量 `KurobotVersions.PROTOCOL_VERSION`
+  （**硬编码副本**，唯一维护约束：改协议版本须同步，测试对齐 stub 断言兜底）。
+- **升级提示**：`EmbeddedRuntime` 哈希不符重建路径的日志文案改为
+  「检测到打包内容变更（升级），已重建 plugins/kurobot/bin/<名>」。
+
+### :paper 单元测试政策
+
+维持「不引 MockBukkit」；看护器/退避/PID 的可测逻辑全部落在 :core（NodeSupervisorTest、
+NodeIpcTest 扩展），:paper 仍靠沙盒验收兜底。
+
 ## 已知坑（详见 PROTOTYPE-NOTES / MVP1-NOTES）
 
 - Spotless palantir 钉 2.71.0（JDK 25 兼容线）；`-Xlint:all -Werror`。
