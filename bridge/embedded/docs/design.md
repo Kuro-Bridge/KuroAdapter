@@ -35,3 +35,18 @@ src/
 - `@kurobot/bridge-core`（workspace:*）。
 - `@kurobot/protocol`（workspace:*）。
 - esbuild（devDep，单文件打包）。
+
+## 原型阶段（spike，2026-09-12）
+
+> 任务书：`docs/PROTOTYPE-PROMPT.md` §1.2 / §4.2。完整设计（内嵌 napukettoqq）不变，本节只标注原型裁剪。
+
+本阶段本包退化为 **Node 引导层（bootstrap）**，不含 napukettoqq：
+
+- `src/index.ts`：入口——stdin/stdout IPC 端点（JSON-lines，帧走 `@kurobot/protocol`）+ 以子进程拉起 stub 协议端（孙进程，端口经 argv，决策 D-05）。
+- `src/ws-server.ts`：`ws` 库实现 core 的 `WsServer` 接口（`listen(0)` 动态端口 + 子协议 `kurobot-ws.v1` 校验），唯一的 Node API 落点。
+- `src/ipc-stdio.ts`：stdin/stdout 实现 core 的 `IpcChannel` 接口。
+- stub 协议端：`stub/peer.mjs`（零依赖，Node 内置全局 WebSocket，决策 D-06）。
+
+启动序列：Java 拉起本入口 → 起 WS 服务端 `listen(0)` → IPC 发 `ready`（携带端口）→ spawn stub → stub 以 WS client 连入并 `hello` 握手。stdin EOF 或 `shutdown` 帧 → 杀 stub → 自行退出（决策 D-08）。
+
+原型裁剪：node.exe 不进 JAR（用 PATH `node` 或 `KUROBOT_NODE`，决策 D-07）、bundle 从 `KUROBOT_BUNDLE` 指定的本地产物加载、无 napukettoqq / wrapper.node / 扫码、无 Watchdog / PID 文件 / 崩溃自动重启。

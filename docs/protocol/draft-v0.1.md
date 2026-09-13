@@ -57,3 +57,44 @@
 4. 权限模型：kurobot 侧指令白名单 + 群管理员映射。
 5. `status` 上报频率与订阅机制（对端可否按需拉取）。
 6. 多服务器（serverId 多实例）互联语义。
+
+## 5. 原型最小集（spike，2026-09-12）
+
+> 任务书 `docs/PROTOTYPE-PROMPT.md` §4.1。schema 实现在 `bridge/protocol/src/`；本节记录已定稿字段语义。
+
+### 5.1 握手语义（决策 D-01）
+
+draft §1 的双向 `hello` 收敛为单程握手：**Peer 连入 → 发 `hello`（请求，带 id）→ Server 校验 → 回同 id 的 `hello_ack`**。服务端身份（serverId/version/protocolVersion）并入 `hello_ack` body，不再单发 Server 侧 `hello`。
+
+- `hello` body：`{ peerId, platform, version, protocolVersion }`（全部必填，protocolVersion 为语义化三元组）。
+- `hello_ack` body：`{ ok: true, serverId, version, protocolVersion }` 或 `{ ok: false, reason }`。
+- 协议版本不匹配 → `ok: false` + 关连接。
+
+### 5.2 心跳
+
+`ping`（Peer→Server，请求带 id，body `{ timestamp }`）→ `pong`（同 id 回带 timestamp）。空闲超时由服务端检测（阈值注入），多阈值假连接检测留正式版。
+
+### 5.3 chat 双向
+
+- Server→Peer `chat`：`{ playerName, content }`（游戏聊天事件，无 id）。
+- Peer→Server `chat`：`{ sender, content }`（平台消息，无 id）。同型不同体，按方向校验。
+
+### 5.4 IPC 帧（Java ↔ Node，stdin/stdout JSON-lines）
+
+帧结构复用 §1 的 `{ header: { type, id? }, body }`（决策 D-04）：
+
+| type | 方向 | 帧型 | body |
+|---|---|---|---|
+| `ready` | Node→Java | 事件 | `{ wsPort }` |
+| `game_chat` | Java→Node | 事件 | `{ playerName, content }` |
+| `broadcast` | Node→Java | 请求（id） | `{ message }` |
+| `broadcast_result` | Java→Node | 响应（同 id） | `{ ok: true }` \| `{ ok: false, error }` |
+| `execute_command` | Node→Java | 请求（id） | `{ command }` |
+| `execute_command_result` | Java→Node | 响应（同 id） | 同上 |
+| `shutdown` | Java→Node | 事件 | `{ reason }` |
+
+### 5.5 帧校验规则（决策 D-09）
+
+- `type` 必须 snake_case（`^[a-z][a-z0-9_]*$`）；`id` 存在时必须 UUID。
+- 事件帧携带 id → 校验失败（严格拒绝，尽早暴露方向用错）；请求/响应帧 id 必填。
+- 聚合 schema 用 `z.union` 平铺（zod 4.4.3 不支持嵌套判别路径 `header.type`）。
