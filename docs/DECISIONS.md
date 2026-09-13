@@ -137,3 +137,45 @@
   - **Velocity（代理）**：API 稳定，单 jar 通吃 3.x。
 - **理由**：薄壳架构（ADR-005）天然支持——适配层绑定版本，业务核心（bridge/core + :core）版本无关，避免为每个版本重复实现业务。
 - **实施**：2026-08-11 新增 `neoforge/` 预留模块（ModDevGradle，尚未接入）。
+
+## ADR-022 内嵌协议端以孙进程形态由 Node 引导层拉起（2026-09-13，原型候选 A 转正）
+
+- **背景**：embedded 形态下协议端（napukettoqq）与业务核心（bridge/core）同在 Node 世界，有两种宿主形态：与 core 同进程，或独立进程。原架构书未定稿。
+- **选项**：
+  1. 协议端与 core 同进程（一个 Node 进程干所有事）。
+  2. 协议端为**孙进程**：Java 只拉起 Node 引导层（bridge/embedded，内含 core + WS 服务端），引导层 `listen(0)` 拿动态端口后再以子进程拉起协议端（端口经 argv 注入）。
+- **结论**：**选 2（孙进程）**。Java 永远只管一个子进程（生命周期级联 Java→node→协议端）；协议端走与 external 完全相同的 WS client 路径——「embedded / external 只是打包差异，不是架构差异」（架构书 §1）在进程拓扑上同样成立。
+- **实证**（`docs/PROTOTYPE-NOTES.md` D-05、「架构发现」TS 链路烟囱与端到端两段）：孙进程生命周期级联（正常关机 shutdown 帧先杀孙进程再退出、stdin EOF 兜底、无孤儿进程）与「协议端 = 普通 WS 对端」在真实 Paper 1.21.4 沙盒验证通过。
+- **理由**：
+  - 协议端崩溃不拖垮业务核心（进程隔离），反之亦然；
+  - 协议端不必感知 IPC 与 core 内部结构，只实现 WS 客户端，未来替换为 napukettoqq 零架构改动；
+  - Java 侧进程管理复杂度不随协议端数量增长。
+- **回退条件**：内存受限环境（协议端 + core 两个进程开销不可接受时）可合并为单进程——`bridge/core` 一行不动，只改 `bridge/embedded` 引导层把协议端从 `spawn` 改为同进程 import 加载。
+
+## ADR-023 握手收敛为单程 hello + hello_ack（2026-09-13，原型候选 B 转正）
+
+- **背景**：draft-v0.1 §1 原设计双向 `hello`（Server→Peer 注册 + Peer→Server 注册），语义重叠。
+- **选项**：保留双向 hello / 收敛为单程握手。
+- **结论**：**单程握手**——Peer 连入 → 发 `hello`（请求，带 id：peerId/platform/version/protocolVersion）→ Server 校验 → 回同 id 的 `hello_ack`（携带 serverId/version/protocolVersion 的 ok 体，或 error 体 + 关连接 1002）。废除 Server 侧主动 `hello`。
+- **实证**（`docs/PROTOTYPE-NOTES.md` D-01）：原型按此实现，握手/版本不匹配拒绝/重复 hello 忽略均有单测与沙盒验证。
+- **理由**：请求-响应模型与 UUID 关联机制（ADR-003/010）天然对齐，少一种帧型；服务端身份信息并入 ack body，不损失能力。正式版若需服务端主动注册可再拆出。
+- **连带**：`docs/protocol/draft-v0.1.md` §1 的双向 hello 语义作废，以 §5.1（单程握手）为准。
+
+## ADR-024 协议包常驻「解析层」：线格式 → 扁平消息 transform（2026-09-13，原型候选 C 转正）
+
+- **背景**：帧线格式为嵌套 `{ header: { type, id? }, body } }`（ADR-003/D-04），但 TS 对嵌套判别（`frame.header.type`）无法收窄 union（TS 7/tsgo 实测，见 `docs/PROTOTYPE-NOTES.md` D-11），消费方需逐分支二次 `safeParse` 才能拿到精确类型。
+- **选项**：
+  1. 消费方逐分支二次 `safeParse`（重复解析、运行时多一次全量校验）。
+  2. 把 `type` 提到线格式帧顶层（改变已定稿的帧结构，Java 侧连带改动）。
+  3. **协议包内做 transform**：解析层把线格式摊平为 `{ type, id?, body }` 扁平消息，出帧统一走 `encodeFrame`。
+- **结论**：**选 3**，并作为常驻设计（协议解析层的雏形）：`bridge/protocol` 的帧 schema 在 `.transform()` 内完成「线格式 → 扁平消息」，线格式不变（Java 侧零影响）；消费方 `msg.type === "hello"` 原生收窄，出帧一律 `encodeFrame(message)`。
+- **实证**（`docs/PROTOTYPE-NOTES.md` D-11 与「架构发现」首段）：原型期已按此实现全部 schema 与两侧消费方；zod v4 对「泛型 body 对象输出 + transform」的推断缺陷用两个助手函数内的结构断言吸收（`frame as { header: …; body: … }`），断言不出助手函数。
+- **理由**：SSOT「线格式 = 消费格式」的代价被吸收在协议包内，消费方零感知；消息增多后该层即「协议解析层」，承担未来字段演进/兼容处理的唯一改动点。
+
+## ADR-025 WS 与 IPC 统一帧格式与 id 规则，`*_result` 显式响应帧型（2026-09-13，原型候选 D 转正）
+
+- **背景**：Java↔Node IPC（ADR-010）需要自己的消息格式；WS 侧已有 `{ header: { type, id? }, body }`。
+- **选项**：IPC 自定义格式 / 完全复用 WS 帧格式。
+- **结论**：**完全复用**：同一帧格式，仅 type 命名空间不同（IPC 侧 snake_case 事件/请求名）。id 规则统一：**事件帧无 id（携带 id 即校验失败，尽早暴露方向用错），请求/响应帧 id 必填（UUID 关联）**。IPC 请求-响应用显式 `*_result` 帧型（`broadcast` → `broadcast_result`，同 id），不用通用 `result` 帧。
+- **实证**（`docs/PROTOTYPE-NOTES.md` D-03/D-04）：原型两侧（zod schema + Java Jackson DTO 镜像）按此实现，编解码/严格拒绝/请求-响应关联均有单测与真管道集成测试。
+- **理由**：一套帧 schema、一套编解码心智模型、Java 侧一套 Jackson DTO；显式响应帧型让每条响应有自己的 body schema，判别信息不重复、类型收敛，两侧都不需要二次分发。放弃的「单一 `ipc_result` 帧 + body 内嵌 type」方案存在判别信息重复。
