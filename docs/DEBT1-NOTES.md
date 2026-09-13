@@ -64,8 +64,9 @@ runtime.autoRestart）、STATUS/ADR（双方都要追加结论与新编号）。
   `:core` 的 EmbeddedRuntime / InboundFrame / IpcFrameCodec / NodeIpc / NodeIpcListener /
   NodeSupervisor(新) / KurobotVersions(新) / NodeSupervisorTest(新)、
   NodeIpcTest / NodeIpcBundleIntegrationTest、`:paper` 的 NodeRequestHandler。
-- 本会话足迹仅两处（均无代码影响）：`bridge/protocol/docs/design.md` 的「债务清偿一」
-  设计小节（15 行，未提交）与本文（新建）。
+- 本会话足迹仅两处（均无代码影响），已随 **941e5d7** 以路径限定方式入库（未卷入对方
+  任何在途代码；提交时 lefthook 门禁恰为绿、GPG 签名正常）：
+  `bridge/protocol/docs/design.md` 的「债务清偿一」设计小节（15 行）与本文。
 
 ## 已完成工作（阶段 0 部分，复跑可直接复用）
 
@@ -100,4 +101,4 @@ runtime.autoRestart）、STATUS/ADR（双方都要追加结论与新编号）。
 5. **NodeIpc 基线**：DEBT-2 重构了退出通知/看护链路，阶段 4 的 execute_command 输出收集
    （IpcResult 增 output、Result 帧扩展）与 sendPlayerDeath/sendConfigReload 需在重构后
    的形状上实现。
-6. 若本会话的设计小节仍留在工作区（未提交），复跑会话可直接采用或按需改写。
+6. 本会话的设计小节已随 941e5d7 入库，复跑会话可直接采用或按需改写。
