@@ -114,6 +114,7 @@ export {
     deathFrame,
     gameChatFrame,
     helloAckFrame,
+    helloFrame,
     joinFrame,
     leaveFrame,
     pingFrame,
@@ -122,6 +123,7 @@ export {
     queryFrame,
     queryResultFrame,
     statusFrame,
+    WS_INBOUND_TYPES,
     wsInboundFrame,
     wsOutboundFrame,
 } from "./messages/ws.js";

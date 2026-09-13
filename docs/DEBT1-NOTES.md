@@ -85,6 +85,10 @@ runtime.autoRestart）、STATUS/ADR（双方都要追加结论与新编号）。
 
 ## 阶段 1~5 未开始
 
+> **复跑修正（2026-09-13）**：本小节已过时——阶段 1（1c32578）、阶段 2（7f0f6c7）已在
+> 复跑会话完成提交，embedded bootstrap 一并随阶段 2 落地；阶段 1/2 期间未及时记入本文件
+> 的决策，由阶段 5 收尾统一回填（编号顺延既有最大号）。
+
 任务书 §3 的阶段 1（protocol 0.3.0）、阶段 2（core）、阶段 3（embedded + stub）、
 阶段 4（:core/:paper）、阶段 5（沙盒验收 + 文档收尾）均未动笔，无半成品代码遗留。
 
@@ -102,3 +106,42 @@ runtime.autoRestart）、STATUS/ADR（双方都要追加结论与新编号）。
    （IpcResult 增 output、Result 帧扩展）与 sendPlayerDeath/sendConfigReload 需在重构后
    的形状上实现。
 6. 本会话的设计小节已随 941e5d7 入库，复跑会话可直接采用或按需改写。
+
+---
+
+# 复跑会话记录（2026-09-13 起，按阶段追加）
+
+## 阶段 3（bridge/embedded + stub）
+
+### D1-02 发现并修复：阶段 2 提交漏带协议包导出，HEAD 曾处于不自洽状态
+
+- 阶段 2 的 `bridge/core/src/server.ts` 已 `import { helloFrame, WS_INBOUND_TYPES }
+  from "@kurobot/protocol"`，但这两个导出在 `bridge/protocol/src` 的对应改动**未随
+  7f0f6c7 提交**（遗留在工作区）。当时 `pnpm check` 能过纯靠本地 dist 产物恰好包含
+  导出（红线 5 的「跨包解析走 dist」掩盖了源不一致）——新 clone 直接构建必红。
+- 处置：两个协议文件随阶段 3 提交一并入库。教训（阶段 5 复盘用）：提交前应
+  `git stash` 工作区再验一次门禁，或提交后立刻 `git status` 确认无漏网文件。
+- 替代方案（放弃）：单独出 fixup 提交——本阶段尚未提交过任何内容，并入阶段 3 提交
+  代价最小且提交说明可完整说明来龙去脉。
+
+### D1-03 stub 交互命令的连接跟踪方式：connect() 内直赋 currentWs
+
+- 半成品版本在文件末尾用「包装 connect + 再 new 一个 WebSocket」跟踪当前连接，
+  实际会向服务端建立**两条**连接：被跟踪的那条无任何事件处理器，交互命令全部发到
+  死套接字。改为在 `connect()` 内部直接 `currentWs = ws`，删掉包装。
+- 顺带删除无引用的 `resultTypeOf`（结果帧匹配用 `endsWith("_result")` 已覆盖）。
+
+### 其余落实情况
+
+- **bootstrap 注入 token/admins**：已随阶段 2 提前落地（`bridge/embedded/src/index.ts`
+  ——CoreContext 注入 token（reload 不刷新，改 token 需重启）、Relay 注入 AdminTable、
+  降级路径 `defaultConfig()`、启动日志含鉴权/管理员状态）。
+- **NodeConfigStore 新字段**：零额外改动——`writeDefault` 走 core 的 `defaultConfig()`
+  （0.3.0 起自含 `token: ""` / `admins: []` / `runtime`），旧配置缺字段经 zod default
+  补齐（core config.test.ts 已覆盖向后兼容），「缺省生成兼容旧配置」天然成立；
+  embedded 包无单测（包策略如此，沙盒验收兜底）。
+- **stub 0.3.0**：版本常量、hello 可选 token、三个任务书 env 钩子 +
+  SEND_COMMAND/SEND_QUERY/SEND_UNKNOWN 自动化序列、stdin 交互命令、death/
+  command_result/query_result/未知回执处理；DEBT-2 自杀逻辑原样保留。
+- 门禁：`mise exec -- pnpm -r build` / `pnpm check` / `pnpm test`（138 用例）全绿；
+  embedded/stub 不涉 Java，gradle 门禁留阶段 4 一并跑。

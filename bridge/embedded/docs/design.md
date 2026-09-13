@@ -114,3 +114,32 @@ src/
   （kill-on-close）——强杀 node 后 stub 立即级联退出，孤儿不存活；本节自杀上限为纵深
   防御（external 对端形态 / 运行时行为变化时为主防线）。独立验证（bash 直spawn stub
   连死端口）确认 10 次失败 → 退出码 1 全程 ~181s。
+
+## 债务清偿一（DEBT-1，2026-09-13）：bootstrap 注入 token/admins + stub 0.3.0
+
+> 任务书：`docs/DEBT1-PROMPT.md` §3 阶段 3。在 DEBT-2 形态上叠加，不回退自杀逻辑。
+
+### bootstrap
+
+- `CoreContext` 注入 `token: initialConfig.token`；`Relay` 注入
+  `new AdminTable(initialConfig.admins)`（业务态与 BindingTable 对称）。
+- 配置加载失败降级路径改用 `defaultConfig()`（0.3.0 起自含 token/admins/runtime 全字段）。
+- 启动日志补鉴权状态与管理员映射条数（沙盒验收 grep 用）。
+
+### stub 0.3.0（stub/peer.mjs）
+
+- 版本常量 → 0.3.0；hello 可携带 token。
+- **env 钩子**（前三个为任务书指定）：
+  - `KUROBOT_STUB_PROTOCOL_VERSION`：覆盖 hello.protocolVersion（验协商拒绝 / 0.2.0 兼容连入）。
+  - `KUROBOT_STUB_TOKEN`：hello 携带 token。
+  - `KUROBOT_STUB_ADMIN_SOURCE`：command 帧的 source 覆盖，格式 `channel:userId`
+    （缺省 `stub-channel:stub-admin`，与沙盒配置 admins 对齐）。
+  - `KUROBOT_STUB_SEND_COMMAND` / `KUROBOT_STUB_SEND_QUERY` / `KUROBOT_STUB_SEND_UNKNOWN`：
+    握手成功后自动发送的验收序列（无人值守沙盒验收驱动；SEND_COMMAND 支持 `;` 分隔、
+    顺序发送且逐条等待结果，query 支持 `status`/`bindings`/逗号并列，unknown 取
+    `event`/`request`）。结果帧（command_result/query_result/未知回执）以醒目格式打印。
+- **交互命令**（stdin 行命令，standalone 运行 stub 时可用；被 node 以 stdio ignore 拉起时
+  stdin 即 EOF，静默禁用不影响常驻）：`command <文本...>` / `query <status|bindings>` /
+  `unknown <event|request>`。
+- 处理新帧：`death` / `command_result` / `query_result` / `<type>_result`（未知请求帧回执）打印。
+- DEBT-2 的「连续重连 10 次自杀」原样保留（复跑指引 3）。

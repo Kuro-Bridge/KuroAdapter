@@ -231,3 +231,9 @@ export const wsOutboundFrame = z.union([
     commandResultFrame,
     queryResultFrame,
 ]);
+
+/**
+ * 服务端已知收帧 type 清单（两段式解析的「已知/未知」分界，ADR-026 未知帧容忍）：
+ * wire 阶段取出的 type 不在此列表内 → 未知帧容忍路径；在列表内但具体校验失败 → warn 丢弃。
+ */
+export const WS_INBOUND_TYPES: readonly string[] = ["hello", "ping", "chat", "command", "query"];
