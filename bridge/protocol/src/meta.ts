@@ -9,10 +9,11 @@ export const PROTOCOL_NAME = "kurobot-ws" as const;
 
 /**
  * 语义化版本（ADR-026：hello.protocolVersion 按主版本兼容区间协商——0.2.0 对端可连
- * 0.3.0 服务端；v0.3.0 增鉴权 token、command/query 请求族、death 事件、config_reload——
- * DEBT-1，未知帧容忍为协商安全网）
+ * 0.3.0 服务端；v0.3.0 增鉴权 token、command/query 请求族、death 事件、config_reload
+ * ——DEBT-1，未知帧容忍为协商安全网；v0.3.1 增 hello 可选 client（对端自报身份，
+ * MVP-3，仅日志辨识不做行为分支））
  */
-export const PROTOCOL_VERSION = "0.3.0" as const;
+export const PROTOCOL_VERSION = "0.3.1" as const;
 
 /** WS 子协议（ADR-003：大版本，握手期拒绝不兼容对端） */
 export const WS_SUBPROTOCOL = "kurobot-ws.v1" as const;

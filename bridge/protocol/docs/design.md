@@ -75,3 +75,20 @@
 9. **聚合 union 更新**：`wsInboundFrame` 增 command/query；`wsOutboundFrame` 增 command_result/query_result/death；`ipcNodeInboundFrame` 增 player_death/config_reload；`ipcJavaInboundFrame` 不变。
 10. **PROTOCOL_VERSION `0.2.1` → `0.3.0`**（0.2.1 为 DEBT-2 顺延后的实际基线）；`WS_SUBPROTOCOL = "kurobot-ws.v1"` 不动（大版本未变）。
 
+## MVP 阶段三（协议 v0.3.1，2026-09-13）：external 接入基座
+
+> 任务书：`docs/MVP3-PROMPT.md`。本阶段服务端补「固定端口 + 绑定地址 + 安全基线」的
+> external 接入能力（napukettoqq 独立部署连入）；协议变更刻意最小（patch），帧形设计
+> 落点只有一处。
+
+1. **hello 可选 `client`（对端自报身份串）**：body 增可选 `client: string`——建议 `名称/版本`
+   形如 `napukettoqq/1.0`。服务端**仅用于连接日志辨识**（握手成功日志展示），不做任何行为
+   分支（未来真正的能力开关应以显式字段/协商机制引入，不劫持该字段）。
+   - 向后兼容双向成立：旧对端（0.2.x/0.3.0，不带 client）连 0.3.1 服务端正常握手（可选字段）；
+     新对端连旧服务端，client 被非严格 object 剥离（先例：0.2.1 的 ready 可选 autoRestart）。
+2. **`WS_SUBPROTOCOL`（kurobot-ws.v1）与版本兼容协商规则均不动**：主版本兼容区间（ADR-026）
+   下 0.3.1 为 patch 增量，0.2.0 对端仍可连入。
+3. **PROTOCOL_VERSION `0.3.0` → `0.3.1`**；Java 侧硬编码副本 `KurobotVersions` 同步（D2-05
+   维护约束）。
+4. vitest：client 携带/缺省均合法、非字符串拒绝；0.3.0 形状（无 client）握手回归。
+

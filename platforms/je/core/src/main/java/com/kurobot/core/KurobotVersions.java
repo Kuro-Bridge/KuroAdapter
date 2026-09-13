@@ -8,7 +8,7 @@ package com.kurobot.core;
  * stub 握手断言兜底暴露漂移）。
  */
 public final class KurobotVersions {
-    public static final String PROTOCOL_VERSION = "0.3.0";
+    public static final String PROTOCOL_VERSION = "0.3.1";
 
     private KurobotVersions() {}
 }

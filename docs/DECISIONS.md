@@ -200,3 +200,14 @@
 - **结论**：**选 2**。
 - **理由**：MC 的 whitelist.json 是服主已熟悉的事实标准（Vanilla/Paper 全生态兼容，`/whitelist on|off`、与 op 联动等语义免费获得）；双写镜像必然产生漂移（服主手改原生表 vs core 表互不知情）；core 平台无关约束（ADR-007）下读 whitelist.json 反而是平台耦合（BE 平台路径/格式各异）。输出回传链（收集型 CommandSender）让 `list`/`add` 结果原样可观测，业务价值不损失。
 - **回退条件**：出现「跨服务器共享白名单 / 群内可视化编辑白名单」等 core 必须持有数据的诉求时，再引入 core 白名单表 + 与原生表的单向同步。
+
+## ADR-028 external 接入基座：config.ws 监听段 + 绑定失败收敛于看护器 + 空 token WARN（2026-09-13，MVP-3）
+
+- **背景**：kurobot-ws 服务端此前只会 `listen(0)` 动态端口（embedded 孙进程形态够用）；external 形态（napukettoqq 独立部署、经配置端口主动连入，MVP-3 拍板只做该形态）需要固定端口 + 可选绑定地址 + 更强的安全基线。
+- **选项**（监听配置的归属）：
+  1. 配置只放 embedded（消费方所在地）。
+  2. **形状进 core configSchema（SSOT），消费在 embedded 引导层**。
+  3. 配置进 Java 薄壳。
+- **结论**：**选 2**。WS 监听参数是宿主事务（红线 2）：`KurobotServer`/`WsServer` 接口不感知 host/port，`start()` 返回实际端口的契约不变，ready 帧照报实际端口；core 只新增顶层可选段 `ws: {host?, port?}` 的 zod 形状（整段缺省 = 动态端口 + 全部接口，现状不变；只配 host = 动态端口 + 指定地址，合法）。绑定失败（含异步 EADDRINUSE——实测 ws 库经 `error` 事件异步到达、构造不抛）→ 明确 error 日志（含端口与原因）+ Node 非零退出，**不新增重试机制**：Java 看护器 1s/5s/15s 退避、10 分钟窗 3 次放弃（DEBT-2）自然覆盖长期端口冲突。安全基线：config 含 ws 段且 token 为空 → 启动 WARN 不阻断（保持空 token 向后兼容语义）。
+- **理由**：SSOT 单一来源避免 config-schema 文档与双实现漂移；Java 零感知（选 3 会把 WS 监听细节漏进桥接薄壳，违背红线 2/3）；绑定失败收敛于既有看护器语义，避免第二套重试状态机与「服务端自旋重绑」的风暴风险。
+- **协议增量**：0.3.0 → 0.3.1（patch），hello 可选 `client` 自报身份串（建议 `名称/版本`），仅连接日志辨识、不做行为分支；0.2.x/0.3.0 对端双向兼容（可选字段 + 剥离未知键）。

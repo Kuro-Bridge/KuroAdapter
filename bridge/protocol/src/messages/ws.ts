@@ -8,6 +8,8 @@
  * command / query 请求族（Peer→Server，UUID 请求-响应）与 command_result / query_result
  * 响应（Server→Peer）；新增 death 事件（Server→Peer，按绑定频道 fan-out）。
  *
+ * v0.3.1（MVP-3）：hello 增可选 client（对端自报身份串，仅连接日志辨识，不做行为分支）。
+ *
  * 注意：chat 在两个方向 body 形状不同（playerName / sender），
  * 消费方按方向选用 GameChatFrame / PlatformChatFrame（决策 D-01/D-09）。
  * 所有 *Frame 类型均为扁平消息 { type, id?, body }（决策 D-11）。
@@ -28,6 +30,11 @@ const helloBodySchema = z.object({
      * ok:false "auth failed" + close 1008；服务端缺省 "" = 不鉴权。
      */
     token: z.string().optional(),
+    /**
+     * 对端自报身份串（v0.3.1 可选，MVP-3）：建议 `名称/版本` 形如 napukettoqq/1.0。
+     * 服务端仅用于连接日志辨识（握手成功日志展示），不做任何行为分支。
+     */
+    client: z.string().optional(),
 });
 
 /** 对端注册（请求，Server 必须回同 id 的 hello_ack） */

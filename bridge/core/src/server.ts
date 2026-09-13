@@ -456,7 +456,11 @@ export class KurobotServer {
                 },
             }),
         );
-        this.context.logger.info(`对端 ${body.peerId} 握手成功（platform=${body.platform}）`);
+        // client 自报身份（v0.3.1，MVP-3）：仅连接日志辨识，不做行为分支
+        const clientSuffix = body.client === undefined ? "" : `，client=${body.client}`;
+        this.context.logger.info(
+            `对端 ${body.peerId} 握手成功（platform=${body.platform}${clientSuffix}）`,
+        );
     }
 
     private rejectHello(

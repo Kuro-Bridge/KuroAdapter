@@ -143,3 +143,41 @@ src/
   `unknown <event|request>`。
 - 处理新帧：`death` / `command_result` / `query_result` / `<type>_result`（未知请求帧回执）打印。
 - DEBT-2 的「连续重连 10 次自杀」原样保留（复跑指引 3）。
+
+## MVP 阶段三（MVP-3，2026-09-13）：NodeWsServer 参数化 + external 安全基线
+
+> 任务书：`docs/MVP3-PROMPT.md`。external 形态（napukettoqq 独立部署、经配置端口连入）的
+> 接入基座：固定端口 + 绑定地址 + 绑定失败语义 + 空 token WARN + stub 独立连入模式。
+
+### NodeWsServer 参数化（host/port）
+
+- 构造器收 `NodeWsServerOptions { host?: string | undefined, port?: number | undefined }`
+  （缺省 = 现状：动态端口、全部接口）；bootstrap 从 `config.ws`（core configSchema 是形状
+  SSOT）读出传入。成员声明 `?: T | undefined` 是 exactOptionalPropertyTypes 下的显式
+  undefined 豁免（bootstrap 可直接 `config.ws?.host` 传入）。
+- `KurobotServer` / `WsServer` 接口不感知监听参数：`start()` 返回实际端口的契约不变，
+  ready 帧照报实际端口（固定端口配置下即配置值）。
+- **实测依据（Node 26.7.0 + ws 8.x）**：`new WebSocketServer({port, host})` 构造时同步发起
+  listen；**EADDRINUSE 不在构造时抛**，经底层 http server 以 `error` 事件**异步**转发
+  （ws 源码 `addListeners` 转发 listening/error/upgrade）；`address()` 构造后同步可得
+  （listen(0) 立即回真实端口）。因此 `start()` 以**先挂的一次性 `error` 监听**为失败判据、
+  `listening` 事件为成功判据做竞态收口：listening 先到 → 移除一次性 error 监听并 resolve
+  （不依赖 address() 的同步可得性，跨 Node 版本稳健）。
+- **绑定失败语义（任务书拍板）**：`start()` 以 `WsBindError`（message 含 host/port 与原因）
+  reject → bootstrap 打**明确 error 日志**（含端口与原因）→ Node 进程 **exit(1) 非零退出**。
+  **不新增重试机制**：Java 看护器按 1s/5s/15s 退避自然重试、10 分钟窗 3 次失败放弃（DEBT-2
+  既有语义），长期端口冲突收敛为「放弃 + 日志」。
+- listening 之后的 `error` 事件（非绑定失败，如 accept 层错误）注入 logger 打 error 日志、
+  不退出（仅防未处理 error 事件炸进程；超出本册范围）。
+
+### 空 token 安全基线（external 暴露面变大）
+
+- config 含 `ws` 段且 `token` 为空 → bootstrap 启动打 **WARN**（提示 external 模式建议配置
+  token），不阻断启动（保持空 token 向后兼容语义）。
+
+### stub 独立连入模式（模拟 external 对端）
+
+- 新 env 钩子：`KUROBOT_STUB_WS_URL` 覆盖连接地址（缺省维持 `ws://127.0.0.1:<argv[2]>`）——
+  stub 可不经孙进程拉起、以独立进程模拟 external 对端连入（设该变量时 argv 端口可省略）；
+  `KUROBOT_STUB_CLIENT` hello 携带 `client` 自报身份（验服务端握手日志展示，协议 0.3.1）。
+- 既有钩子（PROTOCOL_VERSION/TOKEN/ADMIN_SOURCE/SEND_*）与重连 10 次自杀逻辑不动。

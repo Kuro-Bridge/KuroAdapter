@@ -110,6 +110,47 @@ describe("WS 侧 hello / hello_ack", () => {
             }).success,
         ).toBe(false);
     });
+
+    it("hello 的 client 可选（v0.3.1）：携带与缺省均合法，非字符串被拒", () => {
+        const base = {
+            peerId: "stub",
+            platform: "napukettoqq",
+            version: "1.0",
+            protocolVersion: "0.3.1",
+        };
+        expect(
+            helloFrame.safeParse({ header: { type: "hello", id: UUID }, body: base }).success,
+        ).toBe(true);
+        const withClient = helloFrame.safeParse({
+            header: { type: "hello", id: UUID },
+            body: { ...base, client: "napukettoqq/1.0" },
+        });
+        expect(withClient.success).toBe(true);
+        // 自报身份原样保留（仅日志展示用，服务端不改写）
+        if (withClient.success) {
+            expect(withClient.data.body.client).toBe("napukettoqq/1.0");
+        }
+        expect(
+            helloFrame.safeParse({
+                header: { type: "hello", id: UUID },
+                body: { ...base, client: 42 },
+            }).success,
+        ).toBe(false);
+    });
+
+    it("0.2.x/0.3.0 旧对端形状（无 client/token）仍然合法（兼容回归）", () => {
+        expect(
+            helloFrame.safeParse({
+                header: { type: "hello", id: UUID },
+                body: {
+                    peerId: "old-peer",
+                    platform: "stub",
+                    version: "0.0.1",
+                    protocolVersion: "0.2.0",
+                },
+            }).success,
+        ).toBe(true);
+    });
 });
 
 describe("WS 侧心跳", () => {

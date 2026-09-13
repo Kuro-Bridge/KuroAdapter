@@ -216,3 +216,23 @@ bindings_updated）→ load 失败 error 日志、保留旧值等下次修复。
 （`{channel, users}`，缺省 `[]`；entry 按 channel 去重保序、entry 内 users 去重保序，
 语义对齐 channels）。**runtime 段原样保留**（DEBT-2 语义不动，复跑指引 2）。`defaultConfig`
 同步扩展（生成的默认配置文件自含字段说明作用）。
+
+## MVP 阶段三（MVP-3，2026-09-13）：config 增 ws 监听段（SSOT 形状）
+
+> 任务书：`docs/MVP3-PROMPT.md`。WS 监听参数（host/port）是**宿主事务**（红线 2）：
+> core 只提供配置形状 SSOT 与解析，消费方在 bridge/embedded 引导层；`KurobotServer` 与
+> `WsServer` 接口**不感知**监听参数——`start()` 返回实际端口、ready 帧照报实际端口的
+> 契约不变，本包其余零改动。
+
+- `configSchema` 增顶层可选段 `ws: { host?: string, port?: number }`：
+  - **整段缺省 = 现状不变**（动态端口、不指定绑定地址——全部接口）。
+  - `port`（1-65535 整数）→ 固定端口（external 对端连入点）；`host`（非空串）→ 绑定指定
+    地址（如 `127.0.0.1` 只听本机）；**只配 host 不配 port = 动态端口 + 指定地址**（合法）。
+  - `KurobotConfig.ws` 可选（exactOptionalPropertyTypes 下成员声明为 `?: T | undefined`，
+    消费方 `config.ws?.port` 取值）；`parseConfig` 条件展开透传；`defaultConfig()` **不含
+    ws 段**（生成的默认配置维持动态端口现状）。
+- 归属论证（ADR-028）：形状进 core 是 SSOT 惯例的延续（token/admins/runtime 同款），
+  避免 `docs/config-schema.md` 出现第二处来源；Java 侧零感知。放弃方案：配置只放 embedded
+  （SSOT 破裂）、配置进 Java 薄壳（WS 细节漏进桥接层，违背红线 2/3）。
+- 空 token 安全基线（config 含 ws 段且 token 为空 → WARN）的打点在 embedded bootstrap，
+  core 只定义形状，不做行为。
