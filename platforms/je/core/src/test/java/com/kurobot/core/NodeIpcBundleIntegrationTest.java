@@ -66,10 +66,11 @@ class NodeIpcBundleIntegrationTest {
             assertTrue(call.message().contains("stub 协议端"), "消息内容异常：" + call.message);
             call.result().ok();
 
-            // 3) 游戏 → 平台：Java 发 game_chat，stub 的 stderr 应打印「收到游戏聊天」
+            // 3) 游戏 → 平台：Java 发 game_chat，stub 的 stderr 应打印游戏聊天
+            //（断言用 channel 无关子串——v0.2 起 stub 日志携带 [channel] 前缀，频道值随阶段演进）
             ipc.sendGameChat("IntegrationTest", "来自 Java 的问候");
             assertTrue(
-                    awaitStderrLineContaining("收到游戏聊天：<IntegrationTest> 来自 Java 的问候", Duration.ofSeconds(15)),
+                    awaitStderrLineContaining("<IntegrationTest> 来自 Java 的问候", Duration.ofSeconds(15)),
                     "stub 应通过 stderr 中继收到游戏聊天，实际收到：" + stderrLines);
 
             // 4) 在途请求结算验证（平台消息的 result ok 不应悬挂）

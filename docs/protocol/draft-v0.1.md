@@ -98,3 +98,28 @@ draft §1 的双向 `hello` 收敛为单程握手：**Peer 连入 → 发 `hello
 - `type` 必须 snake_case（`^[a-z][a-z0-9_]*$`）；`id` 存在时必须 UUID。
 - 事件帧携带 id → 校验失败（严格拒绝，尽早暴露方向用错）；请求/响应帧 id 必填。
 - 聚合 schema 用 `z.union` 平铺（zod 4.4.3 不支持嵌套判别路径 `header.type`）。
+
+## 6. v0.2 变更（MVP 阶段一，2026-09-13）
+
+> schema 实现见 `bridge/protocol/src/`；PROTOCOL_VERSION `0.1.0 → 0.2.0`（D-10 精确相等
+> 策略下，对端 hello 需同步升版本）。
+
+### 6.1 channel 概念（对齐 ADR-004）
+
+- WS `chat` 双向 body 各加 `channel: string`：游戏侧 `{channel, playerName, content}`，
+  平台侧 `{channel, sender, content}`。channel 是服务端绑定表的频道标识（如群号）；
+  游戏事件由服务端**按绑定频道逐频道 fan-out**（每频道一帧），平台消息按 channel 过滤。
+- `hello_ack` ok 体加 `channelBindings: string[]`（服务端绑定表快照随握手下发，空数组合法）。
+- IPC `broadcast` 请求 body 加 channel（`{channel, message}`；Java 侧 MVP 只广播不区分）。
+- IPC `game_chat` / `player_join` / `player_quit` **不携带 channel**——Java 零业务，
+  fan-out 是 Node 侧职责。
+
+### 6.2 新事件集
+
+| type | 方向 | body | 说明 |
+|---|---|---|---|
+| `join` / `leave` | Server→Peer 事件 | `{channel, playerName}` | 玩家进出服，按绑定频道 fan-out |
+| `status` | Server→Peer 事件 | `{tps, onlinePlayers, uptimeSeconds}` | 全服状态（无 channel）；Java 在 join/quit 时机经 IPC `status` 事件推送，Node 中继 |
+| `bindings_updated` | Server→Peer 事件 | `{channelBindings: string[]}` | 变更后**完整列表**（非增量）；配置变更时发给已握手对端 |
+| `player_join` / `player_quit` | Java→Node IPC 事件 | `{playerName}` | Bukkit 事件桥接（IPC 帧名描述事件源，WS 帧名是协议事件，对齐 `game_chat`/`chat` 模式） |
+| `status` | Java→Node IPC 事件 | 同 WS status body | tps=1 分钟均值（Paper `getTPS()[0]`），uptime 取 JVM uptime |

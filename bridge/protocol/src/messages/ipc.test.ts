@@ -8,8 +8,11 @@ import {
     gameChatEventFrame,
     ipcJavaInboundFrame,
     ipcNodeInboundFrame,
+    playerJoinEventFrame,
+    playerQuitEventFrame,
     readyFrame,
     shutdownFrame,
+    statusEventFrame,
 } from "./ipc.js";
 
 const UUID = "123e4567-e89b-12d3-a456-426614174000";
@@ -30,11 +33,11 @@ describe("IPC ready（Node→Java）", () => {
 });
 
 describe("IPC 请求-响应（UUID 关联）", () => {
-    it("broadcast / execute_command 请求必须带 id", () => {
+    it("broadcast / execute_command 请求必须带 id；broadcast 携带 channel（v0.2）", () => {
         expect(
             broadcastRequestFrame.safeParse({
                 header: { type: "broadcast", id: UUID },
-                body: { message: "hi" },
+                body: { channel: "10001", message: "hi" },
             }).success,
         ).toBe(true);
         expect(
@@ -46,6 +49,12 @@ describe("IPC 请求-响应（UUID 关联）", () => {
         expect(
             broadcastRequestFrame.safeParse({
                 header: { type: "broadcast" },
+                body: { channel: "10001", message: "hi" },
+            }).success,
+        ).toBe(false);
+        expect(
+            broadcastRequestFrame.safeParse({
+                header: { type: "broadcast", id: UUID },
                 body: { message: "hi" },
             }).success,
         ).toBe(false);
@@ -88,6 +97,42 @@ describe("IPC 事件（Java→Node）", () => {
             false,
         );
     });
+
+    it("player_join / player_quit 携带 playerName（v0.2，无 channel——fan-out 是 Node 侧业务）", () => {
+        expect(
+            playerJoinEventFrame.safeParse({
+                header: { type: "player_join" },
+                body: { playerName: "Alex" },
+            }).success,
+        ).toBe(true);
+        expect(
+            playerQuitEventFrame.safeParse({
+                header: { type: "player_quit" },
+                body: { playerName: "Alex" },
+            }).success,
+        ).toBe(true);
+        expect(
+            playerJoinEventFrame.safeParse({
+                header: { type: "player_join", id: UUID },
+                body: { playerName: "Alex" },
+            }).success,
+        ).toBe(false);
+    });
+
+    it("status 事件与 WS status body 同构", () => {
+        expect(
+            statusEventFrame.safeParse({
+                header: { type: "status" },
+                body: { tps: 19.9, onlinePlayers: 2, uptimeSeconds: 600 },
+            }).success,
+        ).toBe(true);
+        expect(
+            statusEventFrame.safeParse({
+                header: { type: "status" },
+                body: { tps: 19.9, onlinePlayers: -1, uptimeSeconds: 600 },
+            }).success,
+        ).toBe(false);
+    });
 });
 
 describe("IPC 聚合帧集（按进程侧收敛）", () => {
@@ -102,7 +147,7 @@ describe("IPC 聚合帧集（按进程侧收敛）", () => {
         ).toBe(false);
     });
 
-    it("Node 收帧集只接受 Java 发出的帧", () => {
+    it("Node 收帧集只接受 Java 发出的帧（含 v0.2 新事件）", () => {
         expect(
             ipcNodeInboundFrame.safeParse({
                 header: { type: "game_chat" },
@@ -113,5 +158,23 @@ describe("IPC 聚合帧集（按进程侧收敛）", () => {
             ipcNodeInboundFrame.safeParse({ header: { type: "ready" }, body: { wsPort: 80 } })
                 .success,
         ).toBe(false);
+        expect(
+            ipcNodeInboundFrame.safeParse({
+                header: { type: "player_join" },
+                body: { playerName: "A" },
+            }).success,
+        ).toBe(true);
+        expect(
+            ipcNodeInboundFrame.safeParse({
+                header: { type: "player_quit" },
+                body: { playerName: "A" },
+            }).success,
+        ).toBe(true);
+        expect(
+            ipcNodeInboundFrame.safeParse({
+                header: { type: "status" },
+                body: { tps: 20, onlinePlayers: 1, uptimeSeconds: 1 },
+            }).success,
+        ).toBe(true);
     });
 });

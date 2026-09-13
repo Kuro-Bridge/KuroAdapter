@@ -1,12 +1,16 @@
 import { describe, expect, it } from "vitest";
 
 import {
+    bindingsUpdatedFrame,
     gameChatFrame,
     helloAckFrame,
     helloFrame,
+    joinFrame,
+    leaveFrame,
     pingFrame,
     platformChatFrame,
     pongFrame,
+    statusFrame,
     wsInboundFrame,
     wsOutboundFrame,
 } from "./ws.js";
@@ -17,7 +21,7 @@ describe("WS 侧 hello / hello_ack", () => {
     it("合法 hello 通过，且 id 必填（UUID）", () => {
         const parsed = helloFrame.safeParse({
             header: { type: "hello", id: UUID },
-            body: { peerId: "stub", platform: "stub", version: "0.0.1", protocolVersion: "0.1.0" },
+            body: { peerId: "stub", platform: "stub", version: "0.0.1", protocolVersion: "0.2.0" },
         });
         expect(parsed.success).toBe(true);
     });
@@ -25,7 +29,7 @@ describe("WS 侧 hello / hello_ack", () => {
     it("缺 id 的 hello 被拒（请求帧必须携带 UUID）", () => {
         const parsed = helloFrame.safeParse({
             header: { type: "hello" },
-            body: { peerId: "stub", platform: "stub", version: "0.0.1", protocolVersion: "0.1.0" },
+            body: { peerId: "stub", platform: "stub", version: "0.0.1", protocolVersion: "0.2.0" },
         });
         expect(parsed.success).toBe(false);
     });
@@ -33,22 +37,44 @@ describe("WS 侧 hello / hello_ack", () => {
     it("protocolVersion 非语义化三元组被拒", () => {
         const parsed = helloFrame.safeParse({
             header: { type: "hello", id: UUID },
-            body: { peerId: "stub", platform: "stub", version: "0.0.1", protocolVersion: "0.1" },
+            body: { peerId: "stub", platform: "stub", version: "0.0.1", protocolVersion: "0.2" },
         });
         expect(parsed.success).toBe(false);
     });
 
-    it("hello_ack ok 分支携带服务端身份，error 分支携带 reason", () => {
+    it("hello_ack ok 携带服务端身份与 channelBindings；error 携带 reason", () => {
         const ok = helloAckFrame.safeParse({
             header: { type: "hello_ack", id: UUID },
-            body: { ok: true, serverId: "srv-1", version: "0.1.0", protocolVersion: "0.1.0" },
+            body: {
+                ok: true,
+                serverId: "srv-1",
+                version: "0.1.0",
+                protocolVersion: "0.2.0",
+                channelBindings: ["10001", "10002"],
+            },
         });
         expect(ok.success).toBe(true);
+        const emptyBindings = helloAckFrame.safeParse({
+            header: { type: "hello_ack", id: UUID },
+            body: {
+                ok: true,
+                serverId: "srv-1",
+                version: "0.1.0",
+                protocolVersion: "0.2.0",
+                channelBindings: [],
+            },
+        });
+        expect(emptyBindings.success).toBe(true);
         const err = helloAckFrame.safeParse({
             header: { type: "hello_ack", id: UUID },
             body: { ok: false, reason: "protocol mismatch" },
         });
         expect(err.success).toBe(true);
+        const missingBindings = helloAckFrame.safeParse({
+            header: { type: "hello_ack", id: UUID },
+            body: { ok: true, serverId: "srv-1", version: "0.1.0", protocolVersion: "0.2.0" },
+        });
+        expect(missingBindings.success).toBe(false);
         const bad = helloAckFrame.safeParse({
             header: { type: "hello_ack", id: UUID },
             body: { ok: false },
@@ -77,50 +103,138 @@ describe("WS 侧心跳", () => {
     });
 });
 
-describe("WS 侧 chat 双向同型不同体", () => {
-    it("游戏聊天（playerName）与平台聊天（sender）各自通过自己的 schema", () => {
+describe("WS 侧 chat 双向同型不同体（v0.2 携带 channel）", () => {
+    it("游戏聊天（channel+playerName）与平台聊天（channel+sender）各自通过自己的 schema", () => {
         const game = {
             header: { type: "chat" },
-            body: { playerName: "Steve", content: "hello world" },
+            body: { channel: "10001", playerName: "Steve", content: "hello world" },
         };
         const platform = {
             header: { type: "chat" },
-            body: { sender: "群里的小明", content: "大家好" },
+            body: { channel: "10001", sender: "群里的小明", content: "大家好" },
         };
         expect(gameChatFrame.safeParse(game).success).toBe(true);
         expect(platformChatFrame.safeParse(platform).success).toBe(true);
         // 交叉验证失败：方向不同的 body 形状不兼容
         expect(gameChatFrame.safeParse(platform).success).toBe(false);
         expect(platformChatFrame.safeParse(game).success).toBe(false);
+        // 缺 channel 被拒
+        expect(
+            platformChatFrame.safeParse({
+                header: { type: "chat" },
+                body: { sender: "小明", content: "大家好" },
+            }).success,
+        ).toBe(false);
+    });
+});
+
+describe("WS 侧 v0.2 新事件（Server→Peer，均无 id）", () => {
+    it("join / leave 携带 channel + playerName", () => {
+        const join = { header: { type: "join" }, body: { channel: "10001", playerName: "Steve" } };
+        const leave = {
+            header: { type: "leave" },
+            body: { channel: "10001", playerName: "Steve" },
+        };
+        expect(joinFrame.safeParse(join).success).toBe(true);
+        expect(leaveFrame.safeParse(leave).success).toBe(true);
+        expect(
+            joinFrame.safeParse({ header: { type: "join", id: UUID }, body: join.body }).success,
+        ).toBe(false);
+        expect(
+            joinFrame.safeParse({ header: { type: "join" }, body: { playerName: "Steve" } })
+                .success,
+        ).toBe(false);
+    });
+
+    it("status 携带 tps / onlinePlayers / uptimeSeconds，数值约束生效", () => {
+        const ok = {
+            header: { type: "status" },
+            body: { tps: 19.5, onlinePlayers: 3, uptimeSeconds: 12345 },
+        };
+        expect(statusFrame.safeParse(ok).success).toBe(true);
+        expect(
+            statusFrame.safeParse({
+                header: { type: "status" },
+                body: { tps: -1, onlinePlayers: 3, uptimeSeconds: 1 },
+            }).success,
+        ).toBe(false);
+        expect(
+            statusFrame.safeParse({
+                header: { type: "status" },
+                body: { tps: 19.5, onlinePlayers: 1.5, uptimeSeconds: 1 },
+            }).success,
+        ).toBe(false);
+    });
+
+    it("bindings_updated 携带完整绑定列表", () => {
+        const frame = {
+            header: { type: "bindings_updated" },
+            body: { channelBindings: ["10001"] },
+        };
+        expect(bindingsUpdatedFrame.safeParse(frame).success).toBe(true);
+        expect(
+            bindingsUpdatedFrame.safeParse({ header: { type: "bindings_updated" }, body: {} })
+                .success,
+        ).toBe(false);
     });
 });
 
 describe("WS 聚合帧集（按方向收敛）", () => {
-    it("服务端收帧集接受 hello/ping/平台 chat，拒绝游戏 chat", () => {
+    it("服务端收帧集接受 hello/ping/平台 chat，拒绝游戏 chat 与新事件（Server→Peer 方向）", () => {
         const hello = {
             header: { type: "hello", id: UUID },
-            body: { peerId: "stub", platform: "stub", version: "0.0.1", protocolVersion: "0.1.0" },
+            body: { peerId: "stub", platform: "stub", version: "0.0.1", protocolVersion: "0.2.0" },
         };
         expect(wsInboundFrame.safeParse(hello).success).toBe(true);
         expect(
             wsInboundFrame.safeParse({
                 header: { type: "chat" },
-                body: { playerName: "Steve", content: "hi" },
+                body: { channel: "10001", playerName: "Steve", content: "hi" },
+            }).success,
+        ).toBe(false);
+        expect(
+            wsInboundFrame.safeParse({
+                header: { type: "bindings_updated" },
+                body: { channelBindings: [] },
             }).success,
         ).toBe(false);
     });
 
-    it("协议端收帧集接受 hello_ack/pong/游戏 chat，拒绝平台 chat", () => {
+    it("协议端收帧集接受 hello_ack/pong/游戏 chat 与全部 v0.2 新事件，拒绝平台 chat", () => {
         const gameChat = {
             header: { type: "chat" },
-            body: { playerName: "Steve", content: "hi" },
+            body: { channel: "10001", playerName: "Steve", content: "hi" },
         };
         expect(wsOutboundFrame.safeParse(gameChat).success).toBe(true);
         expect(
             wsOutboundFrame.safeParse({
                 header: { type: "chat" },
-                body: { sender: "小明", content: "hi" },
+                body: { channel: "10001", sender: "小明", content: "hi" },
             }).success,
         ).toBe(false);
+        expect(
+            wsOutboundFrame.safeParse({
+                header: { type: "join" },
+                body: { channel: "10001", playerName: "Steve" },
+            }).success,
+        ).toBe(true);
+        expect(
+            wsOutboundFrame.safeParse({
+                header: { type: "leave" },
+                body: { channel: "10001", playerName: "Steve" },
+            }).success,
+        ).toBe(true);
+        expect(
+            wsOutboundFrame.safeParse({
+                header: { type: "status" },
+                body: { tps: 20, onlinePlayers: 0, uptimeSeconds: 60 },
+            }).success,
+        ).toBe(true);
+        expect(
+            wsOutboundFrame.safeParse({
+                header: { type: "bindings_updated" },
+                body: { channelBindings: ["10001"] },
+            }).success,
+        ).toBe(true);
     });
 });

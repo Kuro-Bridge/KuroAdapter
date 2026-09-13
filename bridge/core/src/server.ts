@@ -1,16 +1,23 @@
 /**
  * KurobotServer：kurobot-ws 协议服务端（握手 / 心跳 / 连接生命周期）。
  *
- * 握手语义（决策 D-01）：Peer 连入 → 发 hello（带 id）→ 校验 → 回同 id 的 hello_ack。
+ * 握手语义（决策 D-01/ADR-023）：Peer 连入 → 发 hello（带 id）→ 校验 → 回同 id 的 hello_ack。
  * 协议版本协商（决策 D-10）：spike 要求 protocolVersion 与本端 PROTOCOL_VERSION
  * 精确相等（大版本已由 WS 子协议把关）；不匹配 → hello_ack error + 关连接。
+ * hello_ack ok 体携带 channelBindings（ADR-004，v0.2）——由注入的绑定表快照提供。
+ *
+ * 本类零业务：send* 只负责把帧推给全部已握手对端，频道过滤/fan-out 由上层（Relay/业务）决定。
  */
 import {
+    type BindingsUpdatedBody,
     encodeFrame,
     type GameChatBody,
     type HelloBody,
+    type JoinBody,
+    type LeaveBody,
     type PlatformChatBody,
     PROTOCOL_VERSION,
+    type StatusBody,
     wsInboundFrame,
 } from "@kurobot/protocol";
 
@@ -30,17 +37,21 @@ interface PeerState {
 export interface ServerOptions {
     readonly context: CoreContext;
     readonly wsServer: WsServer;
+    /** 当前绑定频道快照（hello_ack 上报给对端，ADR-004；业务层注入） */
+    readonly channelBindings: () => string[];
 }
 
 export class KurobotServer {
     private readonly context: CoreContext;
     private readonly wsServer: WsServer;
+    private readonly channelBindings: () => string[];
     private readonly peers = new Set<PeerState>();
     private platformChatHandler: ((body: PlatformChatBody) => void) | null = null;
 
     constructor(options: ServerOptions) {
         this.context = options.context;
         this.wsServer = options.wsServer;
+        this.channelBindings = options.channelBindings;
         this.wsServer.onConnection((connection) => {
             this.handleConnection(connection);
         });
@@ -62,24 +73,34 @@ export class KurobotServer {
         await this.wsServer.stop();
     }
 
-    /** 订阅平台 → 游戏聊天（占位业务入口，Relay 挂接） */
+    /** 订阅平台 → 游戏聊天（业务入口，Relay 挂接） */
     onPlatformChat(handler: (body: PlatformChatBody) => void): void {
         this.platformChatHandler = handler;
     }
 
-    /** 游戏 → 平台聊天：推给所有已握手对端（spike：无绑定过滤，全量转发） */
+    /** 游戏 → 平台聊天（上层按绑定频道逐频道调用） */
     sendGameChat(body: GameChatBody): void {
-        const text = encodeFrame({ type: "chat", body });
-        let delivered = 0;
-        for (const peer of this.peers) {
-            if (peer.established) {
-                peer.connection.send(text);
-                delivered += 1;
-            }
-        }
-        if (delivered === 0) {
-            this.context.logger.debug("游戏聊天无已握手对端，丢弃");
-        }
+        this.sendToEstablished(encodeFrame({ type: "chat", body }));
+    }
+
+    /** 玩家进服事件（上层按绑定频道逐频道调用） */
+    sendJoin(body: JoinBody): void {
+        this.sendToEstablished(encodeFrame({ type: "join", body }));
+    }
+
+    /** 玩家退服事件（上层按绑定频道逐频道调用） */
+    sendLeave(body: LeaveBody): void {
+        this.sendToEstablished(encodeFrame({ type: "leave", body }));
+    }
+
+    /** 服务器状态事件（全服状态，无频道） */
+    sendStatus(body: StatusBody): void {
+        this.sendToEstablished(encodeFrame({ type: "status", body }));
+    }
+
+    /** 绑定表变更推送（配置变更时发给已握手对端，ADR-004） */
+    sendBindingsUpdated(body: BindingsUpdatedBody): void {
+        this.sendToEstablished(encodeFrame({ type: "bindings_updated", body }));
     }
 
     /** 当前已握手对端数（观测/测试用） */
@@ -91,6 +112,19 @@ export class KurobotServer {
             }
         }
         return count;
+    }
+
+    private sendToEstablished(text: string): void {
+        let delivered = 0;
+        for (const peer of this.peers) {
+            if (peer.established) {
+                peer.connection.send(text);
+                delivered += 1;
+            }
+        }
+        if (delivered === 0) {
+            this.context.logger.debug("无已握手对端，丢弃出帧");
+        }
     }
 
     private handleConnection(connection: WsConnection): void {
@@ -157,6 +191,7 @@ export class KurobotServer {
                     serverId: this.context.serverId,
                     version: this.context.version,
                     protocolVersion: PROTOCOL_VERSION,
+                    channelBindings: this.channelBindings(),
                 },
             }),
         );

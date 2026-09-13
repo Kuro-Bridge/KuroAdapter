@@ -50,3 +50,17 @@ src/
 启动序列：Java 拉起本入口 → 起 WS 服务端 `listen(0)` → IPC 发 `ready`（携带端口）→ spawn stub → stub 以 WS client 连入并 `hello` 握手。stdin EOF 或 `shutdown` 帧 → 杀 stub → 自行退出（决策 D-08）。
 
 原型裁剪：node.exe 不进 JAR（用 PATH `node` 或 `KUROBOT_NODE`，决策 D-07）、bundle 从 `KUROBOT_BUNDLE` 指定的本地产物加载、无 napukettoqq / wrapper.node / 扫码、无 Watchdog / PID 文件 / 崩溃自动重启。
+
+## MVP 阶段一（2026-09-13）
+
+> 任务书：`docs/MVP1-PROMPT.md` §3 阶段 2/3。本包在 spike 形态上补 Node 能力注入与配置。
+
+- **Node 能力实现（阶段 2）**：`src/node-platform.ts` —— core 的 `Clock`/`TimerScheduler`
+  Node 实现（`Date.now` + `setTimeout` + `unref`），与 ws 适配器同为「唯一的 Node API 落点」。
+- **配置实现（阶段 3）**：`src/config-store.ts` —— core 的 `ConfigStore` Node 实现：
+  读 `plugins/kurobot/config.json`（相对子进程 cwd = 服务器根目录），缺失时生成默认配置
+  （`{ "channels": [] }`）落盘；**轮询监听**（interval + mtime 比对）——选轮询而非 fs.watch：
+  Windows/网络盘的 fs.watch 事件语义不可靠，轮询实现更简单可测（任务书 §1.2 二选一的决策）。
+- **stub 升级 v0.2（阶段 1，已落地）**：hello 协议版本 0.2.0；平台消息携带
+  `channel: "stub-channel"`（沙盒验收时把该频道写进配置绑定表即端到端连通）；
+  处理 join/leave/status/bindings_updated 帧（stderr 打印，供验收 grep）。

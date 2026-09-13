@@ -1,8 +1,11 @@
 /**
- * Relay：IPC ↔ WS 的占位业务（spike 假规则：「绑定了就转发」）。
+ * Relay：IPC ↔ WS 的转发装配（spike 假规则，MVP 阶段一维持：「占位频道全量转发」）。
  *
- * - IPC game_chat（Java → Node）→ WS chat 推给已握手对端（游戏 → 平台）。
- * - WS chat（平台 → 游戏）→ IPC broadcast 请求（UUID 关联，等 broadcast_result）。
+ * - IPC game_chat / player_join / player_quit（Java → Node）→ 按占位频道 fan-out 推给
+ *   已握手对端（阶段 3 用绑定表替换假规则：游戏事件 → 全部绑定频道）。
+ * - IPC status → WS status（全服状态，无频道，直发）。
+ * - WS chat（平台 → 游戏）→ IPC broadcast 请求（UUID 关联，等 broadcast_result）；
+ *   v0.2 起携带来源 channel。
  * - IPC shutdown（Java → Node）→ 通知 onShutdown（引导层负责退出进程）。
  */
 import {
@@ -15,6 +18,12 @@ import {
 import type { CoreContext } from "./context.js";
 import type { KurobotServer } from "./server.js";
 import type { IpcChannel } from "./transport.js";
+
+/**
+ * 假规则的占位频道（MVP 阶段一）：绑定表落地（阶段 3）前的临时 fan-out 目标。
+ * 外部对端（koishi-plugin-kurobot）不会收到它——仅开发期 stub / 沙盒观测用。
+ */
+const FANOUT_PLACEHOLDER_CHANNEL = "spike";
 
 /** IPC 请求被拒/失败的类型化错误 */
 export class IpcRequestError extends Error {
@@ -71,7 +80,7 @@ export class Relay {
         });
     }
 
-    /** 平台 → 游戏：发 broadcast 请求并等待结果（无超时；IPC 关闭时全部拒绝） */
+    /** 平台 → 游戏：发 broadcast 请求并等待结果（IPC 关闭时全部拒绝） */
     forwardToGame(body: PlatformChatBody): Promise<ResultBody> {
         if (this.disposed) {
             return Promise.reject(new IpcRequestError("broadcast", "relay disposed"));
@@ -84,7 +93,7 @@ export class Relay {
             encodeFrame({
                 type: "broadcast",
                 id,
-                body: { message: `<${body.sender}> ${body.content}` },
+                body: { channel: body.channel, message: `<${body.sender}> ${body.content}` },
             }),
         );
         return promise;
@@ -114,7 +123,29 @@ export class Relay {
         }
         const message = parsed.data;
         if (message.type === "game_chat") {
-            this.server.sendGameChat(message.body);
+            this.server.sendGameChat({
+                channel: FANOUT_PLACEHOLDER_CHANNEL,
+                playerName: message.body.playerName,
+                content: message.body.content,
+            });
+            return;
+        }
+        if (message.type === "player_join") {
+            this.server.sendJoin({
+                channel: FANOUT_PLACEHOLDER_CHANNEL,
+                playerName: message.body.playerName,
+            });
+            return;
+        }
+        if (message.type === "player_quit") {
+            this.server.sendLeave({
+                channel: FANOUT_PLACEHOLDER_CHANNEL,
+                playerName: message.body.playerName,
+            });
+            return;
+        }
+        if (message.type === "status") {
+            this.server.sendStatus(message.body);
             return;
         }
         if (message.type === "shutdown") {

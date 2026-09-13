@@ -1,10 +1,14 @@
 /**
  * IPC 侧消息（Java 薄壳 ↔ Node 子进程，stdin/stdout JSON-lines，ADR-010）
  *
- * 帧结构复用 WS 帧（决策 D-04）。原型最小集（任务书 §4.1）：
+ * 帧结构复用 WS 帧（决策 D-04）。spike 最小集 + v0.2 增量（MVP 阶段一）：
  * - Node→Java：ready（事件）、broadcast / execute_command（请求）
- * - Java→Node：game_chat / shutdown（事件）、broadcast_result / execute_command_result（响应）
+ * - Java→Node：game_chat / player_join / player_quit / status / shutdown（事件）、
+ *   broadcast_result / execute_command_result（响应）
  *
+ * 命名对齐：IPC 帧名描述 Bukkit 事件源（game_chat / player_join），WS 帧名是协议事件
+ * （chat / join）；channel 概念只在 Node 侧业务存在，IPC 的 game_chat / player_join 等
+ * 不携带 channel（Java 零业务）。
  * 所有 *Frame 类型均为扁平消息 { type, id?, body }（决策 D-11）。
  */
 import { z } from "zod";
@@ -23,6 +27,8 @@ export type ReadyBody = z.infer<typeof readyBodySchema>;
 export type ReadyFrame = z.infer<typeof readyFrame>;
 
 const broadcastBodySchema = z.object({
+    /** 消息来源频道（Java 侧 MVP 只广播不区分，字段保留给未来按频道渲染） */
+    channel: z.string().min(1),
     message: z.string().min(1),
 });
 
@@ -55,6 +61,35 @@ export const gameChatEventFrame = eventFrameSchema("game_chat", gameChatBodySche
 export type GameChatEventBody = z.infer<typeof gameChatBodySchema>;
 export type GameChatEventFrame = z.infer<typeof gameChatEventFrame>;
 
+const playerJoinEventBodySchema = z.object({
+    playerName: z.string().min(1),
+});
+
+/** 玩家进服事件（PlayerJoinEvent 桥接；channel fan-out 是 Node 侧业务） */
+export const playerJoinEventFrame = eventFrameSchema("player_join", playerJoinEventBodySchema);
+export type PlayerJoinEventBody = z.infer<typeof playerJoinEventBodySchema>;
+export type PlayerJoinEventFrame = z.infer<typeof playerJoinEventFrame>;
+
+const playerQuitEventBodySchema = z.object({
+    playerName: z.string().min(1),
+});
+
+/** 玩家退服事件（PlayerQuitEvent 桥接） */
+export const playerQuitEventFrame = eventFrameSchema("player_quit", playerQuitEventBodySchema);
+export type PlayerQuitEventBody = z.infer<typeof playerQuitEventBodySchema>;
+export type PlayerQuitEventFrame = z.infer<typeof playerQuitEventFrame>;
+
+const statusEventBodySchema = z.object({
+    tps: z.number().nonnegative(),
+    onlinePlayers: z.number().int().nonnegative(),
+    uptimeSeconds: z.number().int().nonnegative(),
+});
+
+/** 服务器状态事件（Java 在 join/quit 时机推送，与 WS status body 同构） */
+export const statusEventFrame = eventFrameSchema("status", statusEventBodySchema);
+export type StatusEventBody = z.infer<typeof statusEventBodySchema>;
+export type StatusEventFrame = z.infer<typeof statusEventFrame>;
+
 const shutdownBodySchema = z.object({
     reason: z.string().min(1),
 });
@@ -80,6 +115,9 @@ export type ExecuteCommandResultFrame = z.infer<typeof executeCommandResultFrame
 /** Node 视角的收帧集 */
 export const ipcNodeInboundFrame = z.union([
     gameChatEventFrame,
+    playerJoinEventFrame,
+    playerQuitEventFrame,
+    statusEventFrame,
     broadcastResultFrame,
     executeCommandResultFrame,
     shutdownFrame,

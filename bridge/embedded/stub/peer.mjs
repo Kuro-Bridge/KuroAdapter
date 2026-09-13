@@ -1,17 +1,22 @@
 /**
- * stub 协议端（原型专用，决策 D-06）
+ * stub 协议端（开发/沙盒验收用，决策 D-06）
  *
  * 伪装 kurobot-ws 对端：连接 → hello 握手 → 握手成功后主动发一条平台消息 →
- * 周期 ping 心跳；收到游戏 chat 打印到 stderr（经 Node/Java 中继进服务器控制台）。
- * 断线按 1s→2s→4s…封顶 30s 重连（draft §3 指数退避的简化版）。
+ * 周期 ping 心跳；收到游戏 chat / join / leave / status / bindings_updated 打印到
+ * stderr（经 Node/Java 中继进服务器控制台）。断线按 1s→2s→4s…封顶 30s 重连
+ * （draft §3 指数退避的简化版）。
+ *
+ * 协议 v0.2（MVP 阶段一）：hello 协议版本 0.2.0；平台消息携带 channel
+ * （STUB_CHANNEL 常量，沙盒验收时写入配置绑定表即可端到端连通）。
  *
  * 用法：node peer.mjs <wsPort>
  * 零依赖：Node 26 内置全局 WebSocket（Undici）。
  */
 
 const PEER_ID = `stub-${process.pid}`;
-const PROTOCOL_VERSION = "0.1.0";
+const PROTOCOL_VERSION = "0.2.0";
 const WS_SUBPROTOCOL = "kurobot-ws.v1";
+const STUB_CHANNEL = "stub-channel";
 const HEARTBEAT_INTERVAL_MS = 5000;
 
 const port = process.argv[2];
@@ -67,11 +72,14 @@ function connect() {
         const { type } = frame.header;
         if (type === "hello_ack") {
             if (frame.body.ok) {
-                log(`握手成功：serverId=${frame.body.serverId} protocolVersion=${frame.body.protocolVersion}`);
-                // 原型验收 #4：握手后主动发一条平台消息 → 游戏内 broadcast
+                log(
+                    `握手成功：serverId=${frame.body.serverId} protocolVersion=${frame.body.protocolVersion}` +
+                        ` channelBindings=[${frame.body.channelBindings.join(",")}]`,
+                );
+                // 沙盒验收：握手后主动发一条平台消息 → 绑定该频道时进游戏 broadcast
                 sendFrame(ws, {
                     type: "chat",
-                    body: { sender: "stub-群友", content: "大家好，我是 stub 协议端" },
+                    body: { channel: STUB_CHANNEL, sender: "stub-群友", content: "大家好，我是 stub 协议端" },
                 });
             } else {
                 log(`握手被拒：${frame.body.reason}`);
@@ -79,8 +87,20 @@ function connect() {
             return;
         }
         if (type === "chat") {
-            // 原型验收 #3：/kurobot send 的消息到达此处
-            log(`收到游戏聊天：<${frame.body.playerName}> ${frame.body.content}`);
+            log(`收到游戏聊天：[${frame.body.channel}] <${frame.body.playerName}> ${frame.body.content}`);
+            return;
+        }
+        if (type === "join" || type === "leave") {
+            log(`收到${type === "join" ? "进服" : "退服"}：[${frame.body.channel}] ${frame.body.playerName}`);
+            return;
+        }
+        if (type === "status") {
+            const s = frame.body;
+            log(`收到状态：tps=${s.tps} 在线=${s.onlinePlayers} uptime=${s.uptimeSeconds}s`);
+            return;
+        }
+        if (type === "bindings_updated") {
+            log(`收到绑定变更：[${frame.body.channelBindings.join(",")}]`);
             return;
         }
         if (type === "pong") {
@@ -107,5 +127,5 @@ function connect() {
     });
 }
 
-log(`stub 协议端启动（peerId=${PEER_ID}）`);
+log(`stub 协议端启动（peerId=${PEER_ID}，channel=${STUB_CHANNEL}）`);
 connect();

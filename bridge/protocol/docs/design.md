@@ -40,3 +40,23 @@
 
 实测备注（决策 D-09，见 `docs/PROTOTYPE-NOTES.md`）：zod 4.4.3 不支持嵌套判别路径（`z.discriminatedUnion("header.type", ...)` 抛错），帧层聚合 schema 用 `z.union([...])`；每个消息的帧 schema 单独导出，消费方按方向选用。
 
+## MVP 阶段一（协议 v0.2，2026-09-13）
+
+> 任务书：`docs/MVP1-PROMPT.md` §3 阶段 1。相对 spike 的增量：
+
+1. **channel 概念落地**（对齐 ADR-004）：
+   - WS `chat` 双向 body 各加 `channel: string`（游戏侧 `{channel, playerName, content}`，平台侧 `{channel, sender, content}`）——channel 是绑定表里的频道标识（如群号），由服务端绑定表决定 fan-out，对端按自己的频道映射渲染。
+   - IPC `broadcast` 请求 body 加 `channel`（`{channel, message}`）——Java 侧 MVP 只广播不区分，字段保留给未来按频道渲染。
+   - IPC `game_chat` **不加** channel：Java 零业务不知道频道，fan-out 是 Node 侧业务职责。
+2. **新事件集**（Server→Peer，全部无 id 事件帧）：
+   - `join` / `leave`：`{channel, playerName}`（玩家进出服，按绑定频道 fan-out）。
+   - `status`：`{tps, onlinePlayers, uptimeSeconds}`（无 channel——是全服状态而非频道消息）。
+   - `bindings_updated`：`{channelBindings: string[]}`（**变更后完整列表**，非增量；ADR-004）。
+   - 对应 IPC Java→Node 事件：`player_join` / `player_quit`（`{playerName}`，无 channel）与 `status`（同 WS body）。命名对齐既有模式：IPC 帧名描述 Bukkit 事件源（如 `game_chat`），WS 帧名是协议事件（如 `chat`）。
+3. **hello_ack ok 体加 `channelBindings: string[]`**：服务端绑定表快照随握手下发（ADR-004「绑定频道随 hello 上报」在单程握手（ADR-023）下的落点）。空数组合法（默认配置无绑定）。
+4. **PROTOCOL_VERSION `0.1.0` → `0.2.0`**：新增字段/消息为向后不兼容的收帧集变化（新帧型旧对端不认识），在 D-10 精确相等策略下 stub 的 hello 同步升版本。
+
+**status 推送时机（MVP 决策）**：Java 在玩家 join/quit 时顺带推送 status IPC 事件（在线数变化点），Node 转发给已握手对端——事件驱动、零定时器；周期上报与按需拉取留 MVP-2。
+
+**取舍**：`tps` 为 1 分钟均值（Paper `getTPS()[0]`），`uptimeSeconds` 取 JVM uptime（JDK 标准接口，等价专用服的服务器 uptime，避免绑定不确定的 Paper API）。
+

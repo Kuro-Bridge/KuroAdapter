@@ -55,3 +55,49 @@ src/
 - `src/index.ts`：聚合导出。
 
 原型裁剪：无鉴权 token、无 `bindings_updated`、无 msgContinue、无指数退避重连（对端 stub 自行重连）、心跳只做应答 + 空闲超时关连接（不做多阈值假连接检测）、业务模块仅 `relay.ts` 假规则。
+
+## MVP 阶段一（2026-09-13）
+
+> 任务书：`docs/MVP1-PROMPT.md` §3 阶段 2/3。本节是动代码前的设计定稿。
+
+### 时钟/定时器注入（阶段 2）
+
+core 平台无关（ADR-007）意味着 `setTimeout`/`Date.now` 也不能直接用——抽象为注入接口：
+
+- `Clock`：`now(): number`（epoch 毫秒）。
+- `TimerScheduler`：`schedule(delayMs, callback): CancelFn`（一次性定时器；宿主实现负责 unref，
+  不阻止进程退出）。不引入周期定时器——空闲检测用「每次收帧重置一次性定时器」实现，减少泄漏面。
+
+实现（`src/clock.ts`）：接口 + `ManualClock`/`ManualScheduler`（测试用，vitest 手动推进）。
+Node 实现在 embedded 引导层。
+
+### 超时健壮性（阶段 2）
+
+- **hello 等待超时（默认 10s）**：连接建立即挂一次性定时器；超时仍未握手 → 关连接（1002）。
+- **心跳空闲检测（默认 30s）**：任何收帧（含 ping/chat）刷新；超时无帧 → 判定断开、关连接（1001）。
+  阈值均可配（`ServerOptions.timeouts`），0 = 禁用（测试用）。
+- **IPC 请求超时（默认 10s，对齐 Java 侧）**：`Relay.forwardToGame` 在途请求挂定时器，超时以
+  `IpcRequestError`（reason=timeout）拒绝。
+
+### IPC 断连降级（阶段 2，候选 E）
+
+`sendGameChat` 等 IPC 事件类出帧在通道断开时不再静默丢弃：`IpcChannel` 增加只读健康状态
+`isOpen: boolean`；Relay 暴露 `get health(): { ipcOpen: boolean }`。上层（/kurobot send 的
+回执路径）可感知失败。消息排队/补发留 MVP-2。
+
+### 业务最小闭环（阶段 3）
+
+- `src/business/config.ts`：`ConfigStore` 注入接口（`load(): KurobotConfig` /
+  `watch(onChange)`），core 不碰 fs；配置形状 `KurobotConfig { channels: string[] }`。
+- `src/business/bindings.ts`：`BindingTable` 纯逻辑（channels 去重集合；`has`/`list`/`replace`）。
+- `src/business/forwarding.ts`：转发规则纯逻辑：
+  - `platformToGame(channels, chat)`：未绑定频道 → 丢弃（返回 none + debug 日志由调用方打）。
+  - `gameToChannels(channels)`：游戏事件 → 全部绑定频道（fan-out 目标列表）。
+- Relay 接入：替换 spike 占位频道假规则；配置变更 → `BindingTable.replace` →
+  推 `bindings_updated` 给已握手对端 + hello_ack 的 channelBindings 快照随之更新。
+
+### v0.2 协议适配（阶段 1，已落地）
+
+chat/broadcast 携带 channel、hello_ack 携带 channelBindings（`ServerOptions.channelBindings`
+注入快照）、新增 join/leave/status/bindings_updated 的 send* 出帧；阶段 1 的 fan-out 用占位
+频道假规则（`relay.ts` 的 FANOUT_PLACEHOLDER_CHANNEL），阶段 3 绑定表落地后移除。

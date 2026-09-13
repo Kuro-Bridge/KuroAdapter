@@ -53,7 +53,8 @@ async function main(): Promise<void> {
         newRequestId: randomUUID,
     });
     const wsServer = new NodeWsServer();
-    const server = new KurobotServer({ context, wsServer });
+    // MVP 阶段一：绑定表未接入（阶段 3 接 ConfigStore），hello_ack 先报空绑定
+    const server = new KurobotServer({ context, wsServer, channelBindings: () => [] });
 
     let stub: ChildProcess | null = null;
     const relay = new Relay({
