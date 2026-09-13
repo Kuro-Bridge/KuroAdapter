@@ -79,12 +79,38 @@ describe("parseConfig", () => {
         expect(() => parseConfig({ channels: [], runtime: "on" })).toThrow(ConfigError);
     });
 
-    it("defaultConfig 为空绑定 + 不鉴权 + 无管理员 + autoRestart true", () => {
+    it("ws 段：整段缺省 / 完整 / 只配 host / 只配 port（MVP-3）", () => {
+        const base = { channels: ["10001"], token: "", admins: [], runtime: { autoRestart: true } };
+        // 整段缺省 = 现状不变（无 ws 键）
+        expect(parseConfig({ channels: ["10001"] })).not.toHaveProperty("ws");
+        expect(
+            parseConfig({ channels: ["10001"], ws: { host: "127.0.0.1", port: 25580 } }),
+        ).toEqual({ ...base, ws: { host: "127.0.0.1", port: 25580 } });
+        // 只配 host 不配 port = 动态端口 + 指定地址（合法）
+        expect(parseConfig({ channels: [], ws: { host: "127.0.0.1" } })).toMatchObject({
+            ws: { host: "127.0.0.1" },
+        });
+        expect(parseConfig({ channels: [], ws: { port: 25580 } })).toMatchObject({
+            ws: { port: 25580 },
+        });
+    });
+
+    it("ws 段非法值 → ConfigError（MVP-3）", () => {
+        expect(() => parseConfig({ channels: [], ws: { port: 0 } })).toThrow(ConfigError);
+        expect(() => parseConfig({ channels: [], ws: { port: 65536 } })).toThrow(ConfigError);
+        expect(() => parseConfig({ channels: [], ws: { port: 25580.5 } })).toThrow(ConfigError);
+        expect(() => parseConfig({ channels: [], ws: { port: "25580" } })).toThrow(ConfigError);
+        expect(() => parseConfig({ channels: [], ws: { host: "" } })).toThrow(ConfigError);
+        expect(() => parseConfig({ channels: [], ws: "25580" })).toThrow(ConfigError);
+    });
+
+    it("defaultConfig 为空绑定 + 不鉴权 + 无管理员 + autoRestart true，且不含 ws 段", () => {
         expect(defaultConfig()).toEqual({
             channels: [],
             token: "",
             admins: [],
             runtime: { autoRestart: true },
         });
+        expect(defaultConfig()).not.toHaveProperty("ws");
     });
 });

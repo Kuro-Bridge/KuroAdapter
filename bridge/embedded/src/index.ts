@@ -4,11 +4,14 @@
  * 启动序列：
  * 1. 组装 core（CoreContext + KurobotServer + Relay），注入 Node 实现
  *    （ws 服务端 / stdin-stdout IPC / stderr logger）。
- * 2. WS 服务端 listen(0) 拿动态端口 → IPC 发 `ready`（携带端口）。
+ * 2. WS 服务端监听（MVP-3：config.ws 固定端口/绑定地址；缺省 listen(0) 动态端口、
+ *    全部接口）→ IPC 发 `ready`（携带实际端口）。
  * 3. 环境变量 KUROBOT_STUB_PEER 指向 stub 脚本时，作为孙进程拉起（端口经 argv）。
  * 4. 关机：Java 发 `shutdown` 帧 或 关 stdin（EOF）→ 杀 stub → 退出进程。
  *
  * 生命周期两条路径（决策 D-08）：shutdown 帧 / stdin EOF 自杀；Java destroyForcibly 兜底。
+ * 绑定失败语义（MVP-3）：固定端口被占 → 明确 error 日志（含端口与原因）→ 非零退出，
+ * 重启收敛于 Java 看护器退避（1s/5s/15s，10 分钟窗 3 次放弃）。
  */
 
 import { type ChildProcess, spawn } from "node:child_process";
@@ -81,8 +84,19 @@ async function main(): Promise<void> {
         "info",
         `鉴权 token：${initialConfig.token === "" ? "未启用（空）" : "已启用"}；管理员映射：${initialConfig.admins.length} 条`,
     );
+    // 安全基线（MVP-3）：external 形态（显式配置 ws 监听段）暴露面变大，空 token 提示但不阻断
+    if (initialConfig.ws !== undefined && initialConfig.token === "") {
+        log(
+            "warn",
+            "已配置 ws 监听段但 token 为空——任何对端均可免鉴权连入，external 模式建议配置 token",
+        );
+    }
 
-    const wsServer = new NodeWsServer();
+    const wsServer = new NodeWsServer({
+        host: initialConfig.ws?.host,
+        port: initialConfig.ws?.port,
+        logger,
+    });
     const server = new KurobotServer({
         context,
         wsServer,
@@ -104,7 +118,17 @@ async function main(): Promise<void> {
         },
     });
 
-    const port = await server.start();
+    let port: number;
+    try {
+        port = await server.start();
+    } catch (error: unknown) {
+        // 绑定失败（WsBindError 含 host/port 与原因）：明确日志 + 非零退出，重启收敛于 Java 看护器退避
+        log(
+            "error",
+            `WS 服务端启动失败：${error instanceof Error ? error.message : String(error)}`,
+        );
+        process.exit(1);
+    }
     // autoRestart 随 ready 上报（v0.2.1）：业务配置的宿主参数交给 Java 看护器，Node 只做搬运
     ipc.send(
         encodeFrame({
