@@ -228,7 +228,7 @@ importers:
 
   bridge/core:
     dependencies:
-      '@kurobot/protocol':
+      '@kuro-bridge/protocol':
         specifier: workspace:*
         version: link:../protocol
       zod:
@@ -244,10 +244,10 @@ importers:
 
   bridge/embedded:
     dependencies:
-      '@kurobot/bridge-core':
+      '@kuro-bridge/bridge-core':
         specifier: workspace:*
         version: link:../core
-      '@kurobot/protocol':
+      '@kuro-bridge/protocol':
         specifier: workspace:*
         version: link:../protocol
       '@napuketto/cli':
@@ -282,10 +282,10 @@ importers:
 
   platforms/be/lse:
     dependencies:
-      '@kurobot/bridge-core':
+      '@kuro-bridge/bridge-core':
         specifier: workspace:*
         version: link:../../../bridge/core
-      '@kurobot/protocol':
+      '@kuro-bridge/protocol':
         specifier: workspace:*
         version: link:../../../bridge/protocol
     devDependencies:

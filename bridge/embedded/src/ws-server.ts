@@ -8,10 +8,10 @@
  *   listen，失败经底层 http server 以 error 事件异步转发）→ start() 以先挂的一次性 error
  *   监听收口，reject `WsBindError`（含 host/port 与原因），宿主打日志后非零退出；重启收敛
  *   于 Java 看护器退避（DEBT-2 语义），不新增重试机制。
- * - 子协议：握手期校验 `kurobot-ws.v1`（ADR-003 大版本），不匹配直接拒绝连接。
+ * - 子协议：握手期校验 `kurobridge-ws.v1`（ADR-003 大版本），不匹配直接拒绝连接。
  */
-import type { Logger, WsConnection, WsServer } from "@kurobot/bridge-core";
-import { WS_SUBPROTOCOL } from "@kurobot/protocol";
+import type { Logger, WsConnection, WsServer } from "@kuro-bridge/bridge-core";
+import { WS_SUBPROTOCOL } from "@kuro-bridge/protocol";
 import { type WebSocket, WebSocketServer } from "ws";
 
 /** WS 监听参数（MVP-3）。成员显式允许 undefined（exactOptionalPropertyTypes 下 bootstrap 可直接透传 config.ws 的可选字段）。 */

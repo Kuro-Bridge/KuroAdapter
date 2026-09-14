@@ -4,7 +4,7 @@
  *
  * 定时器一律 unref：core 的超时检测不得阻止进程退出（关机路径不依赖定时器）。
  */
-import type { Clock, TimerScheduler } from "@kurobot/bridge-core";
+import type { Clock, TimerScheduler } from "@kuro-bridge/bridge-core";
 
 export class NodeClock implements Clock {
     now(): number {

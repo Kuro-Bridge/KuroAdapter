@@ -12,7 +12,7 @@ import { WebSocket } from "ws";
 
 import { NodeWsServer, WsBindError } from "./ws-server.js";
 
-const SUBPROTOCOL = "kurobot-ws.v1";
+const SUBPROTOCOL = "kurobridge-ws.v1";
 
 const servers: NodeWsServer[] = [];
 

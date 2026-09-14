@@ -1,7 +1,7 @@
 {
-    "name": "@kurobot/bridge-core",
+    "name": "@kuro-bridge/bridge-core",
     "version": "0.0.0",
-    "description": "kurobot 业务核心 + kurobot-ws 协议服务端（平台无关，零 Node API）",
+    "description": "kurobridge 业务核心 + kurobridge-ws 协议服务端（平台无关，零 Node API）",
     "type": "module",
     "files": [
         "dist"
@@ -19,7 +19,7 @@
         "build": "tsdown"
     },
     "dependencies": {
-        "@kurobot/protocol": "workspace:*",
+        "@kuro-bridge/protocol": "workspace:*",
         "zod": "^4.0.0"
     },
     "devDependencies": {

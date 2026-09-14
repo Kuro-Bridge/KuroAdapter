@@ -22,7 +22,7 @@ import { isAbsolute, join, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import type { Readable } from "node:stream";
 
-import type { KurobotConfig, Logger } from "@kurobot/bridge-core";
+import type { KurobotConfig, Logger } from "@kuro-bridge/bridge-core";
 
 /** CLI 嵌包在 bin 目录下的固定布局（scripts/embed.ts 产 zip、:core EmbeddedRuntime 解压共同约定） */
 const CLI_ENTRY_PARTS = ["napuketto", "node_modules", "@napuketto", "cli", "dist", "index.mjs"];

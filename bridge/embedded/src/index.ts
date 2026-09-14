@@ -1,5 +1,5 @@
 /**
- * @kurobot/bridge-embedded —— Node 引导层（spike 形态，决策 D-05/D-07）
+ * @kuro-bridge/bridge-embedded —— Node 引导层（spike 形态，决策 D-05/D-07）
  *
  * 启动序列：
  * 1. 组装 core（CoreContext + KurobotServer + Relay），注入 Node 实现
@@ -8,7 +8,7 @@
  *    全部接口）→ IPC 发 `ready`（携带实际端口）。
  * 3. 协议端分支（MVP-4）：config.embedded.napuketto.enabled → 守卫（平台/固定端口/
  *    CLI 入口）后拉起嵌入 napuketto CLI（src/napuketto.ts，stdout/stderr 捕获打
- *    `[napuketto]` 前缀）；否则 KUROBOT_STUB_PEER 指向 stub 脚本时拉起（端口经 argv）。
+ *    `[napuketto]` 前缀）；否则 KUROBRIDGE_STUB_PEER 指向 stub 脚本时拉起（端口经 argv）。
  * 4. 关机：Java 发 `shutdown` 帧 或 关 stdin（EOF）→ [napuketto 树杀 →] 杀 stub → 退出。
  *
  * 生命周期两条路径（决策 D-08）：shutdown 帧 / stdin EOF 自杀；Java destroyForcibly 兜底。
@@ -31,8 +31,8 @@ import {
     KurobotServer,
     type Logger,
     Relay,
-} from "@kurobot/bridge-core";
-import { encodeFrame, PROTOCOL_VERSION } from "@kurobot/protocol";
+} from "@kuro-bridge/bridge-core";
+import { encodeFrame, PROTOCOL_VERSION } from "@kuro-bridge/protocol";
 
 import { NodeConfigStore } from "./config-store.js";
 import { StdioIpcChannel } from "./ipc-stdio.js";
@@ -212,7 +212,7 @@ async function main(): Promise<void> {
 
     // 协议端分支（MVP-4）：embedded.napuketto.enabled → 拉起嵌入 CLI；否则 stub / external
     const napukettoEnabled = initialConfig.embedded?.napuketto.enabled === true;
-    const stubPath = process.env["KUROBOT_STUB_PEER"];
+    const stubPath = process.env["KUROBRIDGE_STUB_PEER"];
     if (napukettoEnabled) {
         const branch = launchNapukettoBranch(initialConfig, logger);
         if (branch !== null) {
@@ -228,7 +228,7 @@ async function main(): Promise<void> {
         });
         log("info", `stub 协议端已拉起：${stubPath}`);
     } else {
-        log("info", "未配置 KUROBOT_STUB_PEER，跳过 stub 拉起（external 形态）");
+        log("info", "未配置 KUROBRIDGE_STUB_PEER，跳过 stub 拉起（external 形态）");
     }
 
     // stdin EOF：Java 关 stdin（或进程死亡）→ 自杀

@@ -15,7 +15,7 @@
 import { copyFile, readdir, rename, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import type { Logger } from "@kurobot/bridge-core";
+import type { Logger } from "@kuro-bridge/bridge-core";
 
 const QR_PNG_NAME = "qr.png";
 const QR_JSON_NAME = "qr.json";

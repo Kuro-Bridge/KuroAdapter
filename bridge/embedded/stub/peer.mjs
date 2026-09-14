@@ -1,7 +1,7 @@
 /**
  * stub 协议端（开发/沙盒验收用，决策 D-06）
  *
- * 伪装 kurobot-ws 对端：连接 → hello 握手 → 握手成功后主动发一条平台消息 →
+ * 伪装 kurobridge-ws 对端：连接 → hello 握手 → 握手成功后主动发一条平台消息 →
  * 周期 ping 心跳；收到游戏 chat / join / leave / death / status / bindings_updated /
  * command_result / query_result 打印到 stderr（经 Node/Java 中继进服务器控制台）。
  * 断线按 1s→2s→4s…封顶 30s 重连（draft §3 指数退避的简化版）。
@@ -15,23 +15,23 @@
  * 形态模拟）。
  *
  * env 钩子（无人值守沙盒验收）：
- * - KUROBOT_STUB_PROTOCOL_VERSION  覆盖 hello.protocolVersion（验协商拒绝 / 0.2.0 兼容连入）
- * - KUROBOT_STUB_TOKEN             hello 携带 token
- * - KUROBOT_STUB_CLIENT            hello 携带 client 自报身份（如 napukettoqq/1.0）
- * - KUROBOT_STUB_WS_URL            覆盖连接地址（缺省 ws://127.0.0.1:<argv[2]>）——独立进程
+ * - KUROBRIDGE_STUB_PROTOCOL_VERSION  覆盖 hello.protocolVersion（验协商拒绝 / 0.2.0 兼容连入）
+ * - KUROBRIDGE_STUB_TOKEN             hello 携带 token
+ * - KUROBRIDGE_STUB_CLIENT            hello 携带 client 自报身份（如 napukettoqq/1.0）
+ * - KUROBRIDGE_STUB_WS_URL            覆盖连接地址（缺省 ws://127.0.0.1:<argv[2]>）——独立进程
  *                                  模拟 external 对端连入（设此变量时 argv 端口可省略）
- * - KUROBOT_STUB_ADMIN_SOURCE      command 的 source 覆盖，格式 channel:userId
+ * - KUROBRIDGE_STUB_ADMIN_SOURCE      command 的 source 覆盖，格式 channel:userId
  *                                  （缺省 stub-channel:stub-admin，与沙盒配置 admins 对齐）
- * - KUROBOT_STUB_SEND_COMMAND      握手成功后自动发送的命令（";" 分隔多条，逐条等待结果）
- * - KUROBOT_STUB_SEND_QUERY        握手成功后自动查询（status / bindings，逗号并列）
- * - KUROBOT_STUB_SEND_UNKNOWN      握手成功后自动发未知帧（event / request，验容忍策略）
+ * - KUROBRIDGE_STUB_SEND_COMMAND      握手成功后自动发送的命令（";" 分隔多条，逐条等待结果）
+ * - KUROBRIDGE_STUB_SEND_QUERY        握手成功后自动查询（status / bindings，逗号并列）
+ * - KUROBRIDGE_STUB_SEND_UNKNOWN      握手成功后自动发未知帧（event / request，验容忍策略）
  *
  * 交互命令（stdin 行命令；被 node 以 stdio ignore 拉起时 stdin 即 EOF，静默禁用不影响常驻）：
  * - command <文本...>   以管理员来源发送 command 请求
  * - query <status|bindings>
  * - unknown <event|request>
  *
- * 用法：node peer.mjs <wsPort>（或设 KUROBOT_STUB_WS_URL 后省略端口）
+ * 用法：node peer.mjs <wsPort>（或设 KUROBRIDGE_STUB_WS_URL 后省略端口）
  * 零依赖：Node 26 内置全局 WebSocket（Undici）。
  */
 
@@ -39,32 +39,32 @@ import { createInterface } from "node:readline";
 
 const PEER_ID = `stub-${process.pid}`;
 const PROTOCOL_VERSION = "0.3.1";
-const WS_SUBPROTOCOL = "kurobot-ws.v1";
+const WS_SUBPROTOCOL = "kurobridge-ws.v1";
 const STUB_CHANNEL = "stub-channel";
 const HEARTBEAT_INTERVAL_MS = 5000;
 /** 连续重连失败上限（DEBT-2 孤儿治理）：达到即退出（孤儿 stub 不再无限重连） */
 const MAX_CONSECUTIVE_FAILURES = 10;
 
-const envProtocolVersion = process.env.KUROBOT_STUB_PROTOCOL_VERSION;
+const envProtocolVersion = process.env.KUROBRIDGE_STUB_PROTOCOL_VERSION;
 const HELLO_VERSION =
     envProtocolVersion !== undefined && envProtocolVersion !== ""
         ? envProtocolVersion
         : PROTOCOL_VERSION;
-const HELLO_TOKEN = process.env.KUROBOT_STUB_TOKEN ?? "";
+const HELLO_TOKEN = process.env.KUROBRIDGE_STUB_TOKEN ?? "";
 
 /** hello 的 client 自报身份（v0.3.1，MVP-3）：仅服务端连接日志辨识用 */
-const envClient = process.env.KUROBOT_STUB_CLIENT;
+const envClient = process.env.KUROBRIDGE_STUB_CLIENT;
 const HELLO_CLIENT = envClient !== undefined && envClient !== "" ? envClient : "";
 
 /**
- * 连接地址（MVP-3）：KUROBOT_STUB_WS_URL 覆盖（external 对端形态，独立进程连入）；
+ * 连接地址（MVP-3）：KUROBRIDGE_STUB_WS_URL 覆盖（external 对端形态，独立进程连入）；
  * 缺省维持现状 ws://127.0.0.1:<argv[2]>（孙进程拉起形态）。
  */
-const envWsUrl = process.env.KUROBOT_STUB_WS_URL;
+const envWsUrl = process.env.KUROBRIDGE_STUB_WS_URL;
 const port = process.argv[2];
 if ((envWsUrl === undefined || envWsUrl === "") && (port === undefined || Number.isNaN(Number(port)))) {
     process.stderr.write(
-        "[KuroBot][stub] 用法：node peer.mjs <wsPort>（或设 KUROBOT_STUB_WS_URL 指定连接地址）\n",
+        "[KuroBridge][stub] 用法：node peer.mjs <wsPort>（或设 KUROBRIDGE_STUB_WS_URL 指定连接地址）\n",
     );
     process.exit(2);
 }
@@ -83,10 +83,10 @@ function parseAdminSource(raw) {
     return channel.length > 0 && userId.length > 0 ? { channel, userId } : fallback;
 }
 
-const ADMIN_SOURCE = parseAdminSource(process.env.KUROBOT_STUB_ADMIN_SOURCE);
+const ADMIN_SOURCE = parseAdminSource(process.env.KUROBRIDGE_STUB_ADMIN_SOURCE);
 
 function log(message) {
-    process.stderr.write(`[KuroBot][stub] ${message}\n`);
+    process.stderr.write(`[KuroBridge][stub] ${message}\n`);
 }
 
 function sendFrame(ws, message) {
@@ -127,9 +127,9 @@ function rejectPending(reason) {
 
 /** 握手成功后的验收自动化序列（env 驱动，无人值守用） */
 async function runAutoSequence(ws) {
-    const autoCommand = process.env.KUROBOT_STUB_SEND_COMMAND ?? "";
-    const autoQuery = process.env.KUROBOT_STUB_SEND_QUERY ?? "";
-    const autoUnknown = process.env.KUROBOT_STUB_SEND_UNKNOWN ?? "";
+    const autoCommand = process.env.KUROBRIDGE_STUB_SEND_COMMAND ?? "";
+    const autoQuery = process.env.KUROBRIDGE_STUB_SEND_QUERY ?? "";
+    const autoUnknown = process.env.KUROBRIDGE_STUB_SEND_UNKNOWN ?? "";
 
     if (autoCommand.length > 0) {
         for (const raw of autoCommand.split(";")) {

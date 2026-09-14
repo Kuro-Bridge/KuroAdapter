@@ -5,7 +5,7 @@
  * - 游戏 → 平台：广播到**全部**绑定频道（逐频道一帧；未来按频道/事件类型的
  *   差异化规则在这个模块扩展，Relay 不感知细节）。
  */
-import type { PlatformChatBody } from "@kurobot/protocol";
+import type { PlatformChatBody } from "@kuro-bridge/protocol";
 
 /**
  * 平台消息的转发决策：绑定频道 → 原样放行；未绑定 → null（丢弃）。

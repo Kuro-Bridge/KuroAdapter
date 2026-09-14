@@ -1,5 +1,5 @@
 {
-    "name": "kurobot",
+    "name": "kurobridge",
     "version": "0.1.0",
     "description": "KuroBot LeviLamina（LSE）平台适配",
     "type": "module",
@@ -8,8 +8,8 @@
         "build": "esbuild src/index.ts --bundle --format=iife --platform=neutral --target=es2020 --outfile=dist/index.js"
     },
     "dependencies": {
-        "@kurobot/bridge-core": "workspace:*",
-        "@kurobot/protocol": "workspace:*"
+        "@kuro-bridge/bridge-core": "workspace:*",
+        "@kuro-bridge/protocol": "workspace:*"
     },
     "devDependencies": {
         "@levimc-lse/types": "^2.18.0",

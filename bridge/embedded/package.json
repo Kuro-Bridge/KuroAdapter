@@ -1,5 +1,5 @@
 {
-    "name": "@kurobot/bridge-embedded",
+    "name": "@kuro-bridge/bridge-embedded",
     "version": "0.0.0",
     "description": "嵌入式瘦身对端：内嵌 napukettoqq 协议端，esbuild 单文件打进 JAR",
     "type": "module",
@@ -18,8 +18,8 @@
         "build": "esbuild src/index.ts --bundle --format=esm --platform=node --target=es2020 --outfile=dist/index.mjs --banner:js=\"import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);\""
     },
     "dependencies": {
-        "@kurobot/bridge-core": "workspace:*",
-        "@kurobot/protocol": "workspace:*",
+        "@kuro-bridge/bridge-core": "workspace:*",
+        "@kuro-bridge/protocol": "workspace:*",
         "@napuketto/cli": "0.1.17",
         "ws": "^8.18.0"
     },

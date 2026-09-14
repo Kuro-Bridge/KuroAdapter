@@ -1,5 +1,5 @@
 /**
- * @kurobot/bridge-core —— kurobot 业务核心 + kurobot-ws 协议服务端（平台无关，ADR-007）
+ * @kuro-bridge/bridge-core —— kurobot 业务核心 + kurobridge-ws 协议服务端（平台无关，ADR-007）
  *
  * 组装形态（引导层负责，见 bridge/embedded）：
  *

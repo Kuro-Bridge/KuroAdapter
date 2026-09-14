@@ -8,7 +8,7 @@
  */
 
 import { createInterface } from "node:readline";
-import type { IpcChannel } from "@kurobot/bridge-core";
+import type { IpcChannel } from "@kuro-bridge/bridge-core";
 
 export class StdioIpcChannel implements IpcChannel {
     private readonly readline = createInterface({ input: process.stdin });

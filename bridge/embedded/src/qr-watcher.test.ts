@@ -2,7 +2,7 @@
 import { mkdir, mkdtemp, readFile, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { Logger } from "@kurobot/bridge-core";
+import type { Logger } from "@kuro-bridge/bridge-core";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { startQrWatcher } from "./qr-watcher.js";

@@ -1,7 +1,7 @@
 {
-    "name": "@kurobot/protocol",
+    "name": "@kuro-bridge/protocol",
     "version": "0.0.0",
-    "description": "kurobot-ws 协议 zod schema SSOT（唯一消息类型来源）",
+    "description": "kurobridge-ws 协议 zod schema SSOT（唯一消息类型来源）",
     "type": "module",
     "files": [
         "dist"

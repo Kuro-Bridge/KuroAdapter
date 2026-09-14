@@ -13,14 +13,14 @@
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 
-import type { Logger } from "@kurobot/bridge-core";
+import type { Logger } from "@kuro-bridge/bridge-core";
 import {
     ConfigError,
     type ConfigStore,
     defaultConfig,
     type KurobotConfig,
     parseConfig,
-} from "@kurobot/bridge-core";
+} from "@kuro-bridge/bridge-core";
 
 export interface NodeConfigStoreOptions {
     readonly logger: Logger;

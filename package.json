@@ -1,6 +1,6 @@
 {
     "$schema": "https://json.schemastore.org/package.json",
-    "name": "kurobot",
+    "name": "kurobridge",
     "version": "0.1.0",
     "description": "MC 服务器 ↔ 社交平台群服互通插件",
     "type": "module",

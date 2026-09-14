@@ -29,7 +29,7 @@ import {
     ipcNodeInboundFrame,
     type PlatformChatBody,
     type ResultBody,
-} from "@kurobot/protocol";
+} from "@kuro-bridge/protocol";
 
 import type { AdminTable } from "./business/admins.js";
 import type { BindingTable } from "./business/bindings.js";

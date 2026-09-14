@@ -5,7 +5,7 @@
  * stdout 混入非 JSON 内容会被 Java 侧当坏行丢弃（虽然不崩，但日志会丢）。
  * console.error 被 biome 禁用（noConsole 仅放行 log），故直接写 stderr。
  */
-import type { Logger } from "@kurobot/bridge-core";
+import type { Logger } from "@kuro-bridge/bridge-core";
 
 function write(level: string, message: string): void {
     process.stderr.write(`[KuroBot][node][${level}] ${message}\n`);

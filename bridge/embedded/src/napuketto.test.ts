@@ -1,8 +1,8 @@
 /** napuketto spawner 单测（MVP-4）：全部依赖注入，不发真进程 */
 import { join, resolve } from "node:path";
 import { PassThrough } from "node:stream";
-import type { Logger } from "@kurobot/bridge-core";
-import { defaultConfig } from "@kurobot/bridge-core";
+import type { Logger } from "@kuro-bridge/bridge-core";
+import { defaultConfig } from "@kuro-bridge/bridge-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {

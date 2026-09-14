@@ -1,5 +1,5 @@
 /**
- * KurobotServer：kurobot-ws 协议服务端（握手 / 鉴权 / 心跳 / 连接生命周期）。
+ * KurobotServer：kurobridge-ws 协议服务端（握手 / 鉴权 / 心跳 / 连接生命周期）。
  *
  * 握手语义（决策 D-01/ADR-023）：Peer 连入 → 发 hello（带 id）→ 校验 → 回同 id 的 hello_ack。
  * 协议版本协商（ADR-026，v0.3.0）：主版本号相同即兼容（isProtocolVersionCompatible）；
@@ -45,7 +45,7 @@ import {
     type StatusBody,
     WS_INBOUND_TYPES,
     wireFrameSchema,
-} from "@kurobot/protocol";
+} from "@kuro-bridge/protocol";
 
 import type { CancelFn } from "./clock.js";
 import type { CoreContext } from "./context.js";

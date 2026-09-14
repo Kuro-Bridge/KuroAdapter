@@ -1,8 +1,8 @@
 /**
- * @kurobot/protocol —— kurobot-ws 协议 zod schema SSOT
+ * @kuro-bridge/protocol —— kurobridge-ws 协议 zod schema SSOT
  *
  * 这里是消息类型的唯一来源（硬约束，见 AGENTS.md）：
- * 任何文件禁止手写消息类型，必须 `import { ... } from "@kurobot/protocol"`。
+ * 任何文件禁止手写消息类型，必须 `import { ... } from "@kuro-bridge/protocol"`。
  *
  * 原型最小集 + v0.2 增量 + v0.3.0 增量见各子模块；docs/protocol/draft-v0.1.md 是语义说明。
  */

@@ -1,4 +1,4 @@
-import { PROTOCOL_VERSION } from "@kurobot/protocol";
+import { PROTOCOL_VERSION } from "@kuro-bridge/protocol";
 import { describe, expect, it } from "vitest";
 import { AdminTable } from "./business/admins.js";
 import { BindingTable } from "./business/bindings.js";
