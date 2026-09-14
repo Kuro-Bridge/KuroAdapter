@@ -6,16 +6,22 @@
  *    （ws 服务端 / stdin-stdout IPC / stderr logger）。
  * 2. WS 服务端监听（MVP-3：config.ws 固定端口/绑定地址；缺省 listen(0) 动态端口、
  *    全部接口）→ IPC 发 `ready`（携带实际端口）。
- * 3. 环境变量 KUROBOT_STUB_PEER 指向 stub 脚本时，作为孙进程拉起（端口经 argv）。
- * 4. 关机：Java 发 `shutdown` 帧 或 关 stdin（EOF）→ 杀 stub → 退出进程。
+ * 3. 协议端分支（MVP-4）：config.embedded.napuketto.enabled → 守卫（平台/固定端口/
+ *    CLI 入口）后拉起嵌入 napuketto CLI（src/napuketto.ts，stdout/stderr 捕获打
+ *    `[napuketto]` 前缀）；否则 KUROBOT_STUB_PEER 指向 stub 脚本时拉起（端口经 argv）。
+ * 4. 关机：Java 发 `shutdown` 帧 或 关 stdin（EOF）→ [napuketto 树杀 →] 杀 stub → 退出。
  *
  * 生命周期两条路径（决策 D-08）：shutdown 帧 / stdin EOF 自杀；Java destroyForcibly 兜底。
  * 绑定失败语义（MVP-3）：固定端口被占 → 明确 error 日志（含端口与原因）→ 非零退出，
  * 重启收敛于 Java 看护器退避（1s/5s/15s，10 分钟窗 3 次放弃）。
+ * napuketto 快速失败（MVP-4，ADR-029）：enabled 且无 ws.port / CLI 入口缺失 → 同族语义
+ * （明确 error + exit(1)）；非 Windows 宿主 → error 日志 + 不拉起（继续纯 WS 服务端）。
  */
 
 import { type ChildProcess, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { mkdirSync } from "node:fs";
+import { dirname } from "node:path";
 import {
     AdminTable,
     BindingTable,
@@ -23,6 +29,7 @@ import {
     defaultConfig,
     type KurobotConfig,
     KurobotServer,
+    type Logger,
     Relay,
 } from "@kurobot/bridge-core";
 import { encodeFrame, PROTOCOL_VERSION } from "@kurobot/protocol";
@@ -30,6 +37,7 @@ import { encodeFrame, PROTOCOL_VERSION } from "@kurobot/protocol";
 import { NodeConfigStore } from "./config-store.js";
 import { StdioIpcChannel } from "./ipc-stdio.js";
 import { createStderrLogger } from "./logger.js";
+import { decideNapukettoLaunch, type NapukettoHandle, spawnNapuketto } from "./napuketto.js";
 import { NodeClock, NodeScheduler } from "./node-platform.js";
 import { NodeWsServer } from "./ws-server.js";
 
@@ -54,6 +62,46 @@ function terminate(spawned: ChildProcess | null, exitCode: number): void {
         return;
     }
     process.exit(exitCode);
+}
+
+/**
+ * napuketto 分支（MVP-4，ADR-029）：守卫 + 拉起嵌入 CLI。
+ * spawn → 句柄；skip（非 Windows）→ null（继续纯 WS 服务端）；fatal → 本进程退出。
+ */
+function launchNapukettoBranch(config: KurobotConfig, logger: Logger): NapukettoHandle | null {
+    const binDir = process.argv[1] !== undefined ? dirname(process.argv[1]) : process.cwd();
+    const decision = decideNapukettoLaunch({
+        config,
+        platform: process.platform,
+        cwd: process.cwd(),
+        binDir,
+    });
+    if (decision.action === "skip") {
+        log("error", `napuketto 未拉起：${decision.reason}`);
+        return null;
+    }
+    if (decision.action === "fatal") {
+        log("error", decision.reason);
+        process.exit(1);
+    }
+    mkdirSync(decision.dataDir, { recursive: true });
+    const handle = spawnNapuketto(
+        {
+            cliEntry: decision.cliEntry,
+            configPath: decision.configPath,
+            dataDir: decision.dataDir,
+        },
+        { logger },
+    );
+    handle.onUnexpectedExit(({ code, error }) => {
+        const cause = error === undefined ? "" : `，${String(error)}`;
+        log(
+            "error",
+            `napuketto CLI 意外退出（code=${code ?? "null"}${cause}），本进程退出交由 Java 看护器退避重启`,
+        );
+        process.exit(1);
+    });
+    return handle;
 }
 
 async function main(): Promise<void> {
@@ -104,6 +152,7 @@ async function main(): Promise<void> {
     });
 
     let stub: ChildProcess | null = null;
+    let napuketto: NapukettoHandle | null = null;
     const relay = new Relay({
         context,
         server,
@@ -113,10 +162,18 @@ async function main(): Promise<void> {
         configStore,
         onShutdown: (reason) => {
             log("info", `收到 Java 关机通知（${reason}），退出`);
-            relay.dispose();
-            terminate(stub, 0);
+            void shutdown(0);
         },
     });
+
+    // 统一关停路径：napuketto 优雅树杀（taskkill /T /F，等 exit ≤5s）→ stub 有界强杀 → 自退
+    const shutdown = async (exitCode: number): Promise<void> => {
+        relay.dispose();
+        if (napuketto !== null) {
+            await napuketto.stop();
+        }
+        terminate(stub, exitCode);
+    };
 
     let port: number;
     try {
@@ -141,8 +198,12 @@ async function main(): Promise<void> {
         `IPC ready 已发送（wsPort=${port}，autoRestart=${initialConfig.runtime.autoRestart}，协议 ${PROTOCOL_VERSION}）`,
     );
 
+    // 协议端分支（MVP-4）：embedded.napuketto.enabled → 拉起嵌入 CLI；否则 stub / external
+    const napukettoEnabled = initialConfig.embedded?.napuketto.enabled === true;
     const stubPath = process.env["KUROBOT_STUB_PEER"];
-    if (stubPath !== undefined && stubPath.length > 0) {
+    if (napukettoEnabled) {
+        napuketto = launchNapukettoBranch(initialConfig, logger);
+    } else if (stubPath !== undefined && stubPath.length > 0) {
         stub = spawn(process.execPath, [stubPath, String(port)], {
             stdio: ["ignore", "ignore", "inherit"],
         });
@@ -157,12 +218,11 @@ async function main(): Promise<void> {
     // stdin EOF：Java 关 stdin（或进程死亡）→ 自杀
     ipc.onClose(() => {
         log("info", "stdin EOF，退出");
-        relay.dispose();
-        terminate(stub, 0);
+        void shutdown(0);
     });
 
     process.on("SIGTERM", () => {
-        terminate(stub, 0);
+        void shutdown(0);
     });
 }
 
