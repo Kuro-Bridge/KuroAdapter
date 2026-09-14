@@ -216,7 +216,7 @@ export type DeathFrame = z.infer<typeof deathFrame>;
 
 // ---- 聚合（收帧侧「接受任意已知帧」用；zod 4 不支持嵌套判别路径，故平铺 union，决策 D-09）----
 
-/** kurobot 服务端视角的收帧集 */
+/** kurobridge 服务端视角的收帧集 */
 export const wsInboundFrame = z.union([
     helloFrame,
     pingFrame,

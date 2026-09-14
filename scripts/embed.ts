@@ -9,8 +9,8 @@
  * - 只用 Node 内置依赖；Node ≥ 23.6 原生 TS 剥离直接执行（pnpm build:jar 接线，无需编译）。
  * - 幂等：产物已存在且 sha256 一致则跳过；写盘 tmp + rename 原子替换。
  * - zip 有本地缓存（缺省 <仓库根>/.cache/node-dist/，gitignored）；镜像与缓存可经环境变量
- *   覆盖：KUROBOT_NODE_DIST_BASE（默认 https://nodejs.org/dist）、KUROBOT_NODE_CACHE_DIR、
- *   KUROBOT_NPM_REGISTRY（napuketto 安装镜像，网络敏感时切 npmmirror）。
+ *   覆盖：KUROBRIDGE_NODE_DIST_BASE（默认 https://nodejs.org/dist）、KUROBRIDGE_NODE_CACHE_DIR、
+ *   KUROBRIDGE_NPM_REGISTRY（napuketto 安装镜像，网络敏感时切 npmmirror）。
  *   换镜像不改校验逻辑（sha256 仍对官方 SHASUMS256.txt）。
  * - node 版本钉 26.7.0（与 mise 一致，任务书 §1.2）；多平台矩阵是后续债务。
  * - 红线：napuketto.zip 只含 npm 发布物（MIT 及其许可注记的资产）；wrapper.node / QQ
@@ -32,13 +32,13 @@ export const NODE_VERSION = "26.7.0";
 export const NODE_PLATFORM_DIR = `node-v${NODE_VERSION}-win-x64`;
 const ZIP_NAME = `${NODE_PLATFORM_DIR}.zip`;
 const DEFAULT_DIST_BASE = "https://nodejs.org/dist";
-const ENV_DIST_BASE = "KUROBOT_NODE_DIST_BASE";
-const ENV_CACHE_DIR = "KUROBOT_NODE_CACHE_DIR";
+const ENV_DIST_BASE = "KUROBRIDGE_NODE_DIST_BASE";
+const ENV_CACHE_DIR = "KUROBRIDGE_NODE_CACHE_DIR";
 /**
  * SHASUMS 严格模式（DEBT-2）：设为 1 时在线拉取 SHASUMS256.txt 失败即失败，拒绝回退缓存
  * （发布/CI 用，杜绝「信任上次缓存值」的窗口）；缺省行为不变（回退 + WARN 明示来源）。
  */
-const ENV_STRICT = "KUROBOT_NODE_DIST_STRICT";
+const ENV_STRICT = "KUROBRIDGE_NODE_DIST_STRICT";
 
 /** SHASUMS256.txt 行格式：`<sha256><两空格><文件名>`（容忍 \r 与多余空白）。 */
 const SHASUM_LINE = /^([0-9a-f]{64})\s\s+(\S.*)$/;
@@ -52,7 +52,7 @@ const PRODUCT_LICENSE = "NODE_LICENSE";
 /** MVP-4 嵌包产物名（:core EmbeddedRuntime 按 manifest.napukettoZip 指针展开到 bin/napuketto/） */
 export const PRODUCT_NAPUKETTO_ZIP = "napuketto.zip";
 export const PRODUCT_NAPUKETTO_LICENSES = "NAPUKETTO_LICENSES";
-const ENV_NPM_REGISTRY = "KUROBOT_NPM_REGISTRY";
+const ENV_NPM_REGISTRY = "KUROBRIDGE_NPM_REGISTRY";
 
 export interface EmbedOptions {
     /** bridge/embedded/dist/index.mjs（须先 pnpm -r build）。 */
@@ -61,7 +61,7 @@ export interface EmbedOptions {
     outDir: string;
     /** zip / SHASUMS256.txt / napuketto 依赖树缓存目录。 */
     cacheDir: string;
-    /** dist 基址（镜像覆盖）；缺省取 KUROBOT_NODE_DIST_BASE 或官方地址。 */
+    /** dist 基址（镜像覆盖）；缺省取 KUROBRIDGE_NODE_DIST_BASE 或官方地址。 */
     distBase?: string;
     /** 下载器（可注入，测试不发真网）；缺省 fetch。 */
     download?: (url: string) => Promise<Buffer>;
@@ -69,7 +69,7 @@ export interface EmbedOptions {
     log?: (message: string) => void;
     /**
      * SHASUMS 严格模式（DEBT-2）：true = 在线 SHASUMS 拉取失败直接失败，不回退缓存。
-     * 缺省读环境变量 KUROBOT_NODE_DIST_STRICT=1，未设为 false（回退 + WARN）。
+     * 缺省读环境变量 KUROBRIDGE_NODE_DIST_STRICT=1，未设为 false（回退 + WARN）。
      */
     strict?: boolean;
     /**
@@ -533,12 +533,12 @@ async function ensureNapukettoBundle(deps: {
     return { zip, licenses };
 }
 
-/** 缺省安装器：npm install 到 targetDir（真实文件，非 pnpm symlink）；镜像经 KUROBOT_NPM_REGISTRY */
+/** 缺省安装器：npm install 到 targetDir（真实文件，非 pnpm symlink）；镜像经 KUROBRIDGE_NPM_REGISTRY */
 function defaultInstallNapuketto(version: string, targetDir: string): void {
     mkdirSync(targetDir, { recursive: true });
     writeFileSync(
         join(targetDir, "package.json"),
-        `${JSON.stringify({ name: "kurobot-napuketto-bundle", private: true, version: "0.0.0" }, null, 4)}\n`,
+        `${JSON.stringify({ name: "kurobridge-napuketto-bundle", private: true, version: "0.0.0" }, null, 4)}\n`,
         "utf8",
     );
     const args = [

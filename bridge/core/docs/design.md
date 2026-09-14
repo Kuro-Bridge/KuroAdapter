@@ -1,10 +1,10 @@
-# bridge/core 设计（@kurobot/bridge-core）
+# bridge/core 设计（@kurobridge/bridge-core）
 
 > 本文件是包级设计文档（AGENTS.md：写代码前先更新对应包的 `docs/design.md`，设计先行）。
 
 ## 职责
 
-kurobot 的业务核心 + `kurobot-ws` 协议服务端（ADR-005：业务在 Node 侧）。
+kurobridge 的业务核心 + `kurobridge-ws` 协议服务端（ADR-005：业务在 Node 侧）。
 
 - 绑定/白名单/指令权限/转发规则等业务逻辑。
 - WS 服务端：握手、鉴权、心跳、UUID 请求-响应、`msgContinue` 流式回报、指数退避重连。
@@ -23,7 +23,7 @@ kurobot 的业务核心 + `kurobot-ws` 协议服务端（ADR-005：业务在 Nod
 ```
 src/
 ├── context.ts        # CoreContext：注入的 logger/传输层/配置持有者
-├── server.ts         # KurobotServer：WS 服务端（握手/心跳/连接生命周期）
+├── server.ts         # KurobridgeServer：WS 服务端（握手/心跳/连接生命周期）
 ├── ipc/              # 与 Java 薄壳的 JSON-lines IPC（inbound/outbound）
 ├── handlers/         # 消息处理：chat/command/query/…
 ├── business/         # 绑定列表 / 白名单 / 权限 / 转发规则（纯逻辑）
@@ -40,7 +40,7 @@ src/
 
 ## 依赖
 
-- `@kurobot/protocol`（workspace:*）——消息 schema SSOT。
+- `@kurobridge/protocol`（workspace:*）——消息 schema SSOT。
 
 ## 原型阶段（spike，2026-09-12）
 
@@ -50,7 +50,7 @@ src/
 
 - `src/context.ts`：`CoreContext`（注入 logger + serverId）。
 - `src/transport.ts`：`WsServer` / `WsConnection` / `IpcChannel` / `Logger` 可注入接口（零 Node API）。
-- `src/server.ts`：`KurobotServer` —— 握手状态机（awaitingHello → established/rejected）、心跳应答（ping→pong）、连接生命周期；协议版本不匹配 → `hello_ack` error + 关连接。
+- `src/server.ts`：`KurobridgeServer` —— 握手状态机（awaitingHello → established/rejected）、心跳应答（ping→pong）、连接生命周期；协议版本不匹配 → `hello_ack` error + 关连接。
 - `src/relay.ts`：假转发规则（占位业务）——IPC `game_chat` → WS `chat` 推给已握手对端；WS `chat` → IPC `broadcast` 请求（UUID 关联，等 `broadcast_result`）。
 - `src/index.ts`：聚合导出。
 
@@ -82,12 +82,12 @@ Node 实现在 embedded 引导层。
 ### IPC 断连降级（阶段 2，候选 E，已落地）
 
 三层可观测信号（不再静默丢弃）：`IpcChannel.isOpen`（只读健康快照）、`Relay.ipcOpen`（含
-dispose 语义）、`KurobotServer.send*` 返回送达的已握手对端数（0 = 无人接收）。Java 侧配套：
-`NodeIpc.sendGameChat` 返回 boolean，`/kurobot send` 据此明确报错。消息排队/补发留 MVP-2。
+dispose 语义）、`KurobridgeServer.send*` 返回送达的已握手对端数（0 = 无人接收）。Java 侧配套：
+`NodeIpc.sendGameChat` 返回 boolean，`/kurobridge send` 据此明确报错。消息排队/补发留 MVP-2。
 
 ### 业务最小闭环（阶段 3，已落地）
 
-- `src/business/config.ts`：`ConfigStore` 注入接口（`load(): Promise<KurobotConfig>` /
+- `src/business/config.ts`：`ConfigStore` 注入接口（`load(): Promise<KurobridgeConfig>` /
   `watch(onChange): 取消订阅`——实现时 load 定形为异步，Node 侧 fs/promises 天然异步；宿主可
   同步实现后包 Promise 返回）、`parseConfig`（zod：`{channels: string[]}`，频道非空、去重保序、
   多余字段剥离）、`ConfigError`、`defaultConfig`。
@@ -114,7 +114,7 @@ chat/broadcast 携带 channel、hello_ack 携带 channelBindings（`ServerOption
 
 ### 现状梳理（设计核对结论）
 
-- `KurobotServer.handleConnection` 的 `onClose` 已做：hello/idle 定时器取消 + peers 删除。
+- `KurobridgeServer.handleConnection` 的 `onClose` 已做：hello/idle 定时器取消 + peers 删除。
   握手被拒路径（`rejectHello`）先 cancelTimers 再 close，onClose 幂等二次清理无害。
 - `Relay` 的 IPC onClose 已做：在途请求全部拒绝 + 定时器取消（`markDisposed`）。
 - `server.stop()` 走 `connection.close(1001)` → onClose 清理；对异步 close 的真实实现，
@@ -138,7 +138,7 @@ chat/broadcast 携带 channel、hello_ack 携带 channelBindings（`ServerOption
 ### ready.autoRestart 上报（协议 0.2.1）
 
 `config.ts` 的 `parseConfig` 扩展：`runtime: { autoRestart: boolean }` 可选字段（缺省 true，
-多余字段剥离语义不变）。本包只做 schema 与默认值；ready 帧扩展在 `@kurobot/protocol`
+多余字段剥离语义不变）。本包只做 schema 与默认值；ready 帧扩展在 `@kurobridge/protocol`
 （`readyBodySchema` 加 `autoRestart` 可选字段，版本 0.2.0 → 0.2.1 patch 顺延），上报在
 bridge/embedded 引导层（配置 → ready body）。
 
@@ -147,7 +147,7 @@ bridge/embedded 引导层（配置 → ready body）。
 - 断连清理链核对结论：实现**零改动**即满足全部一致性用例（reconnect.test.ts 8 例）——
   onClose 清理/闭包实时快照/send 送达数语义本就闭合，本册补的是测试背书。
 - `config.ts`：`runtime.autoRestart` 用 zod `.default(true)` 双层默认（runtime 段缺省
-  或字段缺省都得到 true），`KurobotConfig` 形状新增必填 runtime 段（构造点全走
+  或字段缺省都得到 true），`KurobridgeConfig` 形状新增必填 runtime 段（构造点全走
   defaultConfig/cfg 助手）。
 
 ## 债务清偿一（DEBT-1，协议 v0.3.0，2026-09-13）
@@ -161,7 +161,7 @@ bridge/embedded 引导层（配置 → ready body）。
   不鉴权；exactOptionalPropertyTypes 下经 `?? ""` 归一）。bootstrap 从配置注入。
 - `handleHello` 校验顺序：版本兼容（不兼容 → 既有 1002 路径）→ token（服务端配置非空
   token 且 hello 未带/带错 → `hello_ack ok:false "auth failed"` + close **1008**）。
-- token 在 Node 进程生命周期内固定（boot 时注入）：`/kurobot reload` 不刷新 token
+- token 在 Node 进程生命周期内固定（boot 时注入）：`/kurobridge reload` 不刷新 token
   （改 token 需重启 Node；边界记录于 DEBT1-NOTES）。
 
 ### 版本协商落地
@@ -178,7 +178,7 @@ bridge/embedded 引导层（配置 → ready body）。
 
 ### query 本地作答（零 IPC 变化）
 
-- status 缓存：`KurobotServer.sendStatus` 顺带缓存最近一帧（`latestStatus`，null = 尚未收到
+- status 缓存：`KurobridgeServer.sendStatus` 顺带缓存最近一帧（`latestStatus`，null = 尚未收到
   任何 status）——缓存更新只挂在既有 Relay→sendStatus 路径上，不新增 IPC 帧也不改推送时机
   （维持 M-04 事件驱动决策）。
 - `query status` → 命中缓存回 `{ok:true, data: StatusBody}`；未命中 `{ok:false,"no status yet"}`。
@@ -212,7 +212,7 @@ bindings_updated）→ load 失败 error 日志、保留旧值等下次修复。
 
 ### config schema 扩展
 
-`KurobotConfig` 增 `token: string`（缺省 `""`）与 `admins: readonly AdminMapping[]`
+`KurobridgeConfig` 增 `token: string`（缺省 `""`）与 `admins: readonly AdminMapping[]`
 （`{channel, users}`，缺省 `[]`；entry 按 channel 去重保序、entry 内 users 去重保序，
 语义对齐 channels）。**runtime 段原样保留**（DEBT-2 语义不动，复跑指引 2）。`defaultConfig`
 同步扩展（生成的默认配置文件自含字段说明作用）。
@@ -220,7 +220,7 @@ bindings_updated）→ load 失败 error 日志、保留旧值等下次修复。
 ## MVP 阶段三（MVP-3，2026-09-13）：config 增 ws 监听段（SSOT 形状）
 
 > 任务书：`docs/MVP3-PROMPT.md`。WS 监听参数（host/port）是**宿主事务**（红线 2）：
-> core 只提供配置形状 SSOT 与解析，消费方在 bridge/embedded 引导层；`KurobotServer` 与
+> core 只提供配置形状 SSOT 与解析，消费方在 bridge/embedded 引导层；`KurobridgeServer` 与
 > `WsServer` 接口**不感知**监听参数——`start()` 返回实际端口、ready 帧照报实际端口的
 > 契约不变，本包其余零改动。
 
@@ -228,7 +228,7 @@ bindings_updated）→ load 失败 error 日志、保留旧值等下次修复。
   - **整段缺省 = 现状不变**（动态端口、不指定绑定地址——全部接口）。
   - `port`（1-65535 整数）→ 固定端口（external 对端连入点）；`host`（非空串）→ 绑定指定
     地址（如 `127.0.0.1` 只听本机）；**只配 host 不配 port = 动态端口 + 指定地址**（合法）。
-  - `KurobotConfig.ws` 可选（exactOptionalPropertyTypes 下成员声明为 `?: T | undefined`，
+  - `KurobridgeConfig.ws` 可选（exactOptionalPropertyTypes 下成员声明为 `?: T | undefined`，
     消费方 `config.ws?.port` 取值）；`parseConfig` 条件展开透传；`defaultConfig()` **不含
     ws 段**（生成的默认配置维持动态端口现状）。
 - 归属论证（ADR-028）：形状进 core 是 SSOT 惯例的延续（token/admins/runtime 同款），
@@ -258,8 +258,8 @@ bindings_updated）→ load 失败 error 日志、保留旧值等下次修复。
   embedded: {
       napuketto: {
           enabled: boolean,
-          configPath?: string,   // napuketto TOML 路径（相对服务器根）；缺省 plugins/kurobot/napuketto.toml
-          dataDir?: string,      // napuketto 数据目录（相对服务器根）；缺省 plugins/kurobot/napuketto-data
+          configPath?: string,   // napuketto TOML 路径（相对服务器根）；缺省 plugins/kurobridge/napuketto.toml
+          dataDir?: string,      // napuketto 数据目录（相对服务器根）；缺省 plugins/kurobridge/napuketto-data
       },
   }
   ```

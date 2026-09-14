@@ -2,9 +2,9 @@ import { PROTOCOL_VERSION } from "@kuro-bridge/protocol";
 import { describe, expect, it } from "vitest";
 import { AdminTable } from "./business/admins.js";
 import { BindingTable } from "./business/bindings.js";
-import { defaultConfig, type KurobotConfig } from "./business/config.js";
+import { defaultConfig, type KurobridgeConfig } from "./business/config.js";
 import { Relay } from "./relay.js";
-import { KurobotServer } from "./server.js";
+import { KurobridgeServer } from "./server.js";
 import {
     FakeConfigStore,
     FakeIpc,
@@ -40,7 +40,7 @@ function gameChatText(): string {
 }
 
 interface Fixture {
-    server: KurobotServer;
+    server: KurobridgeServer;
     ws: FakeWsServer;
     logger: FakeLogger;
     bindings: BindingTable;
@@ -61,7 +61,7 @@ function makeFixture(timeouts: { helloTimeoutMs: number; idleTimeoutMs: number }
     const config = new FakeConfigStore(defaultConfig());
     const bindings = new BindingTable(["10001"]);
     // 绑定快照经闭包实时取值——重连握手测试用 configStore 驱动同一 BindingTable
-    const server = new KurobotServer({
+    const server = new KurobridgeServer({
         context,
         wsServer: ws,
         channelBindings: () => bindings.channels(),
@@ -78,7 +78,7 @@ function handshake(ws: FakeWsServer, peerId = "peer-1"): FakeWsConnection {
     return conn;
 }
 
-function cfg(channels: string[]): KurobotConfig {
+function cfg(channels: string[]): KurobridgeConfig {
     return { ...defaultConfig(), channels };
 }
 
@@ -181,7 +181,7 @@ describe("对端断开 → 重连一致性（DEBT-2）", () => {
 describe("Relay 断连 → 重建一致性（DEBT-2）", () => {
     interface RelayFixture {
         relay: Relay;
-        server: KurobotServer;
+        server: KurobridgeServer;
         ws: FakeWsServer;
         ipc: FakeIpc;
         config: FakeConfigStore;
@@ -203,7 +203,7 @@ describe("Relay 断连 → 重建一致性（DEBT-2）", () => {
         });
         const config = new FakeConfigStore(cfg(["10001"]));
         const bindings = new BindingTable(["10001"]);
-        const server = new KurobotServer({
+        const server = new KurobridgeServer({
             context,
             wsServer: ws,
             channelBindings: () => bindings.channels(),

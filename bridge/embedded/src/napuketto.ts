@@ -22,12 +22,12 @@ import { isAbsolute, join, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import type { Readable } from "node:stream";
 
-import type { KurobotConfig, Logger } from "@kuro-bridge/bridge-core";
+import type { KurobridgeConfig, Logger } from "@kuro-bridge/bridge-core";
 
 /** CLI 嵌包在 bin 目录下的固定布局（scripts/embed.ts 产 zip、:core EmbeddedRuntime 解压共同约定） */
 const CLI_ENTRY_PARTS = ["napuketto", "node_modules", "@napuketto", "cli", "dist", "index.mjs"];
-const DEFAULT_CONFIG_RELATIVE = join("plugins", "kurobot", "napuketto.toml");
-const DEFAULT_DATA_RELATIVE = join("plugins", "kurobot", "napuketto-data");
+const DEFAULT_CONFIG_RELATIVE = join("plugins", "kurobridge", "napuketto.toml");
+const DEFAULT_DATA_RELATIVE = join("plugins", "kurobridge", "napuketto-data");
 
 /** napuketto 分支的启动决策（守卫与路径解析全部纯函数化，bootstrap 只做接线） */
 export type NapukettoLaunchDecision =
@@ -36,7 +36,7 @@ export type NapukettoLaunchDecision =
     | { action: "fatal"; reason: string };
 
 export interface DecideNapukettoLaunchInput {
-    config: KurobotConfig;
+    config: KurobridgeConfig;
     /** 宿主平台（注入便于测试；生产 = process.platform） */
     platform: NodeJS.Platform;
     /** 相对路径（configPath/dataDir）的解析基准 = 服务器根（node 子进程 cwd） */
@@ -54,7 +54,7 @@ export function decideNapukettoLaunch(input: DecideNapukettoLaunchInput): Napuke
             action: "skip",
             reason:
                 "QQ 宿主（napuketto self-host）当前仅支持 Windows，napuketto 不拉起" +
-                "（本进程继续作为纯 kurobot WS 服务端，external 对端不受影响；wine 支持记债务）",
+                "（本进程继续作为纯 kurobridge WS 服务端，external 对端不受影响；wine 支持记债务）",
         };
     }
     if (input.config.ws?.port === undefined) {
@@ -274,7 +274,7 @@ function pipeLines(
         if (isQrArtLine(line)) {
             if (foldedRun === 0) {
                 logger.info(
-                    "[napuketto] （终端二维码输出已折叠；图片路径与登录链接请看 kurobot qr）",
+                    "[napuketto] （终端二维码输出已折叠；图片路径与登录链接请看 kurobridge qr）",
                 );
             }
             foldedRun += 1;

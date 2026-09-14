@@ -8,7 +8,7 @@
 import type { Logger } from "@kuro-bridge/bridge-core";
 
 function write(level: string, message: string): void {
-    process.stderr.write(`[KuroBot][node][${level}] ${message}\n`);
+    process.stderr.write(`[KuroBridge][node][${level}] ${message}\n`);
 }
 
 export function createStderrLogger(): Logger {

@@ -4,7 +4,7 @@
 
 ## 职责
 
-KuroBot 的 LeviLamina（BDS）平台适配：复用 `bridge/core`（平台无关），把 kurobot 业务跑进 BDS 的 LSE 环境（QuickJS）。
+KuroBridge 的 LeviLamina（BDS）平台适配：复用 `bridge/core`（平台无关），把 kurobridge 业务跑进 BDS 的 LSE 环境（QuickJS）。
 
 ## 硬性约束（ADR-012 / ADR-007）
 
@@ -33,10 +33,10 @@ PocketMine-MP（PHP）工具链不匹配，明确不做。
 
 1. 用 `@levimc-lse/scaffold` 生成官方插件骨架，替换本占位。
 2. bridge/core 传输层/logger 的 LSE 适配（QuickJS 环境）。
-3. 复用 core 客户端接入 kurobot WS 服务端。
+3. 复用 core 客户端接入 kurobridge WS 服务端。
 
 ## 依赖
 
-- `@kurobot/bridge-core`（workspace:*）——业务核心（平台无关）。
-- `@kurobot/protocol`（workspace:*）——消息 schema。
+- `@kurobridge/bridge-core`（workspace:*）——业务核心（平台无关）。
+- `@kurobridge/protocol`（workspace:*）——消息 schema。
 - `@levimc-lse/types`（devDep）——LSE 全局对象类型。

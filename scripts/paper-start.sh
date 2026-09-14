@@ -10,9 +10,9 @@
 #      → 启动前清杀全部 tail.exe。
 #   3. MSYS pid 跨 bash 会话不可靠 → pid 文件记录 Windows pid（/proc/$!/winpid）。
 #
-# 环境变量（KuroBot 插件读取，MVP 阶段二起插件 JAR 自含 Node 运行时，不再注入 node/bundle）：
-#   KUROBOT_STUB_PEER  stub 协议端脚本路径（测试件不进 JAR，缺省指向仓库内 stub）
-#   KUROBOT_NODE / KUROBOT_BUNDLE  开发覆盖（设置后绕过 JAR 解压链，用环境指定的 node/bundle）
+# 环境变量（KuroBridge 插件读取，MVP 阶段二起插件 JAR 自含 Node 运行时，不再注入 node/bundle）：
+#   KUROBRIDGE_STUB_PEER  stub 协议端脚本路径（测试件不进 JAR，缺省指向仓库内 stub）
+#   KUROBRIDGE_NODE / KUROBRIDGE_BUNDLE  开发覆盖（设置后绕过 JAR 解压链，用环境指定的 node/bundle）
 #
 # 用法：bash scripts/paper-start.sh
 
@@ -32,16 +32,16 @@ fi
 taskkill //F //IM tail.exe >/dev/null 2>&1 || true
 
 mkdir -p "$SERVER/plugins"
-PLUGIN_JAR="$REPO/platforms/je/paper/build/libs/kurobot-0.1.0.jar"
+PLUGIN_JAR="$REPO/platforms/je/paper/build/libs/kurobridge-0.1.0.jar"
 if [ -f "$PLUGIN_JAR" ]; then
-    cp -f "$PLUGIN_JAR" "$SERVER/plugins/kurobot.jar"
+    cp -f "$PLUGIN_JAR" "$SERVER/plugins/kurobridge.jar"
     echo "[sandbox] 已安装插件：$PLUGIN_JAR"
 else
-    echo "[sandbox] 警告：未找到 shadowJar（$PLUGIN_JAR），本次启动不含 KuroBot" >&2
+    echo "[sandbox] 警告：未找到 shadowJar（$PLUGIN_JAR），本次启动不含 KuroBridge" >&2
 fi
 
-# stub 不进 JAR（测试件）：沙盒经仓库内路径注入；JAR 内自带 node.exe，无需 KUROBOT_NODE
-export KUROBOT_STUB_PEER="${KUROBOT_STUB_PEER:-$REPO/bridge/embedded/stub/peer.mjs}"
+# stub 不进 JAR（测试件）：沙盒经仓库内路径注入；JAR 内自带 node.exe，无需 KUROBRIDGE_NODE
+export KUROBRIDGE_STUB_PEER="${KUROBRIDGE_STUB_PEER:-$REPO/bridge/embedded/stub/peer.mjs}"
 
 # 坑 1：清空旧输入（防止回放上轮 stop）
 : > "$SERVER/cmd.in"
@@ -57,4 +57,4 @@ mise exec -- bash -c '
 '
 
 echo "[sandbox] Paper 已后台启动（winpid=$(cat "$SERVER/paper.pid")），日志：$SERVER/console.log"
-echo "[sandbox] KUROBOT_STUB_PEER=$KUROBOT_STUB_PEER"
+echo "[sandbox] KUROBRIDGE_STUB_PEER=$KUROBRIDGE_STUB_PEER"

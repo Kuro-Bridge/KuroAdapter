@@ -1,8 +1,8 @@
 /**
  * 配置注入接口（MVP 阶段一）：core 平台无关，配置读写全部经此抽象（ADR-007）。
  *
- * Node 实现（plugins/kurobot/config.json 轮询监听）在 bridge/embedded 引导层；
- * 配置文件由服主手工编辑，kurobot 只读 + 缺失时生成默认（落盘职责在实现侧）。
+ * Node 实现（plugins/kurobridge/config.json 轮询监听）在 bridge/embedded 引导层；
+ * 配置文件由服主手工编辑，kurobridge 只读 + 缺失时生成默认（落盘职责在实现侧）。
  *
  * v0.3.0（DEBT-1）扩展：token（WS 鉴权）与 admins（群管理员映射）；
  * runtime 段（DEBT-2）保持不变。
@@ -17,8 +17,8 @@ export interface AdminMapping {
     readonly users: readonly string[];
 }
 
-/** kurobot 配置形状（v0.3.0：绑定频道 + 鉴权 + 管理员映射；DEBT-2 增 runtime 宿主参数段；MVP-3 增 ws 监听段） */
-export interface KurobotConfig {
+/** kurobridge 配置形状（v0.3.0：绑定频道 + 鉴权 + 管理员映射；DEBT-2 增 runtime 宿主参数段；MVP-3 增 ws 监听段） */
+export interface KurobridgeConfig {
     readonly channels: readonly string[];
     /** WS 握手鉴权 token；空串 = 不鉴权（向后兼容） */
     readonly token: string;
@@ -46,9 +46,9 @@ export interface KurobotConfig {
         readonly napuketto: {
             /** 显式声明不给缺省：嵌入是重行为（拉起 QQ 协议端整树） */
             readonly enabled: boolean;
-            /** napuketto TOML 路径（相对服务器根）；缺省 plugins/kurobot/napuketto.toml */
+            /** napuketto TOML 路径（相对服务器根）；缺省 plugins/kurobridge/napuketto.toml */
             readonly configPath?: string | undefined;
-            /** napuketto 数据目录（相对服务器根）；缺省 plugins/kurobot/napuketto-data */
+            /** napuketto 数据目录（相对服务器根）；缺省 plugins/kurobridge/napuketto-data */
             readonly dataDir?: string | undefined;
         };
     };
@@ -57,9 +57,9 @@ export interface KurobotConfig {
 /** 配置读写抽象（宿主注入；watch 返回取消订阅函数） */
 export interface ConfigStore {
     /** 读取并解析当前配置；非法配置抛 ConfigError */
-    load(): Promise<KurobotConfig>;
+    load(): Promise<KurobridgeConfig>;
     /** 订阅配置变更（实现方负责去抖/错误兜底，只投递合法配置） */
-    watch(onChange: (config: KurobotConfig) => void): () => void;
+    watch(onChange: (config: KurobridgeConfig) => void): () => void;
 }
 
 /** 配置读取/解析失败的类型化错误 */
@@ -93,9 +93,9 @@ const wsListenSchema = z.object({
 const napukettoSchema = z.object({
     /** 显式声明不给缺省：嵌入是重行为（拉起 QQ 协议端整树），要求服主写明 */
     enabled: z.boolean(),
-    /** napuketto TOML 路径（相对服务器根）；缺省 plugins/kurobot/napuketto.toml */
+    /** napuketto TOML 路径（相对服务器根）；缺省 plugins/kurobridge/napuketto.toml */
     configPath: z.string().min(1).optional(),
-    /** napuketto 数据目录（相对服务器根）；缺省 plugins/kurobot/napuketto-data */
+    /** napuketto 数据目录（相对服务器根）；缺省 plugins/kurobridge/napuketto-data */
     dataDir: z.string().min(1).optional(),
 });
 
@@ -143,7 +143,7 @@ function normalizeAdmins(admins: readonly { channel: string; users: string[] }[]
  * 解析配置（纯函数）：channels / admins 各自去重保序；形状/内容非法抛 ConfigError。
  * 多余字段剥离（zod 非严格 object），旧配置缺新字段按缺省补齐（向后兼容）。
  */
-export function parseConfig(raw: unknown): KurobotConfig {
+export function parseConfig(raw: unknown): KurobridgeConfig {
     let parsed: z.infer<typeof configSchema>;
     try {
         parsed = configSchema.parse(raw);
@@ -176,6 +176,6 @@ export function parseConfig(raw: unknown): KurobotConfig {
  * 默认配置（无绑定、不鉴权、无管理员——平台消息不进游戏，直到服主写入绑定；
  * **不含 ws 段**：生成的默认配置维持动态端口现状，external 形态由服主显式添加）
  */
-export function defaultConfig(): KurobotConfig {
+export function defaultConfig(): KurobridgeConfig {
     return { channels: [], token: "", admins: [], runtime: { autoRestart: true } };
 }

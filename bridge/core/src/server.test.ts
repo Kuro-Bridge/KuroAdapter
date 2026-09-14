@@ -1,7 +1,7 @@
 import { PROTOCOL_VERSION } from "@kuro-bridge/protocol";
 import { describe, expect, it } from "vitest";
 
-import { KurobotServer, type ServerTimeouts } from "./server.js";
+import { KurobridgeServer, type ServerTimeouts } from "./server.js";
 import {
     FakeLogger,
     FakeWsConnection,
@@ -23,7 +23,7 @@ function helloText(protocolVersion: string = PROTOCOL_VERSION): string {
 }
 
 interface ServerFixture {
-    server: KurobotServer;
+    server: KurobridgeServer;
     ws: FakeWsServer;
     logger: FakeLogger;
     time: ReturnType<typeof manualTime>;
@@ -39,7 +39,7 @@ function makeServer(timeouts?: ServerTimeouts, token?: string): ServerFixture {
         scheduler: time.scheduler,
         ...(token === undefined ? {} : { token }),
     });
-    const server = new KurobotServer({
+    const server = new KurobridgeServer({
         context,
         wsServer: ws,
         channelBindings: () => CHANNELS,
@@ -60,7 +60,7 @@ function pingText(): string {
     return JSON.stringify({ header: { type: "ping", id: UUID }, body: { timestamp: 1 } });
 }
 
-describe("KurobotServer 握手", () => {
+describe("KurobridgeServer 握手", () => {
     it("合法 hello → hello_ack ok（携带服务端身份与 channelBindings）", () => {
         const { server, ws } = makeServer();
         const conn = establishedConn(ws);
@@ -103,7 +103,7 @@ describe("KurobotServer 握手", () => {
     });
 });
 
-describe("KurobotServer 心跳", () => {
+describe("KurobridgeServer 心跳", () => {
     it("握手后 ping → 同 id pong，回带 timestamp", () => {
         const { ws } = makeServer();
         const conn = establishedConn(ws);
@@ -125,7 +125,7 @@ describe("KurobotServer 心跳", () => {
     });
 });
 
-describe("KurobotServer chat 双向", () => {
+describe("KurobridgeServer chat 双向", () => {
     it("握手后平台 chat（带 channel）触发 onPlatformChat；握手前丢弃", () => {
         const { server, ws } = makeServer();
         const received: { channel: string; sender: string; content: string }[] = [];
@@ -171,7 +171,7 @@ describe("KurobotServer chat 双向", () => {
     });
 });
 
-describe("KurobotServer v0.2 出帧（join/leave/status/bindings_updated）", () => {
+describe("KurobridgeServer v0.2 出帧（join/leave/status/bindings_updated）", () => {
     it("四种事件均推给已握手对端，未握手对端不收", () => {
         const { server, ws } = makeServer();
         const established = establishedConn(ws);
@@ -201,7 +201,7 @@ describe("KurobotServer v0.2 出帧（join/leave/status/bindings_updated）", ()
     });
 });
 
-describe("KurobotServer 超时健壮性（验收 §4.2）", () => {
+describe("KurobridgeServer 超时健壮性（验收 §4.2）", () => {
     it("假对端连入后不发 hello → hello 超时被关（1002）", () => {
         const { server, ws, logger, time } = makeServer(T);
         const conn = new FakeWsConnection();
@@ -282,7 +282,7 @@ describe("KurobotServer 超时健壮性（验收 §4.2）", () => {
     });
 });
 
-describe("KurobotServer 帧容错与生命周期", () => {
+describe("KurobridgeServer 帧容错与生命周期", () => {
     it("坏 JSON 与校验失败的帧被丢弃，不崩不影响后续", () => {
         const { ws } = makeServer();
         const conn = new FakeWsConnection();
@@ -310,7 +310,7 @@ describe("KurobotServer 帧容错与生命周期", () => {
     });
 });
 
-describe("KurobotServer 版本协商兼容区间（v0.3.0，ADR-026）", () => {
+describe("KurobridgeServer 版本协商兼容区间（v0.3.0，ADR-026）", () => {
     it("0.2.0 旧对端连 0.3.0 服务端：主版本相同 → 兼容可握手", () => {
         const { server, ws } = makeServer();
         const conn = new FakeWsConnection();
@@ -339,7 +339,7 @@ describe("KurobotServer 版本协商兼容区间（v0.3.0，ADR-026）", () => {
     });
 });
 
-describe("KurobotServer 鉴权 token（v0.3.0）", () => {
+describe("KurobridgeServer 鉴权 token（v0.3.0）", () => {
     it("配置非空 token：hello 未带 token → auth failed + close 1008", () => {
         const { server, ws } = makeServer(undefined, "s3cret");
         const conn = new FakeWsConnection();
@@ -409,7 +409,7 @@ describe("KurobotServer 鉴权 token（v0.3.0）", () => {
     });
 });
 
-describe("KurobotServer 未知帧容忍（v0.3.0，ADR-026）", () => {
+describe("KurobridgeServer 未知帧容忍（v0.3.0，ADR-026）", () => {
     it("未知请求帧（带 id）→ 回同 id 的 <type>_result ok:false，不断连", () => {
         const { ws, logger } = makeServer();
         const conn = establishedConn(ws);
@@ -454,7 +454,7 @@ describe("KurobotServer 未知帧容忍（v0.3.0，ADR-026）", () => {
     });
 });
 
-describe("KurobotServer query 本地作答（v0.3.0）", () => {
+describe("KurobridgeServer query 本地作答（v0.3.0）", () => {
     it("query bindings → ok:true data 为绑定快照（闭包实时取值）", () => {
         const { ws } = makeServer();
         const conn = establishedConn(ws);
@@ -493,7 +493,7 @@ describe("KurobotServer query 本地作答（v0.3.0）", () => {
     });
 });
 
-describe("KurobotServer command 分发（v0.3.0）", () => {
+describe("KurobridgeServer command 分发（v0.3.0）", () => {
     it("已注册 handler：body 交给 handler，resolve 值按同 id 回 command_result", async () => {
         const { server, ws } = makeServer();
         const received: unknown[] = [];

@@ -11,7 +11,7 @@ export interface CoreOptions {
     logger: Logger;
     /** 本服务器标识（hello_ack 上报给对端） */
     serverId: string;
-    /** kurobot 版本（hello_ack 上报给对端） */
+    /** kurobridge 版本（hello_ack 上报给对端） */
     version: string;
     /**
      * WS 握手鉴权 token（v0.3.0，DEBT-1）：非空时 hello 必须携带相同 token。

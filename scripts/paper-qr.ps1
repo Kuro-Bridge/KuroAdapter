@@ -1,11 +1,11 @@
-﻿# 一键扫码：发送 kurobot qr → 回显状态（含"距今 N 秒前"可判断是否过期）→ 自动用
+﻿# 一键扫码：发送 kurobridge qr → 回显状态（含"距今 N 秒前"可判断是否过期）→ 自动用
 # 系统看图器打开二维码图片，手机 QQ 直接扫。用法：scripts\paper-qr.cmd
 $ErrorActionPreference = "Stop"
 
-$output = & "$PSScriptRoot\paper-cmd.ps1" kurobot qr
+$output = & "$PSScriptRoot\paper-cmd.ps1" kurobridge qr
 $output | Write-Output
 
-$png = Join-Path $PSScriptRoot "..\sandbox\server\plugins\kurobot\qr.png"
+$png = Join-Path $PSScriptRoot "..\sandbox\server\plugins\kurobridge\qr.png"
 if (Test-Path $png) {
     # 服务器重启后 / napuketto 未到扫码阶段时，磁盘上可能是上一轮的过期残留图——拒开防误导
     $ageMinutes = ((Get-Date) - (Get-Item $png).LastWriteTime).TotalMinutes

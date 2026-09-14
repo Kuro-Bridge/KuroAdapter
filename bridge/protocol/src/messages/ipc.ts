@@ -123,7 +123,7 @@ export const shutdownFrame = eventFrameSchema("shutdown", shutdownBodySchema);
 export type ShutdownBody = z.infer<typeof shutdownBodySchema>;
 export type ShutdownFrame = z.infer<typeof shutdownFrame>;
 
-/** 配置重载通知（v0.3.0 事件，/kurobot reload 触发；无参数——重载后 core 重读全部配置） */
+/** 配置重载通知（v0.3.0 事件，/kurobridge reload 触发；无参数——重载后 core 重读全部配置） */
 export const configReloadFrame = eventFrameSchema("config_reload", z.object({}));
 export type ConfigReloadFrame = z.infer<typeof configReloadFrame>;
 

@@ -4,7 +4,7 @@
 
 ## 职责
 
-KuroBot 的 Endstone 服务端适配：C++ 薄壳，把 BDS 事件桥接给内嵌 Node 子进程（`bridge/core`）。
+KuroBridge 的 Endstone 服务端适配：C++ 薄壳，把 BDS 事件桥接给内嵌 Node 子进程（`bridge/core`）。
 
 ## 硬性约束
 

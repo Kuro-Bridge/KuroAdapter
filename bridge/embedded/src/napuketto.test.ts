@@ -97,8 +97,8 @@ function makeHarness(overrides?: Partial<NapukettoDeps>): Harness {
 
 const SPEC = {
     cliEntry: "/bin/napuketto/node_modules/@napuketto/cli/dist/index.mjs",
-    configPath: "/srv/plugins/kurobot/napuketto.toml",
-    dataDir: "/srv/plugins/kurobot/napuketto-data",
+    configPath: "/srv/plugins/kurobridge/napuketto.toml",
+    dataDir: "/srv/plugins/kurobridge/napuketto-data",
 };
 
 function makeConfig(overrides?: Record<string, unknown>): Record<string, unknown> {
@@ -122,7 +122,7 @@ describe("decideNapukettoLaunch", () => {
     const base = {
         platform: "win32" as NodeJS.Platform,
         cwd: "/srv",
-        binDir: "/srv/plugins/kurobot/bin",
+        binDir: "/srv/plugins/kurobridge/bin",
         cliExists: () => true,
     };
 
@@ -170,10 +170,10 @@ describe("decideNapukettoLaunch", () => {
         });
         expect(decision).toEqual({
             action: "spawn",
-            configPath: resolve("/srv", "plugins/kurobot/napuketto.toml"),
+            configPath: resolve("/srv", "plugins/kurobridge/napuketto.toml"),
             dataDir: resolve("/srv", "custom-data"),
             cliEntry: join(
-                "/srv/plugins/kurobot/bin",
+                "/srv/plugins/kurobridge/bin",
                 "napuketto",
                 "node_modules",
                 "@napuketto",
@@ -225,9 +225,9 @@ describe("isQrArtLine", () => {
 describe("spawnNapuketto", () => {
     it("spawn 参数：node 自身执行 CLI 入口、env 指路 + 原样透传、stdio 全 pipe", () => {
         const h = makeHarness();
-        process.env["KUROBOT_NK_TEST_PASS"] = "keep-me";
+        process.env["KUROBRIDGE_NK_TEST_PASS"] = "keep-me";
         spawnNapuketto(SPEC, h.deps);
-        delete process.env["KUROBOT_NK_TEST_PASS"];
+        delete process.env["KUROBRIDGE_NK_TEST_PASS"];
         expect(h.spawns).toHaveLength(1);
         const call = h.spawns[0];
         if (call === undefined) {
@@ -238,7 +238,7 @@ describe("spawnNapuketto", () => {
         expect(call.options.stdio).toEqual(["pipe", "pipe", "pipe"]);
         expect(call.options.env?.["NAPKETTO_CONFIG"]).toBe(SPEC.configPath);
         expect(call.options.env?.["NAPKETTO_DATA"]).toBe(SPEC.dataDir);
-        expect(call.options.env?.["KUROBOT_NK_TEST_PASS"]).toBe("keep-me");
+        expect(call.options.env?.["KUROBRIDGE_NK_TEST_PASS"]).toBe("keep-me");
     });
 
     it("stdout/stderr 逐行捕获并按级别字样分流（[napuketto] 前缀）", async () => {

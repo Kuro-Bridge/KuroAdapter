@@ -176,7 +176,7 @@ describe("buildZip / collectZipEntries / collectLicenses（MVP-4）", () => {
     });
 
     it("collectZipEntries：扁平化为 zip 名（node_modules/ 前缀 + / 分隔）、跳过 .bin 与 symlink、排序稳定", async () => {
-        const root = await mkdtemp(join(tmpdir(), "kurobot-nk-"));
+        const root = await mkdtemp(join(tmpdir(), "kurobridge-nk-"));
         try {
             fakeNapukettoInstall("1.2.3", root);
             const entries = await collectZipEntries(join(root, "node_modules"));
@@ -197,7 +197,7 @@ describe("buildZip / collectZipEntries / collectLicenses（MVP-4）", () => {
     });
 
     it("collectLicenses：聚合全部顶层包许可（@scope 下钻），一包一许可带路径头", async () => {
-        const root = await mkdtemp(join(tmpdir(), "kurobot-nk-"));
+        const root = await mkdtemp(join(tmpdir(), "kurobridge-nk-"));
         try {
             fakeNapukettoInstall("1.2.3", root);
             const licenses = (await collectLicenses(join(root, "node_modules"))).toString("utf8");
@@ -226,7 +226,7 @@ describe("runEmbed", () => {
     });
 
     async function makeTemp(): Promise<string> {
-        const dir = await mkdtemp(join(tmpdir(), "kurobot-embed-"));
+        const dir = await mkdtemp(join(tmpdir(), "kurobridge-embed-"));
         tempDirs.push(dir);
         return dir;
     }
@@ -396,7 +396,7 @@ describe("runEmbed", () => {
                 (line) =>
                     line.includes("[WARN]") &&
                     line.includes("来源=缓存") &&
-                    line.includes("KUROBOT_NODE_DIST_STRICT=1"),
+                    line.includes("KUROBRIDGE_NODE_DIST_STRICT=1"),
             ),
         ).toBe(true);
         expect(await readFile(join(root, "embedded", "node.exe"))).toEqual(fakeExe);

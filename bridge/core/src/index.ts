@@ -1,5 +1,5 @@
 /**
- * @kuro-bridge/bridge-core —— kurobot 业务核心 + kurobridge-ws 协议服务端（平台无关，ADR-007）
+ * @kuro-bridge/bridge-core —— kurobridge 业务核心 + kurobridge-ws 协议服务端（平台无关，ADR-007）
  *
  * 组装形态（引导层负责，见 bridge/embedded）：
  *
@@ -8,7 +8,7 @@
  *     logger, serverId, version, newRequestId, clock, scheduler,
  * });
  * const bindings = new BindingTable(initialConfig.channels);
- * const server = new KurobotServer({
+ * const server = new KurobridgeServer({
  *     context,
  *     wsServer,
  *     channelBindings: () => bindings.channels(),
@@ -20,7 +20,7 @@
 
 import { AdminTable } from "./business/admins.js";
 import { BindingTable } from "./business/bindings.js";
-import type { AdminMapping, ConfigStore, KurobotConfig } from "./business/config.js";
+import type { AdminMapping, ConfigStore, KurobridgeConfig } from "./business/config.js";
 import { ConfigError, defaultConfig, parseConfig } from "./business/config.js";
 import { gameEventChannels, platformChatTarget } from "./business/forwarding.js";
 import type { CancelFn, Clock, TimerScheduler } from "./clock.js";
@@ -30,7 +30,7 @@ import { CoreContext } from "./context.js";
 import type { RelayOptions } from "./relay.js";
 import { DEFAULT_IPC_REQUEST_TIMEOUT_MS, IpcRequestError, Relay } from "./relay.js";
 import type { ServerOptions, ServerTimeouts } from "./server.js";
-import { DEFAULT_HELLO_TIMEOUT_MS, DEFAULT_IDLE_TIMEOUT_MS, KurobotServer } from "./server.js";
+import { DEFAULT_HELLO_TIMEOUT_MS, DEFAULT_IDLE_TIMEOUT_MS, KurobridgeServer } from "./server.js";
 import type { IpcChannel, Logger, WsConnection, WsServer } from "./transport.js";
 
 export type {
@@ -40,7 +40,7 @@ export type {
     ConfigStore,
     CoreOptions,
     IpcChannel,
-    KurobotConfig,
+    KurobridgeConfig,
     Logger,
     RelayOptions,
     ServerOptions,
@@ -60,7 +60,7 @@ export {
     defaultConfig,
     gameEventChannels,
     IpcRequestError,
-    KurobotServer,
+    KurobridgeServer,
     ManualClock,
     ManualScheduler,
     parseConfig,

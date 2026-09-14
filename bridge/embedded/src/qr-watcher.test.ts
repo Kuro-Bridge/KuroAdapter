@@ -25,10 +25,10 @@ afterEach(async () => {
 });
 
 async function makeDirs(): Promise<{ dataDir: string; qrDir: string }> {
-    const root = await mkdtemp(join(tmpdir(), "kurobot-qr-"));
+    const root = await mkdtemp(join(tmpdir(), "kurobridge-qr-"));
     dirs.push(root);
     const dataDir = join(root, "napuketto-data");
-    const qrDir = join(root, "kurobot");
+    const qrDir = join(root, "kurobridge");
     await mkdir(dataDir, { recursive: true });
     await mkdir(qrDir, { recursive: true });
     return { dataDir, qrDir };
@@ -52,10 +52,10 @@ describe("startQrWatcher", () => {
     });
 
     it("数据目录不存在 → 轮询静默等待；出现后自动发现并落地 qr.png/qr.json", async () => {
-        const root = await mkdtemp(join(tmpdir(), "kurobot-qr-"));
+        const root = await mkdtemp(join(tmpdir(), "kurobridge-qr-"));
         dirs.push(root);
         const dataDir = join(root, "not-yet");
-        const qrDir = join(root, "kurobot");
+        const qrDir = join(root, "kurobridge");
         await mkdir(qrDir, { recursive: true });
         const watcher = startQrWatcher({ dataDir, qrDir, logger, intervalMs: 10 });
         await new Promise((resolve) => setTimeout(resolve, 30));

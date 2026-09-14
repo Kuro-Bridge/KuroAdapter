@@ -2,7 +2,7 @@
  * 测试用假传输层（仅测试导入，不进产物）。
  */
 
-import type { ConfigStore, KurobotConfig } from "./business/config.js";
+import type { ConfigStore, KurobridgeConfig } from "./business/config.js";
 import { defaultConfig } from "./business/config.js";
 import { ManualClock, ManualScheduler } from "./clock.js";
 import type { CoreOptions } from "./context.js";
@@ -11,17 +11,19 @@ import type { IpcChannel, Logger, WsConnection, WsServer } from "./transport.js"
 
 /** 假配置源：可预置配置，notify 模拟文件变更 */
 export class FakeConfigStore implements ConfigStore {
-    private current: KurobotConfig;
-    private readonly watchers: ((config: KurobotConfig) => void)[] = [];
+    private current: KurobridgeConfig;
+    private readonly watchers: ((config: KurobridgeConfig) => void)[] = [];
     /** load() 覆写（config_reload 测试专用）：返回指定配置或抛错，不影响 watch/current */
-    private loadResult: { ok: true; config: KurobotConfig } | { ok: false; error: unknown } | null =
-        null;
+    private loadResult:
+        | { ok: true; config: KurobridgeConfig }
+        | { ok: false; error: unknown }
+        | null = null;
 
-    constructor(initial: KurobotConfig = defaultConfig()) {
+    constructor(initial: KurobridgeConfig = defaultConfig()) {
         this.current = initial;
     }
 
-    async load(): Promise<KurobotConfig> {
+    async load(): Promise<KurobridgeConfig> {
         if (this.loadResult !== null) {
             if (this.loadResult.ok) {
                 return this.loadResult.config;
@@ -33,12 +35,12 @@ export class FakeConfigStore implements ConfigStore {
 
     /** 注入 load() 返回值（不触发 watch；验证 config_reload 路径用） */
     setLoadResult(
-        result: { ok: true; config: KurobotConfig } | { ok: false; error: unknown },
+        result: { ok: true; config: KurobridgeConfig } | { ok: false; error: unknown },
     ): void {
         this.loadResult = result;
     }
 
-    watch(onChange: (config: KurobotConfig) => void): () => void {
+    watch(onChange: (config: KurobridgeConfig) => void): () => void {
         this.watchers.push(onChange);
         return () => {
             const index = this.watchers.indexOf(onChange);
@@ -49,7 +51,7 @@ export class FakeConfigStore implements ConfigStore {
     }
 
     /** 测试注入：模拟配置文件变更（投递全部订阅者） */
-    notify(config: KurobotConfig): void {
+    notify(config: KurobridgeConfig): void {
         this.current = config;
         for (const watcher of this.watchers) {
             watcher(config);

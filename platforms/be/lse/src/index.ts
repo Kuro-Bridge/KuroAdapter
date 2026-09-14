@@ -1,5 +1,5 @@
 /**
- * platforms/be —— KuroBot LeviLamina（LSE）平台适配（占位）
+ * platforms/be —— KuroBridge LeviLamina（LSE）平台适配（占位）
  *
  * 构建占位：仅注册插件名，保证 workspace 全链路可构建。
  * 业务实现见 docs/design.md 的实现顺序（STATUS.md 第 6 步，JE 闭环后）。
@@ -10,10 +10,10 @@
 
 // LSE 全局对象（类型来自 @levimc-lse/types）：ll.registerPlugin 注册插件
 const registered = ll.registerPlugin(
-    "kurobot",
-    "KuroBot LeviLamina 平台适配（群服互通）",
+    "kurobridge",
+    "KuroBridge LeviLamina 平台适配（群服互通）",
     [0, 1, 0],
-    "KuroBot",
+    "KuroBridge",
 );
 
 // 占位导出（避免 TS noUnusedLocals 报错；业务接入见 design.md）

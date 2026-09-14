@@ -3,9 +3,9 @@ import { describe, expect, it, vi } from "vitest";
 
 import { AdminTable } from "./business/admins.js";
 import { BindingTable } from "./business/bindings.js";
-import { ConfigError, defaultConfig, type KurobotConfig } from "./business/config.js";
+import { ConfigError, defaultConfig, type KurobridgeConfig } from "./business/config.js";
 import { IpcRequestError, Relay } from "./relay.js";
-import { KurobotServer } from "./server.js";
+import { KurobridgeServer } from "./server.js";
 import {
     FakeConfigStore,
     FakeIpc,
@@ -23,8 +23,8 @@ const BOUND = "10001";
 /** 测试用 IPC 请求超时（远小于默认值） */
 const IPC_TIMEOUT_MS = 500;
 
-/** 构造 KurobotConfig（runtime 用缺省 true） */
-function cfg(channels: string[]): KurobotConfig {
+/** 构造 KurobridgeConfig（runtime 用缺省 true） */
+function cfg(channels: string[]): KurobridgeConfig {
     return { ...defaultConfig(), channels };
 }
 
@@ -67,7 +67,7 @@ function makeFixture(ipcRequestTimeoutMs?: number, channels: string[] = [BOUND])
     const bindings = new BindingTable(channels);
     const admins = new AdminTable([]);
     const config = new FakeConfigStore(cfg(channels));
-    const server = new KurobotServer({
+    const server = new KurobridgeServer({
         context,
         wsServer: ws,
         channelBindings: () => bindings.channels(),
@@ -491,7 +491,7 @@ describe("Relay player_death fan-out（v0.3.0）", () => {
     });
 });
 
-describe("Relay config_reload（v0.3.0：/kurobot reload 复用 watch 路径）", () => {
+describe("Relay config_reload（v0.3.0：/kurobridge reload 复用 watch 路径）", () => {
     it("IPC config_reload → 重读配置，绑定集合变化 → bindings_updated 推送", async () => {
         const f = makeFixture();
         const updated = { ...defaultConfig(), channels: ["10002"] };

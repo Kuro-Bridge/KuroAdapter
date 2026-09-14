@@ -1,8 +1,8 @@
 /**
  * core 的 ConfigStore Node 实现（MVP 阶段一）。
  *
- * - 路径：`<服务器根>/plugins/kurobot/config.json`（相对子进程 cwd——Java 以服务器
- *   根目录拉起 Node，见架构书 §6「配置 JSON 放 plugins/kurobot/，Node 读写」）。
+ * - 路径：`<服务器根>/plugins/kurobridge/config.json`（相对子进程 cwd——Java 以服务器
+ *   根目录拉起 Node，见架构书 §6「配置 JSON 放 plugins/kurobridge/，Node 读写」）。
  * - 缺失 → 生成默认配置（`{ "channels": [] }`）落盘后返回。
  * - watch：轮询 mtime（默认 2s，unref 不阻止退出）。选轮询而非 fs.watch：
  *   Windows/网络盘的 fs.watch 事件语义不可靠且平台差异大，轮询实现更简单可测
@@ -18,7 +18,7 @@ import {
     ConfigError,
     type ConfigStore,
     defaultConfig,
-    type KurobotConfig,
+    type KurobridgeConfig,
     parseConfig,
 } from "@kuro-bridge/bridge-core";
 
@@ -30,7 +30,7 @@ export interface NodeConfigStoreOptions {
     readonly pollIntervalMs?: number;
 }
 
-const CONFIG_RELATIVE = join("plugins", "kurobot", "config.json");
+const CONFIG_RELATIVE = join("plugins", "kurobridge", "config.json");
 
 export class NodeConfigStore implements ConfigStore {
     private readonly logger: Logger;
@@ -46,7 +46,7 @@ export class NodeConfigStore implements ConfigStore {
         this.pollIntervalMs = options.pollIntervalMs ?? 2000;
     }
 
-    async load(): Promise<KurobotConfig> {
+    async load(): Promise<KurobridgeConfig> {
         let text: string;
         try {
             text = await readFile(this.configPath, "utf8");
@@ -61,7 +61,7 @@ export class NodeConfigStore implements ConfigStore {
         return this.parseOrThrow(text);
     }
 
-    watch(onChange: (config: KurobotConfig) => void): () => void {
+    watch(onChange: (config: KurobridgeConfig) => void): () => void {
         if (this.pollIntervalMs <= 0) {
             return () => undefined;
         }
@@ -74,7 +74,7 @@ export class NodeConfigStore implements ConfigStore {
         };
     }
 
-    private async poll(onChange: (config: KurobotConfig) => void): Promise<void> {
+    private async poll(onChange: (config: KurobridgeConfig) => void): Promise<void> {
         let mtimeMs: number | null;
         let size: number | null;
         try {
@@ -95,7 +95,7 @@ export class NodeConfigStore implements ConfigStore {
         } catch {
             return;
         }
-        let config: KurobotConfig;
+        let config: KurobridgeConfig;
         try {
             config = parseConfig(JSON.parse(text));
         } catch (error: unknown) {
@@ -135,7 +135,7 @@ export class NodeConfigStore implements ConfigStore {
         }
     }
 
-    private parseOrThrow(text: string): KurobotConfig {
+    private parseOrThrow(text: string): KurobridgeConfig {
         let raw: unknown;
         try {
             raw = JSON.parse(text);

@@ -1,4 +1,4 @@
-# bridge/embedded 设计（@kurobot/bridge-embedded）
+# bridge/embedded 设计（@kurobridge/bridge-embedded）
 
 > 本文件是包级设计文档（AGENTS.md：写代码前先更新对应包的 `docs/design.md`，设计先行）。
 
@@ -6,14 +6,14 @@
 
 嵌入式瘦身对端（`mode=embedded` 默认形态）：
 
-- 复用 `bridge/core` 框架，作为对端连接 kurobot 的 WS 服务端。
+- 复用 `bridge/core` 框架，作为对端连接 kurobridge 的 WS 服务端。
 - 内嵌 **napukettoqq** 协议端（QQ 连接，控制台扫码）。
 - **无 Koishi**：esbuild 单文件产物，随 JAR 分发（嵌入式打包工具打包，待重建）。
 
 ## 与架构的关系（ADR-005 / ADR-006）
 
 - embedded / external 只是打包差异：本包 = "协议端在 JAR 里"的形态；
-  external 形态由独立仓库 koishi-plugin-kurobot 承担（ADR-018），两者复用同一 core。
+  external 形态由独立仓库 koishi-plugin-kurobridge 承担（ADR-018），两者复用同一 core。
 - `wrapper.node`（腾讯闭源）不进 JAR，运行期从 QQ 安装目录发现拷贝（ADR-014）。
 
 ## 目录规划
@@ -32,8 +32,8 @@ src/
 
 ## 依赖
 
-- `@kurobot/bridge-core`（workspace:*）。
-- `@kurobot/protocol`（workspace:*）。
+- `@kurobridge/bridge-core`（workspace:*）。
+- `@kurobridge/protocol`（workspace:*）。
 - esbuild（devDep，单文件打包）。
 
 ## 原型阶段（spike，2026-09-12）
@@ -42,14 +42,14 @@ src/
 
 本阶段本包退化为 **Node 引导层（bootstrap）**，不含 napukettoqq：
 
-- `src/index.ts`：入口——stdin/stdout IPC 端点（JSON-lines，帧走 `@kurobot/protocol`）+ 以子进程拉起 stub 协议端（孙进程，端口经 argv，决策 D-05）。
-- `src/ws-server.ts`：`ws` 库实现 core 的 `WsServer` 接口（`listen(0)` 动态端口 + 子协议 `kurobot-ws.v1` 校验），唯一的 Node API 落点。
+- `src/index.ts`：入口——stdin/stdout IPC 端点（JSON-lines，帧走 `@kurobridge/protocol`）+ 以子进程拉起 stub 协议端（孙进程，端口经 argv，决策 D-05）。
+- `src/ws-server.ts`：`ws` 库实现 core 的 `WsServer` 接口（`listen(0)` 动态端口 + 子协议 `kurobridge-ws.v1` 校验），唯一的 Node API 落点。
 - `src/ipc-stdio.ts`：stdin/stdout 实现 core 的 `IpcChannel` 接口。
 - stub 协议端：`stub/peer.mjs`（零依赖，Node 内置全局 WebSocket，决策 D-06）。
 
 启动序列：Java 拉起本入口 → 起 WS 服务端 `listen(0)` → IPC 发 `ready`（携带端口）→ spawn stub → stub 以 WS client 连入并 `hello` 握手。stdin EOF 或 `shutdown` 帧 → 杀 stub → 自行退出（决策 D-08）。
 
-原型裁剪：node.exe 不进 JAR（用 PATH `node` 或 `KUROBOT_NODE`，决策 D-07）、bundle 从 `KUROBOT_BUNDLE` 指定的本地产物加载、无 napukettoqq / wrapper.node / 扫码、无 Watchdog / PID 文件 / 崩溃自动重启。
+原型裁剪：node.exe 不进 JAR（用 PATH `node` 或 `KUROBRIDGE_NODE`，决策 D-07）、bundle 从 `KUROBRIDGE_BUNDLE` 指定的本地产物加载、无 napukettoqq / wrapper.node / 扫码、无 Watchdog / PID 文件 / 崩溃自动重启。
 
 ## MVP 阶段一（2026-09-13）
 
@@ -58,7 +58,7 @@ src/
 - **Node 能力实现（阶段 2）**：`src/node-platform.ts` —— core 的 `Clock`/`TimerScheduler`
   Node 实现（`Date.now` + `setTimeout` + `unref`），与 ws 适配器同为「唯一的 Node API 落点」。
 - **配置实现（阶段 3）**：`src/config-store.ts` —— core 的 `ConfigStore` Node 实现：
-  读 `plugins/kurobot/config.json`（相对子进程 cwd = 服务器根目录），缺失时生成默认配置
+  读 `plugins/kurobridge/config.json`（相对子进程 cwd = 服务器根目录），缺失时生成默认配置
   （`{ "channels": [] }`）落盘；**轮询监听**（interval + mtime 比对）——选轮询而非 fs.watch：
   Windows/网络盘的 fs.watch 事件语义不可靠，轮询实现更简单可测（任务书 §1.2 二选一的决策）。
 - **stub 升级 v0.2（阶段 1，已落地）**：hello 协议版本 0.2.0；平台消息携带
@@ -76,11 +76,11 @@ src/
 
 - **产物进 JAR**：`dist/index.mjs` 经 `scripts/embed.ts` 拷入
   `platforms/je/paper/src/main/resources/embedded/index.mjs`（随 manifest.json 带 sha256），
-  运行期由 :paper 解压到 `plugins/kurobot/bin/` 后拉起（详见 platforms/je design 的
+  运行期由 :paper 解压到 `plugins/kurobridge/bin/` 后拉起（详见 platforms/je design 的
   「MVP 阶段二」节）。本包构建方式（esbuild 单文件）不变。
-- **运行环境**：从「mise node + KUROBOT_BUNDLE 环境变量」变为「JAR 自带 node.exe 26.7.0」；
-  环境变量保留为开发覆盖。cwd 语义不变（=服务器根，配置在 `plugins/kurobot/config.json`）。
-- **stub 不进 JAR**（测试件）：JAR 模式未设 `KUROBOT_STUB_PEER` 时不拉 stub，
+- **运行环境**：从「mise node + KUROBRIDGE_BUNDLE 环境变量」变为「JAR 自带 node.exe 26.7.0」；
+  环境变量保留为开发覆盖。cwd 语义不变（=服务器根，配置在 `plugins/kurobridge/config.json`）。
+- **stub 不进 JAR**（测试件）：JAR 模式未设 `KUROBRIDGE_STUB_PEER` 时不拉 stub，
   即 external 协议端形态；沙盒验收经该环境变量指向仓库内 `stub/peer.mjs`。
 
 ## 债务清偿二（DEBT-2，2026-09-13）：autoRestart 上报 + stub 重连上限
@@ -91,7 +91,7 @@ src/
 
 - `main()` 发 ready 帧时带 `autoRestart`：取自配置 `runtime.autoRestart`（core 的
   `parseConfig` 已扩展、缺省 true）。配置加载失败降级路径（空绑定）同样带缺省 true。
-- 版本号顺延随 `@kurobot/protocol` 0.2.0 → 0.2.1；bootstrap 日志里的协议版本随之更新。
+- 版本号顺延随 `@kurobridge/protocol` 0.2.0 → 0.2.1；bootstrap 日志里的协议版本随之更新。
 
 ### stub 重连上限：10 次连续失败自杀（孤儿治理）
 
@@ -130,11 +130,11 @@ src/
 
 - 版本常量 → 0.3.0；hello 可携带 token。
 - **env 钩子**（前三个为任务书指定）：
-  - `KUROBOT_STUB_PROTOCOL_VERSION`：覆盖 hello.protocolVersion（验协商拒绝 / 0.2.0 兼容连入）。
-  - `KUROBOT_STUB_TOKEN`：hello 携带 token。
-  - `KUROBOT_STUB_ADMIN_SOURCE`：command 帧的 source 覆盖，格式 `channel:userId`
+  - `KUROBRIDGE_STUB_PROTOCOL_VERSION`：覆盖 hello.protocolVersion（验协商拒绝 / 0.2.0 兼容连入）。
+  - `KUROBRIDGE_STUB_TOKEN`：hello 携带 token。
+  - `KUROBRIDGE_STUB_ADMIN_SOURCE`：command 帧的 source 覆盖，格式 `channel:userId`
     （缺省 `stub-channel:stub-admin`，与沙盒配置 admins 对齐）。
-  - `KUROBOT_STUB_SEND_COMMAND` / `KUROBOT_STUB_SEND_QUERY` / `KUROBOT_STUB_SEND_UNKNOWN`：
+  - `KUROBRIDGE_STUB_SEND_COMMAND` / `KUROBRIDGE_STUB_SEND_QUERY` / `KUROBRIDGE_STUB_SEND_UNKNOWN`：
     握手成功后自动发送的验收序列（无人值守沙盒验收驱动；SEND_COMMAND 支持 `;` 分隔、
     顺序发送且逐条等待结果，query 支持 `status`/`bindings`/逗号并列，unknown 取
     `event`/`request`）。结果帧（command_result/query_result/未知回执）以醒目格式打印。
@@ -155,7 +155,7 @@ src/
   （缺省 = 现状：动态端口、全部接口）；bootstrap 从 `config.ws`（core configSchema 是形状
   SSOT）读出传入。成员声明 `?: T | undefined` 是 exactOptionalPropertyTypes 下的显式
   undefined 豁免（bootstrap 可直接 `config.ws?.host` 传入）。
-- `KurobotServer` / `WsServer` 接口不感知监听参数：`start()` 返回实际端口的契约不变，
+- `KurobridgeServer` / `WsServer` 接口不感知监听参数：`start()` 返回实际端口的契约不变，
   ready 帧照报实际端口（固定端口配置下即配置值）。
 - **实测依据（Node 26.7.0 + ws 8.x）**：`new WebSocketServer({port, host})` 构造时同步发起
   listen；**EADDRINUSE 不在构造时抛**，经底层 http server 以 `error` 事件**异步**转发
@@ -177,9 +177,9 @@ src/
 
 ### stub 独立连入模式（模拟 external 对端）
 
-- 新 env 钩子：`KUROBOT_STUB_WS_URL` 覆盖连接地址（缺省维持 `ws://127.0.0.1:<argv[2]>`）——
+- 新 env 钩子：`KUROBRIDGE_STUB_WS_URL` 覆盖连接地址（缺省维持 `ws://127.0.0.1:<argv[2]>`）——
   stub 可不经孙进程拉起、以独立进程模拟 external 对端连入（设该变量时 argv 端口可省略）；
-  `KUROBOT_STUB_CLIENT` hello 携带 `client` 自报身份（验服务端握手日志展示，协议 0.3.1）。
+  `KUROBRIDGE_STUB_CLIENT` hello 携带 `client` 自报身份（验服务端握手日志展示，协议 0.3.1）。
 - 既有钩子（PROTOCOL_VERSION/TOKEN/ADMIN_SOURCE/SEND_*）与重连 10 次自杀逻辑不动。
 
 ### 实现回填（2026-09-13 验收后）
@@ -195,13 +195,13 @@ src/
 ## MVP 阶段四（MVP-4，2026-09-14）：napuketto spawner（JAR 内嵌协议端真身）
 
 > 任务书：`docs/MVP4-PROMPT.md`；ADR-029。ADR-022 孙进程模型从 stub 换成真身：
-> 进程树 Java → node（kurobot WS 服务端）→ napuketto CLI（supervisor）→ boot →
+> 进程树 Java → node（kurobridge WS 服务端）→ napuketto CLI（supervisor）→ boot →
 > self-host（最深四层）。协议 0.3.1 零变更；stub 路径零改动（napuketto 是新增分支）。
 
 ### 分支接线（bootstrap）
 
 - `config.embedded?.napuketto.enabled === true` → napuketto 分支（**不再拉 stub**——
-  一个 kurobot 实例只有一个逻辑协议端）；其余（无段 / enabled=false）→ 现状不变。
+  一个 kurobridge 实例只有一个逻辑协议端）；其余（无段 / enabled=false）→ 现状不变。
 - 分支前置校验（顺序执行，均注入 platform 便于测试）：
   1. 非 Windows 宿主 → error 日志 + **不拉起**（node 继续以纯 WS 服务端跑，external
      对端不受影响；wine 记债务）。
@@ -224,7 +224,7 @@ src/
 - stdio 捕获：逐行 → `[napuketto] ` 前缀走注入 logger；行内可辨识 ` WARN `/` ERROR `
   级别字样（pino-pretty 固定格式）分流 warn/error，其余 info。**终端 ASCII 二维码按
   突发折叠**（终验期反转早先「透容忍」决策：实机体验该图经编码转发后本就扫不了，
-  还把 console.log 与 `/kurobot qr` 回复淹没）：去 ANSI 后块元素（U+2580–U+259F）≥10
+  还把 console.log 与 `/kurobridge qr` 回复淹没）：去 ANSI 后块元素（U+2580–U+259F）≥10
   或整行 ≥15 个 `?`（编码降级残骸）判为图行，连续图行折叠为单行提示（上限 200 行防
   流污染）；QR URL 提取（见下）不受折叠影响。BANNER 等正常输出不命中、原样透传。
 - **生命周期**（考据结论：napuketto boot 层无信号处理器、全链无父死检测——只 kill CLI
@@ -240,13 +240,13 @@ src/
 
 - node 轮询（默认 2s）两路信号：
   1. 数据目录扫描 `<dataDir>/*/cache/qrcode.png`（`*` = 账号 uin 目录）mtime+size 变化
-     → 拷贝为 `plugins/kurobot/qr.png`；
+     → 拷贝为 `plugins/kurobridge/qr.png`；
   2. 捕获流正则 `请扫描二维码登录（保存: … | URL: …）`（napuketto 固定文案，全角括号）
      → 提取 URL。
-- 任一信号触发 → 原子写 `plugins/kurobot/qr.json`：
+- 任一信号触发 → 原子写 `plugins/kurobridge/qr.json`：
   `{ pngPath: string, url?: string, detectedAt: number }`（pngPath = qr.png 绝对路径；
   node.pid 式运维文件先例）。拷贝失败（PNG 写入中）下次轮询自然重试，不致命。
-- 消费方：`:paper` 的 `/kurobot qr` 只读展示（Java 不解析内容，纯文件读取）。
+- 消费方：`:paper` 的 `/kurobridge qr` 只读展示（Java 不解析内容，纯文件读取）。
 
 ### 打包形状（与 scripts/embed.ts 的分工）
 
@@ -256,7 +256,7 @@ src/
   `NAPUKETTO_LICENSES`（各 @napuketto/* 的 MIT LICENSE 拼接收集，待遇对齐 NODE_LICENSE）。
 - EmbeddedRuntime（:core）扩展：manifest 含 `napukettoZip` 条目 → 解压到
   `bin/napuketto/node_modules/`（JDK ZipInputStream；entry 名 normalize 包含检查防
-  zip slip；哨兵文件 `.kurobot-install.json` 记 zip sha256 幂等复用/升级重建）。
+  zip slip；哨兵文件 `.kurobridge-install.json` 记 zip sha256 幂等复用/升级重建）。
 - 红线：zip 内只有 npm 发布物；wrapper.node / QQ 安装包 / QQNT 二进制绝不出现
   （验收 grep 证据）。
 

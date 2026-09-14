@@ -1,10 +1,10 @@
-# bridge/protocol 设计（@kurobot/protocol）
+# bridge/protocol 设计（@kurobridge/protocol）
 
 > 本文件是包级设计文档（AGENTS.md：写代码前先更新对应包的 `docs/design.md`，设计先行）。
 
 ## 职责
 
-`kurobot-ws` 协议消息类型的 **zod schema SSOT**（ADR-008）。全项目唯一的消息类型来源，任何文件禁止手写消息类型。
+`kurobridge-ws` 协议消息类型的 **zod schema SSOT**（ADR-008）。全项目唯一的消息类型来源，任何文件禁止手写消息类型。
 
 ## 约束
 
@@ -73,7 +73,7 @@
 7. **`config_reload` IPC 事件（Java→Node）**：body 为空对象 `{}`——重载无参数；未来若需携带来源等再以非必填字段扩展（zod 默认剥离未知键，旧 Node 收到带额外字段的帧不炸）。
 8. **`execute_command_result` body 扩展 `output`**：ok 分支增可选 `output: string[]`（命令输出行，Java 收集型 CommandSender 回传）；缺省不带（空输出不产生字段）。该结果体同时复用为 WS `command_result` body。
 9. **聚合 union 更新**：`wsInboundFrame` 增 command/query；`wsOutboundFrame` 增 command_result/query_result/death；`ipcNodeInboundFrame` 增 player_death/config_reload；`ipcJavaInboundFrame` 不变。
-10. **PROTOCOL_VERSION `0.2.1` → `0.3.0`**（0.2.1 为 DEBT-2 顺延后的实际基线）；`WS_SUBPROTOCOL = "kurobot-ws.v1"` 不动（大版本未变）。
+10. **PROTOCOL_VERSION `0.2.1` → `0.3.0`**（0.2.1 为 DEBT-2 顺延后的实际基线）；`WS_SUBPROTOCOL = "kurobridge-ws.v1"` 不动（大版本未变）。
 
 ## MVP 阶段三（协议 v0.3.1，2026-09-13）：external 接入基座
 
@@ -86,9 +86,9 @@
    分支（未来真正的能力开关应以显式字段/协商机制引入，不劫持该字段）。
    - 向后兼容双向成立：旧对端（0.2.x/0.3.0，不带 client）连 0.3.1 服务端正常握手（可选字段）；
      新对端连旧服务端，client 被非严格 object 剥离（先例：0.2.1 的 ready 可选 autoRestart）。
-2. **`WS_SUBPROTOCOL`（kurobot-ws.v1）与版本兼容协商规则均不动**：主版本兼容区间（ADR-026）
+2. **`WS_SUBPROTOCOL`（kurobridge-ws.v1）与版本兼容协商规则均不动**：主版本兼容区间（ADR-026）
    下 0.3.1 为 patch 增量，0.2.0 对端仍可连入。
-3. **PROTOCOL_VERSION `0.3.0` → `0.3.1`**；Java 侧硬编码副本 `KurobotVersions` 同步（D2-05
+3. **PROTOCOL_VERSION `0.3.0` → `0.3.1`**；Java 侧硬编码副本 `KurobridgeVersions` 同步（D2-05
    维护约束）。
 4. vitest：client 携带/缺省均合法、非字符串拒绝；0.3.0 形状（无 client）握手回归。
 

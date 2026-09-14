@@ -22,7 +22,7 @@ export interface WsConnection {
     onClose(handler: () => void): void;
 }
 
-/** WS 服务端（宿主实现；kurobot 永远是 WS 服务端角色，ADR-005/架构书 §1） */
+/** WS 服务端（宿主实现；kurobridge 永远是 WS 服务端角色，ADR-005/架构书 §1） */
 export interface WsServer {
     /** 开始监听，返回实际端口（宿主实现应用动态端口 listen(0)） */
     start(): Promise<number>;

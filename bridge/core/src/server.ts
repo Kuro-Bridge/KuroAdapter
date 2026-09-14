@@ -1,5 +1,5 @@
 /**
- * KurobotServer：kurobridge-ws 协议服务端（握手 / 鉴权 / 心跳 / 连接生命周期）。
+ * KurobridgeServer：kurobridge-ws 协议服务端（握手 / 鉴权 / 心跳 / 连接生命周期）。
  *
  * 握手语义（决策 D-01/ADR-023）：Peer 连入 → 发 hello（带 id）→ 校验 → 回同 id 的 hello_ack。
  * 协议版本协商（ADR-026，v0.3.0）：主版本号相同即兼容（isProtocolVersionCompatible）；
@@ -89,7 +89,7 @@ export interface ServerOptions {
     readonly timeouts?: ServerTimeouts;
 }
 
-export class KurobotServer {
+export class KurobridgeServer {
     private readonly context: CoreContext;
     private readonly wsServer: WsServer;
     private readonly channelBindings: () => string[];

@@ -8,20 +8,20 @@
 #   薄壳不做业务逻辑。
 
 cmake_minimum_required(VERSION 3.20)
-project(kurobot-endstone CXX)
+project(kurobridge-endstone CXX)
 
 # TODO(endstone)：接入 Endstone C++ API 后启用
 # find_package(Endstone REQUIRED)
 
-add_library(kurobot MODULE
+add_library(kurobridge MODULE
     src/main.cpp
     src/bridge.cpp
     src/ipc.cpp
     src/process.cpp
 )
 
-target_compile_features(kurobot PRIVATE cxx_std_20)
+target_compile_features(kurobridge PRIVATE cxx_std_20)
 
 # TODO(endstone)：链接 Endstone + 内嵌 Node 后启用
-# target_link_libraries(kurobot PRIVATE Endstone::endstone)
-# set_target_properties(kurobot PROPERTIES PREFIX "" SUFFIX ".dll")
+# target_link_libraries(kurobridge PRIVATE Endstone::endstone)
+# set_target_properties(kurobridge PROPERTIES PREFIX "" SUFFIX ".dll")

@@ -11,13 +11,13 @@
  *   不触发 IPC）→ IPC execute_command 透传 → 结果（含 output）原样回 command_result。
  * - 配置变更（ConfigStore.watch）→ AdminTable.replace + BindingTable.replace → 集合变化时
  *   推 bindings_updated 给已握手对端（ADR-004）。
- * - IPC config_reload（/kurobot reload，v0.3.0）→ 重读配置 → 复用 watch 的变更处理路径。
+ * - IPC config_reload（/kurobridge reload，v0.3.0）→ 重读配置 → 复用 watch 的变更处理路径。
  * - IPC shutdown（Java → Node）→ 通知 onShutdown（引导层负责退出进程）。
  *
  * 健壮性（MVP 阶段一）：
  * - IPC 请求超时（ipcRequestTimeoutMs，默认 10s 对齐 Java 侧；0 禁用）——在途请求
  *   超时以 IpcRequestError 拒绝，不再无限悬挂。
- * - 断连降级（候选 E）：ipcOpen 暴露 IPC 健康状态，上层（含 /kurobot send 回执路径）
+ * - 断连降级（候选 E）：ipcOpen 暴露 IPC 健康状态，上层（含 /kurobridge send 回执路径）
  *   可感知失败做降级决策；消息排队/补发留 MVP-2。
  */
 import {
@@ -33,11 +33,11 @@ import {
 
 import type { AdminTable } from "./business/admins.js";
 import type { BindingTable } from "./business/bindings.js";
-import type { ConfigStore, KurobotConfig } from "./business/config.js";
+import type { ConfigStore, KurobridgeConfig } from "./business/config.js";
 import { gameEventChannels, platformChatTarget } from "./business/forwarding.js";
 import type { CancelFn } from "./clock.js";
 import type { CoreContext } from "./context.js";
-import type { KurobotServer } from "./server.js";
+import type { KurobridgeServer } from "./server.js";
 import type { IpcChannel } from "./transport.js";
 
 export const DEFAULT_IPC_REQUEST_TIMEOUT_MS = 10_000;
@@ -65,7 +65,7 @@ interface PendingRequest {
 
 export interface RelayOptions {
     readonly context: CoreContext;
-    readonly server: KurobotServer;
+    readonly server: KurobridgeServer;
     readonly ipc: IpcChannel;
     /** 绑定表（转发规则数据源；与 server.channelBindings 共享同一实例） */
     readonly bindings: BindingTable;
@@ -81,7 +81,7 @@ export interface RelayOptions {
 
 export class Relay {
     private readonly context: CoreContext;
-    private readonly server: KurobotServer;
+    private readonly server: KurobridgeServer;
     private readonly ipc: IpcChannel;
     private readonly bindings: BindingTable;
     private readonly admins: AdminTable;
@@ -179,7 +179,7 @@ export class Relay {
         return promise;
     }
 
-    private handleConfigChange(config: KurobotConfig): void {
+    private handleConfigChange(config: KurobridgeConfig): void {
         // admins 无条件刷新（绑定集合未变时管理员映射仍可能已变）
         this.admins.replace(config.admins);
         if (!this.bindings.replace(config.channels)) {
@@ -288,7 +288,7 @@ export class Relay {
         this.settlePending(message.id, message.body);
     }
 
-    /** /kurobot reload 路径：重读配置并复用 watch 的变更处理（读取失败保留旧配置） */
+    /** /kurobridge reload 路径：重读配置并复用 watch 的变更处理（读取失败保留旧配置） */
     private async reloadConfig(): Promise<void> {
         try {
             this.handleConfigChange(await this.configStore.load());

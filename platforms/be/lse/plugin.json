@@ -2,8 +2,8 @@
     "$schema": "https://github.com/LiteLDev/LeviLamina/blob/main/schema/plugin.json",
     "format_version": 2,
     "header": {
-        "name": "kurobot",
-        "description": "KuroBot LeviLamina 平台适配（群服互通）",
+        "name": "kurobridge",
+        "description": "KuroBridge LeviLamina 平台适配（群服互通）",
         "version": [
             0,
             1,

@@ -1,7 +1,7 @@
 {
     "name": "kurobridge",
     "version": "0.1.0",
-    "description": "KuroBot LeviLamina（LSE）平台适配",
+    "description": "KuroBridge LeviLamina（LSE）平台适配",
     "type": "module",
     "private": true,
     "scripts": {

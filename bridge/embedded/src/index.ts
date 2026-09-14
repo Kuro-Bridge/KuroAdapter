@@ -2,7 +2,7 @@
  * @kuro-bridge/bridge-embedded —— Node 引导层（spike 形态，决策 D-05/D-07）
  *
  * 启动序列：
- * 1. 组装 core（CoreContext + KurobotServer + Relay），注入 Node 实现
+ * 1. 组装 core（CoreContext + KurobridgeServer + Relay），注入 Node 实现
  *    （ws 服务端 / stdin-stdout IPC / stderr logger）。
  * 2. WS 服务端监听（MVP-3：config.ws 固定端口/绑定地址；缺省 listen(0) 动态端口、
  *    全部接口）→ IPC 发 `ready`（携带实际端口）。
@@ -27,8 +27,8 @@ import {
     BindingTable,
     CoreContext,
     defaultConfig,
-    type KurobotConfig,
-    KurobotServer,
+    type KurobridgeConfig,
+    KurobridgeServer,
     type Logger,
     Relay,
 } from "@kuro-bridge/bridge-core";
@@ -42,11 +42,11 @@ import { NodeClock, NodeScheduler } from "./node-platform.js";
 import { type QrWatcher, startQrWatcher } from "./qr-watcher.js";
 import { NodeWsServer } from "./ws-server.js";
 
-const SERVER_ID = "kurobot-spike";
+const SERVER_ID = "kurobridge-spike";
 const VERSION = "0.1.0";
 
 function log(level: string, message: string): void {
-    process.stderr.write(`[KuroBot][node][${level}] ${message}\n`);
+    process.stderr.write(`[KuroBridge][node][${level}] ${message}\n`);
 }
 
 /** 有界等待后强杀孙进程，随后本进程退出 */
@@ -70,7 +70,7 @@ function terminate(spawned: ChildProcess | null, exitCode: number): void {
  * spawn → 句柄组；skip（非 Windows）→ null（继续纯 WS 服务端）；fatal → 本进程退出。
  */
 function launchNapukettoBranch(
-    config: KurobotConfig,
+    config: KurobridgeConfig,
     logger: Logger,
 ): { napuketto: NapukettoHandle; qr: QrWatcher } | null {
     const binDir = process.argv[1] !== undefined ? dirname(process.argv[1]) : process.cwd();
@@ -89,10 +89,10 @@ function launchNapukettoBranch(
         process.exit(1);
     }
     mkdirSync(decision.dataDir, { recursive: true });
-    // QR 状态文件落地 plugins/kurobot/（cwd = 服务器根；:paper /kurobot qr 消费）
+    // QR 状态文件落地 plugins/kurobridge/（cwd = 服务器根；:paper /kurobridge qr 消费）
     const qr = startQrWatcher({
         dataDir: decision.dataDir,
-        qrDir: resolve(process.cwd(), "plugins", "kurobot"),
+        qrDir: resolve(process.cwd(), "plugins", "kurobridge"),
         logger,
     });
     const handle = spawnNapuketto(
@@ -119,7 +119,7 @@ async function main(): Promise<void> {
     const ipc = new StdioIpcChannel();
     // 配置：缺失生成默认（空绑定、不鉴权、无管理员）；非法不致命——记错误、降级运行，等服主修复
     const configStore = new NodeConfigStore({ logger });
-    let initialConfig: KurobotConfig;
+    let initialConfig: KurobridgeConfig;
     try {
         initialConfig = await configStore.load();
     } catch (error: unknown) {
@@ -155,7 +155,7 @@ async function main(): Promise<void> {
         port: initialConfig.ws?.port,
         logger,
     });
-    const server = new KurobotServer({
+    const server = new KurobridgeServer({
         context,
         wsServer,
         channelBindings: () => bindings.channels(),

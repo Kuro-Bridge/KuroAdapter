@@ -9,7 +9,7 @@
  *
  * 任一信号更新 → 原子写 `<qrDir>/qr.json`：`{ pngPath?, url?, detectedAt }`
  * （pngPath = qr.png 绝对路径，已落地才有；detectedAt = 最后一次更新的 epoch ms）。
- * 消费方是 `:paper` 的 `/kurobot qr`（只读展示，Java 不解析 napuketto 内部布局）。
+ * 消费方是 `:paper` 的 `/kurobridge qr`（只读展示，Java 不解析 napuketto 内部布局）。
  */
 
 import { copyFile, readdir, rename, stat, writeFile } from "node:fs/promises";
@@ -24,7 +24,7 @@ const DEFAULT_INTERVAL_MS = 2000;
 export interface QrWatcherDeps {
     /** napuketto 数据根目录（扫各账号目录的 cache/qrcode.png） */
     dataDir: string;
-    /** 状态文件落地目录（`plugins/kurobot/`，绝对路径） */
+    /** 状态文件落地目录（`plugins/kurobridge/`，绝对路径） */
     qrDir: string;
     logger: Logger;
     /** 轮询间隔 ms；缺省 2000 */
