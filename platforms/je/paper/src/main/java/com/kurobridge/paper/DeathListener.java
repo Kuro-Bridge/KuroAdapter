@@ -1,7 +1,7 @@
-package com.kurobot.paper;
+package com.kurobridge.paper;
 
-import com.kurobot.KuroBotPlugin;
-import com.kurobot.core.NodeIpc;
+import com.kurobridge.KuroBridgePlugin;
+import com.kurobridge.core.NodeIpc;
 import net.kyori.adventure.text.Component;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
@@ -18,9 +18,9 @@ import org.bukkit.event.entity.PlayerDeathEvent;
  * （:core 写锁串行，不阻塞主线程）。
  */
 public final class DeathListener implements Listener {
-    private final KuroBotPlugin plugin;
+    private final KuroBridgePlugin plugin;
 
-    public DeathListener(KuroBotPlugin plugin) {
+    public DeathListener(KuroBridgePlugin plugin) {
         this.plugin = plugin;
     }
 
@@ -28,7 +28,7 @@ public final class DeathListener implements Listener {
     public void onDeath(PlayerDeathEvent event) {
         NodeIpc ipc = plugin.getIpc();
         if (ipc == null) {
-            return; // 开发模式（未配置 KUROBOT_BUNDLE）：无 IPC，静默跳过
+            return; // 开发模式（未配置 KUROBRIDGE_BUNDLE）：无 IPC，静默跳过
         }
         Component deathMessage = event.deathMessage();
         ipc.sendPlayerDeath(event.getEntity().getName(), deathMessage == null ? "" : PlainText.serialize(deathMessage));

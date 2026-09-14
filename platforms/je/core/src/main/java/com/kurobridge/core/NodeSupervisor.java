@@ -1,4 +1,4 @@
-package com.kurobot.core;
+package com.kurobridge.core;
 
 import java.util.ArrayDeque;
 import java.util.List;
@@ -129,7 +129,7 @@ public final class NodeSupervisor {
         return current;
     }
 
-    /** 是否已进入放弃终态（:paper 可据此调整 /kurobot send 的报错文案）。 */
+    /** 是否已进入放弃终态（:paper 可据此调整 /kurobridge send 的报错文案）。 */
     public boolean isGivenUp() {
         return givenUp.get();
     }

@@ -1,4 +1,4 @@
-package com.kurobot.core;
+package com.kurobridge.core;
 
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
@@ -32,7 +32,7 @@ import java.util.function.Consumer;
  * <p>生命周期：
  * <ol>
  *   <li>{@link #start()}：拉起 {@code node <bundle>}（透传环境变量，可选注入
- *       {@code KUROBOT_STUB_PEER}），等待 ready 帧取得 WS 动态端口；进程提前退出或超时
+ *       {@code KUROBRIDGE_STUB_PEER}），等待 ready 帧取得 WS 动态端口；进程提前退出或超时
  *       （默认 30s）时 future 异常完成。</li>
  *   <li>运行期：stdout / stderr 各由一个虚拟线程逐行读取（永不阻塞调用线程）；写 stdin
  *       在写锁下串行。{@link NodeIpcListener} 回调在读取线程上执行。</li>
@@ -46,7 +46,7 @@ import java.util.function.Consumer;
  */
 public final class NodeIpc implements AutoCloseable {
     /** 透传给 Node 的 stub 协议端脚本路径环境变量（spike 阶段 Java 告知 Node stub 位置）。 */
-    static final String STUB_PEER_ENV = "KUROBOT_STUB_PEER";
+    static final String STUB_PEER_ENV = "KUROBRIDGE_STUB_PEER";
 
     private static final int LOG_PREVIEW_LIMIT = 200;
 
@@ -80,7 +80,7 @@ public final class NodeIpc implements AutoCloseable {
     /**
      * @param nodeExecutable node 可执行文件路径
      * @param bundlePath esbuild 单文件 bundle 路径（作为 node 的唯一参数）
-     * @param stubPath stub 协议端脚本路径；注入为 {@code KUROBOT_STUB_PEER}，传 null 表示不注入
+     * @param stubPath stub 协议端脚本路径；注入为 {@code KUROBRIDGE_STUB_PEER}，传 null 表示不注入
      * @param listener Node 侧请求与 stderr 的回调（在读取线程上执行）
      * @param log 日志消费者（每行一条，已带级别前缀）
      */
@@ -104,7 +104,7 @@ public final class NodeIpc implements AutoCloseable {
         this.log = Objects.requireNonNull(log, "log");
         this.processFactory = Objects.requireNonNull(processFactory, "processFactory");
         this.scheduler = Executors.newSingleThreadScheduledExecutor(
-                Thread.ofVirtual().name("kurobot-ipc-scheduler").factory());
+                Thread.ofVirtual().name("kurobridge-ipc-scheduler").factory());
     }
 
     /**
@@ -226,7 +226,7 @@ public final class NodeIpc implements AutoCloseable {
     }
 
     /**
-     * 发送配置重载通知（v0.3.0，/kurobot reload 触发）：空 body 事件帧，语义对齐 shutdown
+     * 发送配置重载通知（v0.3.0，/kurobridge reload 触发）：空 body 事件帧，语义对齐 shutdown
      * 的单向通知——不等待 Node 侧回执（重载效果经 bindings_updated 体现）。线程安全。
      *
      * @return 通道可用且帧写出成功为 true；通道不可用时记告警并丢弃，返回 false。
@@ -286,7 +286,7 @@ public final class NodeIpc implements AutoCloseable {
 
     /**
      * 子进程工作目录（须在 {@link #start()} 前调用）。null/缺省 = 继承当前进程目录
-     * （生产形态：Paper 以服务器根目录运行，Node 侧据此定位 plugins/kurobot/config.json；
+     * （生产形态：Paper 以服务器根目录运行，Node 侧据此定位 plugins/kurobridge/config.json；
      * 集成测试用它把子进程指到带配置的临时目录）。
      */
     void setWorkingDirectory(Path directory) {
@@ -327,8 +327,8 @@ public final class NodeIpc implements AutoCloseable {
         channelOpen.set(true);
         writePidFile(spawned);
         logInfo("Node 进程已拉起：" + command);
-        Thread.ofVirtual().name("kurobot-ipc-stdout").start(this::readStdoutLoop);
-        Thread.ofVirtual().name("kurobot-ipc-stderr").start(this::readStderrLoop);
+        Thread.ofVirtual().name("kurobridge-ipc-stdout").start(this::readStdoutLoop);
+        Thread.ofVirtual().name("kurobridge-ipc-stderr").start(this::readStderrLoop);
         Duration timeout = startTimeout;
         scheduler.schedule(this::onStartTimeout, timeout.toMillis(), TimeUnit.MILLISECONDS);
     }

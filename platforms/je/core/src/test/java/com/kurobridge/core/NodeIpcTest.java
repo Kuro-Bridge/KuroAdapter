@@ -1,4 +1,4 @@
-package com.kurobot.core;
+package com.kurobridge.core;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -476,9 +476,9 @@ class NodeIpcTest {
         FakeProcess process = new FakeProcess();
         NodeIpc ipc = launchReady(process);
 
-        process.stderr.write("[KuroBot][node][info] booted");
+        process.stderr.write("[KuroBridge][node][info] booted");
 
-        assertEquals("[KuroBot][node][info] booted", listener.stderrLines.poll(5, TimeUnit.SECONDS));
+        assertEquals("[KuroBridge][node][info] booted", listener.stderrLines.poll(5, TimeUnit.SECONDS));
         ipc.shutdown("done");
     }
 

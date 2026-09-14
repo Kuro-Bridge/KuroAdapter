@@ -1,8 +1,8 @@
-package com.kurobot.paper;
+package com.kurobridge.paper;
 
-import com.kurobot.KuroBotPlugin;
-import com.kurobot.core.IpcResult;
-import com.kurobot.core.NodeIpcListener;
+import com.kurobridge.KuroBridgePlugin;
+import com.kurobridge.core.IpcResult;
+import com.kurobridge.core.NodeIpcListener;
 import java.util.List;
 import java.util.logging.Level;
 import net.kyori.adventure.text.Component;
@@ -12,8 +12,8 @@ import org.bukkit.command.CommandException;
 /**
  * Node 侧请求的 Bukkit 桥接（实现 :core 的 {@link NodeIpcListener}）。
  *
- * <p><b>线程契约：全部回调在 :core 的 IPC 读取虚拟线程（kurobot-ipc-stdout /
- * kurobot-ipc-stderr）上被调用</b>，不在 Bukkit 主线程。硬约束「IPC 永不阻塞主线程」：本类
+ * <p><b>线程契约：全部回调在 :core 的 IPC 读取虚拟线程（kurobridge-ipc-stdout /
+ * kurobridge-ipc-stderr）上被调用</b>，不在 Bukkit 主线程。硬约束「IPC 永不阻塞主线程」：本类
  * 只把 Bukkit API 操作经 {@code runTask} 调度回主线程（入队即返回）；broadcast 调度后立即
  * 回执，execute_command（v0.3.0）改为在主线程任务内执行完命令、以收集型 CommandSender 的
  * 输出行回执 {@link IpcResult}（Node 侧等待真实执行完成，调度/执行失败显式 error）。回执在
@@ -21,9 +21,9 @@ import org.bukkit.command.CommandException;
  * （AGENTS.md 硬约束 2）。
  */
 public final class NodeRequestHandler implements NodeIpcListener {
-    private final KuroBotPlugin plugin;
+    private final KuroBridgePlugin plugin;
 
-    public NodeRequestHandler(KuroBotPlugin plugin) {
+    public NodeRequestHandler(KuroBridgePlugin plugin) {
         this.plugin = plugin;
     }
 
@@ -101,7 +101,7 @@ public final class NodeRequestHandler implements NodeIpcListener {
 
     @Override
     public void onStderrLine(String line) {
-        // Node 侧日志行自带 [KuroBot][node][LEVEL] 前缀（bridge/embedded 的 logger），原样中继
+        // Node 侧日志行自带 [KuroBridge][node][LEVEL] 前缀（bridge/embedded 的 logger），原样中继
         plugin.getLogger().info(line);
     }
 

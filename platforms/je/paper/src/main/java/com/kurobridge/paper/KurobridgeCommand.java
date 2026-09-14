@@ -1,9 +1,9 @@
-package com.kurobot.paper;
+package com.kurobridge.paper;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.kurobot.KuroBotPlugin;
-import com.kurobot.core.NodeIpc;
+import com.kurobridge.KuroBridgePlugin;
+import com.kurobridge.core.NodeIpc;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -18,35 +18,35 @@ import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
 
 /**
- * /kurobot 命令（开发/验收期的 IPC 手工触发入口）。
+ * /kurobridge 命令（开发/验收期的 IPC 手工触发入口）。
  *
  * <p>paper-plugin.yml 不支持 commands 声明，由主类经 {@code Bukkit.getCommandMap()} 直接
  * 注册。子命令：
  * <ul>
- *   <li>{@code kurobot send <文本...>} → 以发送者名义上报一条 game_chat 事件帧。</li>
- *   <li>{@code kurobot reload}（v0.3.0）→ 上报 config_reload 事件帧，Node 侧重读配置
+ *   <li>{@code kurobridge send <文本...>} → 以发送者名义上报一条 game_chat 事件帧。</li>
+ *   <li>{@code kurobridge reload}（v0.3.0）→ 上报 config_reload 事件帧，Node 侧重读配置
  *       （绑定变更经既有 bindings_updated 推送路径生效；命令即时返回「已通知重载」）。</li>
- *   <li>{@code kurobot qr}（MVP-4）→ 读取 Node 落地的 QR 状态文件
- *       {@code plugins/kurobot/qr.json}（node.pid 式运维文件先例），展示二维码图片路径、
+ *   <li>{@code kurobridge qr}（MVP-4）→ 读取 Node 落地的 QR 状态文件
+ *       {@code plugins/kurobridge/qr.json}（node.pid 式运维文件先例），展示二维码图片路径、
  *       登录链接（可得时）与检测时间。零 IPC 零业务——纯文件只读展示。</li>
  * </ul>
- * 权限：kurobot.admin（paper-plugin.yml 已声明，default: op）。
+ * 权限：kurobridge.admin（paper-plugin.yml 已声明，default: op）。
  */
-public final class KurobotCommand extends Command {
+public final class KurobridgeCommand extends Command {
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final DateTimeFormatter TIME_FORMAT =
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss").withZone(ZoneId.systemDefault());
-    private final KuroBotPlugin plugin;
+    private final KuroBridgePlugin plugin;
 
-    public KurobotCommand(KuroBotPlugin plugin) {
-        super("kurobot", "KuroBot 开发命令", "/kurobot send <文本...> | reload | qr", List.of());
+    public KurobridgeCommand(KuroBridgePlugin plugin) {
+        super("kurobridge", "KuroBridge 开发命令", "/kurobridge send <文本...> | reload | qr", List.of());
         this.plugin = plugin;
     }
 
     @Override
     public boolean execute(CommandSender sender, String commandLabel, String[] args) {
-        if (!sender.hasPermission("kurobot.admin")) {
-            sender.sendMessage(Component.text("缺少 kurobot.admin 权限"));
+        if (!sender.hasPermission("kurobridge.admin")) {
+            sender.sendMessage(Component.text("缺少 kurobridge.admin 权限"));
             return true;
         }
         if (args.length >= 2 && "send".equals(args[0])) {
@@ -88,9 +88,10 @@ public final class KurobotCommand extends Command {
         return true;
     }
 
-    /** /kurobot qr（MVP-4，ADR-029）：只读展示 QR 状态文件；无 IPC 依赖，node 未起也可查。 */
+    /** /kurobridge qr（MVP-4，ADR-029）：只读展示 QR 状态文件；无 IPC 依赖，node 未起也可查。 */
     private void handleQr(CommandSender sender) {
-        Path qrJson = Path.of("plugins", "kurobot", "qr.json").toAbsolutePath().normalize();
+        Path qrJson =
+                Path.of("plugins", "kurobridge", "qr.json").toAbsolutePath().normalize();
         if (!Files.isRegularFile(qrJson)) {
             sender.sendMessage(Component.text("尚无 QR 状态：napuketto 未启用（config 的 embedded.napuketto.enabled），或还未进入扫码阶段"));
             return;
@@ -110,7 +111,7 @@ public final class KurobotCommand extends Command {
         if (!pngPath.isEmpty()) {
             sender.sendMessage(Component.text("  二维码图片（手机 QQ 扫描）：" + pngPath));
         } else {
-            sender.sendMessage(Component.text("  二维码图片尚未生成，请稍后再次运行 /kurobot qr"));
+            sender.sendMessage(Component.text("  二维码图片尚未生成，请稍后再次运行 /kurobridge qr"));
         }
         String url = state.path("url").asText("");
         if (!url.isEmpty()) {

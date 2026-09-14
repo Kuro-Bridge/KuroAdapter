@@ -1,4 +1,4 @@
-package com.kurobot.core;
+package com.kurobridge.core;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -25,7 +25,7 @@ import org.junit.jupiter.api.io.TempDir;
  * Java 发 game_chat / player_join / status → 按绑定频道 fan-out → stub stderr 打印
  * 「收到游戏聊天 / 收到进服 / 收到状态」→ 经 onStderrLine 中继回 Java 断言。
  *
- * <p>配置：MVP 阶段一起 Node 侧读 {@code plugins/kurobot/config.json}（相对子进程 cwd）
+ * <p>配置：MVP 阶段一起 Node 侧读 {@code plugins/kurobridge/config.json}（相对子进程 cwd）
  * 做绑定过滤——本测试把子进程 cwd 指到 {@link TempDir} 并预置绑定 stub 频道（"stub-channel"），
  * 空绑定会把 stub 消息丢弃导致用例失败。
  *
@@ -106,7 +106,7 @@ class NodeIpcBundleIntegrationTest {
 
     /** 在临时服务器根目录预置绑定 stub 频道的配置（Node 侧 ConfigStore 读取）。 */
     private static void writeBoundConfig(Path serverRoot) throws IOException {
-        Path configDir = serverRoot.resolve("plugins").resolve("kurobot");
+        Path configDir = serverRoot.resolve("plugins").resolve("kurobridge");
         Files.createDirectories(configDir);
         Files.writeString(configDir.resolve("config.json"), "{\"channels\":[\"" + STUB_CHANNEL + "\"]}\n");
     }

@@ -1,4 +1,4 @@
-// KuroBot 根构建配置：所有模块共享的公共配置（版本/插件/苛刻度）
+// KuroBridge 根构建配置：所有模块共享的公共配置（版本/插件/苛刻度）
 
 plugins {
     java
@@ -6,7 +6,7 @@ plugins {
     id("com.gradleup.shadow") version "9.0.0" apply false
 }
 
-group = "com.kurobot"
+group = "com.kurobridge"
 version = "0.1.0"
 
 allprojects {
@@ -22,7 +22,7 @@ subprojects {
     apply(plugin = "java")
     apply(plugin = "com.diffplug.spotless")
 
-    group = "com.kurobot"
+    group = "com.kurobridge"
     version = "0.1.0"
 
     java {

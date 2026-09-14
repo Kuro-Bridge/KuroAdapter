@@ -1,14 +1,14 @@
-package com.kurobot;
+package com.kurobridge;
 
-import com.kurobot.core.EmbeddedRuntime;
-import com.kurobot.core.KurobotVersions;
-import com.kurobot.core.NodeIpc;
-import com.kurobot.core.NodeSupervisor;
-import com.kurobot.paper.ChatListener;
-import com.kurobot.paper.ConnectionListener;
-import com.kurobot.paper.DeathListener;
-import com.kurobot.paper.KurobotCommand;
-import com.kurobot.paper.NodeRequestHandler;
+import com.kurobridge.core.EmbeddedRuntime;
+import com.kurobridge.core.KurobridgeVersions;
+import com.kurobridge.core.NodeIpc;
+import com.kurobridge.core.NodeSupervisor;
+import com.kurobridge.paper.ChatListener;
+import com.kurobridge.paper.ConnectionListener;
+import com.kurobridge.paper.DeathListener;
+import com.kurobridge.paper.KurobridgeCommand;
+import com.kurobridge.paper.NodeRequestHandler;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Path;
@@ -22,16 +22,16 @@ import org.bukkit.Bukkit;
 import org.bukkit.plugin.java.JavaPlugin;
 
 /**
- * KuroBot Paper 薄壳插件主类（AGENTS.md 硬约束 2：Java 侧零业务，只做 Bukkit 桥接）。
+ * KuroBridge Paper 薄壳插件主类（AGENTS.md 硬约束 2：Java 侧零业务，只做 Bukkit 桥接）。
  *
  * <p>生命周期：
  * <ol>
  *   <li>onEnable：确定 Node 运行时来源（MVP 阶段二）——
  *       <ul>
- *         <li>{@code KUROBOT_BUNDLE} 已设 → 开发覆盖（原形态）：环境变量指定 node 与 bundle，
+ *         <li>{@code KUROBRIDGE_BUNDLE} 已设 → 开发覆盖（原形态）：环境变量指定 node 与 bundle，
  *             stub 缺省从 bundle 相对推导。</li>
  *         <li>未设 → JAR 自含：{@link EmbeddedRuntime} 把 JAR 内 embedded 资源解压/复用到
- *             {@code plugins/kurobot/bin/}（幂等，sha256 对 manifest），node 用解压出的
+ *             {@code plugins/kurobridge/bin/}（幂等，sha256 对 manifest），node 用解压出的
  *             node.exe。解压在 onEnable 同步执行（STARTUP 期，首启约 1-2s，换取加载顺序天然
  *             正确）；失败 → SEVERE + 插件保持加载但无 IPC（开发模式降级语义），不崩服。</li>
  *       </ul>
@@ -44,24 +44,24 @@ import org.bukkit.plugin.java.JavaPlugin;
  *
  * <p>环境变量（ADR-010，stdin/stdout JSON-lines IPC，零端口零配置）：
  * <ul>
- *   <li>{@code KUROBOT_BUNDLE}：esbuild 单文件产物绝对路径——开发覆盖开关；设置后完全走
+ *   <li>{@code KUROBRIDGE_BUNDLE}：esbuild 单文件产物绝对路径——开发覆盖开关；设置后完全走
  *       环境变量形态，不触碰 JAR 解压。</li>
- *   <li>{@code KUROBOT_NODE}：node 可执行文件；开发覆盖缺省 "node"，JAR 模式缺省
- *       {@code plugins/kurobot/bin/node.exe}。</li>
- *   <li>{@code KUROBOT_STUB_PEER}：stub 协议端脚本路径（测试件，不进 JAR）；设置即注入。
+ *   <li>{@code KUROBRIDGE_NODE}：node 可执行文件；开发覆盖缺省 "node"，JAR 模式缺省
+ *       {@code plugins/kurobridge/bin/node.exe}。</li>
+ *   <li>{@code KUROBRIDGE_STUB_PEER}：stub 协议端脚本路径（测试件，不进 JAR）；设置即注入。
  *       未设置时：开发覆盖从 bundle 相对推导缺省值，JAR 模式无 stub（外部协议端形态）。</li>
  * </ul>
  *
- * <p>bin 目录推导：相对服务器根的 {@code plugins/kurobot/bin/}（小写 kurobot，与 Node 侧
- * 配置目录 {@code plugins/kurobot/config.json} 同基，均以 cwd=服务器根 为基准）。不用
- * {@code getDataFolder()}——paper-plugin.yml 的 name 是 {@code KuroBot}，大小写敏感文件系统
- * 上会得到另一个目录（MVP2-NOTES 取舍记录）。PID 文件 {@code plugins/kurobot/node.pid}
+ * <p>bin 目录推导：相对服务器根的 {@code plugins/kurobridge/bin/}（小写 kurobridge，与 Node 侧
+ * 配置目录 {@code plugins/kurobridge/config.json} 同基，均以 cwd=服务器根 为基准）。不用
+ * {@code getDataFolder()}——paper-plugin.yml 的 name 是 {@code KuroBridge}，大小写敏感文件系统
+ * 上会得到另一个目录（MVP2-NOTES 取舍记录）。PID 文件 {@code plugins/kurobridge/node.pid}
  * 同基（DEBT-2 进程卫生，写入/清理语义见 NodeIpc）。
  */
-public final class KuroBotPlugin extends JavaPlugin {
-    private static final String ENV_NODE = "KUROBOT_NODE";
-    private static final String ENV_BUNDLE = "KUROBOT_BUNDLE";
-    private static final String ENV_STUB_PEER = "KUROBOT_STUB_PEER";
+public final class KuroBridgePlugin extends JavaPlugin {
+    private static final String ENV_NODE = "KUROBRIDGE_NODE";
+    private static final String ENV_BUNDLE = "KUROBRIDGE_BUNDLE";
+    private static final String ENV_STUB_PEER = "KUROBRIDGE_STUB_PEER";
     private static final String DEFAULT_NODE = "node";
     private static final String PID_FILE_RELATIVE = "node.pid";
     /** 开发覆盖模式下无 manifest，node 版本以 dev 标识（就绪汇总行展示用）。 */
@@ -99,7 +99,7 @@ public final class KuroBotPlugin extends JavaPlugin {
         Bukkit.getPluginManager().registerEvents(new ConnectionListener(this), this);
         Bukkit.getPluginManager().registerEvents(new DeathListener(this), this);
         // paper-plugin.yml 不支持 commands 声明，经 Paper 提供的 CommandMap 直接注册（无需反射）
-        Bukkit.getCommandMap().register("kurobot", new KurobotCommand(this));
+        Bukkit.getCommandMap().register("kurobridge", new KurobridgeCommand(this));
     }
 
     @Override
@@ -119,7 +119,7 @@ public final class KuroBotPlugin extends JavaPlugin {
 
     /** JAR 自含模式：解压/复用 embedded 运行时后经看护器拉起（失败 → SEVERE + 无 IPC 降级）。 */
     private void startFromJar() {
-        Path binDir = Path.of("plugins", "kurobot", "bin").toAbsolutePath().normalize();
+        Path binDir = Path.of("plugins", "kurobridge", "bin").toAbsolutePath().normalize();
         EmbeddedRuntime.ResourceSource source = name -> {
             InputStream stream = getClass().getClassLoader().getResourceAsStream("embedded/" + name);
             if (stream == null) {
@@ -137,7 +137,7 @@ public final class KuroBotPlugin extends JavaPlugin {
         }
         String stub = System.getenv(ENV_STUB_PEER);
         if (stub == null || stub.isBlank()) {
-            getLogger().info("JAR 解压模式未设置 KUROBOT_STUB_PEER，不拉起 stub（外部协议端形态）");
+            getLogger().info("JAR 解压模式未设置 KUROBRIDGE_STUB_PEER，不拉起 stub（外部协议端形态）");
         }
         startSupervised(
                 installed.bundle(),
@@ -153,16 +153,16 @@ public final class KuroBotPlugin extends JavaPlugin {
      *
      * @param bundle esbuild 单文件 bundle 路径
      * @param nodeExecutable node 可执行文件路径
-     * @param stub stub 协议端脚本路径（写入 KUROBOT_STUB_PEER）；null = 不注入
+     * @param stub stub 协议端脚本路径（写入 KUROBRIDGE_STUB_PEER）；null = 不注入
      * @param nodeVersion 就绪汇总行展示用（JAR 模式取 manifest，开发覆盖为 dev）
      */
     private void startSupervised(Path bundle, String nodeExecutable, String stub, String nodeVersion) {
-        Path pidFile = Path.of("plugins", "kurobot")
+        Path pidFile = Path.of("plugins", "kurobridge")
                 .resolve(PID_FILE_RELATIVE)
                 .toAbsolutePath()
                 .normalize();
         ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor(
-                Thread.ofVirtual().name("kurobot-supervisor").factory());
+                Thread.ofVirtual().name("kurobridge-supervisor").factory());
         NodeSupervisor.DelayScheduler delayScheduler = (delayMs, task) -> {
             ScheduledFuture<?> future = executor.schedule(task, delayMs, TimeUnit.MILLISECONDS);
             return () -> future.cancel(false);
@@ -199,10 +199,10 @@ public final class KuroBotPlugin extends JavaPlugin {
         }
         getLogger().info("Node 子进程就绪，WS 端口 " + wsPort + "（autoRestart=" + autoRestart + "）");
         // 版本来源：插件=paper-plugin.yml；node=manifest（开发覆盖为 dev）；协议=:core 硬编码副本。
-        // 「[KuroBot]」前缀由插件 logger 自动附加（M2-11：手写会双前缀）
+        // 「[KuroBridge]」前缀由插件 logger 自动附加（M2-11：手写会双前缀）
         getLogger()
                 .info(() -> "就绪：插件 v" + getPluginMeta().getVersion() + " / node v" + nodeVersion + " / 协议 v"
-                        + KurobotVersions.PROTOCOL_VERSION);
+                        + KurobridgeVersions.PROTOCOL_VERSION);
     }
 
     /** 当前 IPC 客户端；无 IPC 模式（解压失败/未配置）或已 disable 时为 null。 */
@@ -210,7 +210,7 @@ public final class KuroBotPlugin extends JavaPlugin {
         return ipc;
     }
 
-    /** 看护器是否已进入放弃终态（KurobotCommand 报错文案用）；null 安全。 */
+    /** 看护器是否已进入放弃终态（KurobridgeCommand 报错文案用）；null 安全。 */
     public boolean isSupervisorGivenUp() {
         NodeSupervisor current = supervisor;
         return current != null && current.isGivenUp();

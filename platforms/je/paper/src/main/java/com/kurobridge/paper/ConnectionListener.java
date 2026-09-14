@@ -1,7 +1,7 @@
-package com.kurobot.paper;
+package com.kurobridge.paper;
 
-import com.kurobot.KuroBotPlugin;
-import com.kurobot.core.NodeIpc;
+import com.kurobridge.KuroBridgePlugin;
+import com.kurobridge.core.NodeIpc;
 import java.lang.management.ManagementFactory;
 import org.bukkit.Bukkit;
 import org.bukkit.event.EventHandler;
@@ -20,9 +20,9 @@ import org.bukkit.event.player.PlayerQuitEvent;
  * {@link NodeIpc} 发送即可——其发送方法线程安全（:core 写锁串行），不会阻塞主线程。
  */
 public final class ConnectionListener implements Listener {
-    private final KuroBotPlugin plugin;
+    private final KuroBridgePlugin plugin;
 
-    public ConnectionListener(KuroBotPlugin plugin) {
+    public ConnectionListener(KuroBridgePlugin plugin) {
         this.plugin = plugin;
     }
 
@@ -30,7 +30,7 @@ public final class ConnectionListener implements Listener {
     public void onJoin(PlayerJoinEvent event) {
         NodeIpc ipc = plugin.getIpc();
         if (ipc == null) {
-            return; // 开发模式（未配置 KUROBOT_BUNDLE）：无 IPC，静默跳过
+            return; // 开发模式（未配置 KUROBRIDGE_BUNDLE）：无 IPC，静默跳过
         }
         ipc.sendPlayerJoin(event.getPlayer().getName());
         sendStatusSnapshot(ipc);
@@ -40,7 +40,7 @@ public final class ConnectionListener implements Listener {
     public void onQuit(PlayerQuitEvent event) {
         NodeIpc ipc = plugin.getIpc();
         if (ipc == null) {
-            return; // 开发模式（未配置 KUROBOT_BUNDLE）：无 IPC，静默跳过
+            return; // 开发模式（未配置 KUROBRIDGE_BUNDLE）：无 IPC，静默跳过
         }
         ipc.sendPlayerQuit(event.getPlayer().getName());
         sendStatusSnapshot(ipc);

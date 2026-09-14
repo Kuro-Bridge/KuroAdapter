@@ -1,4 +1,4 @@
-package com.kurobot.core;
+package com.kurobridge.core;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -84,7 +84,7 @@ final class IpcFrameCodec {
         return encodeEvent(TYPE_PLAYER_DEATH, body);
     }
 
-    /** 配置重载通知（v0.3.0，/kurobot reload 触发）：空 body 事件帧，语义对齐 shutdown 的单向通知。 */
+    /** 配置重载通知（v0.3.0，/kurobridge reload 触发）：空 body 事件帧，语义对齐 shutdown 的单向通知。 */
     static String encodeConfigReload() {
         return encodeEvent(TYPE_CONFIG_RELOAD, MAPPER.createObjectNode());
     }

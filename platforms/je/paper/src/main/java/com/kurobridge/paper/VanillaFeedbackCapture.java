@@ -1,4 +1,4 @@
-package com.kurobot.paper;
+package com.kurobridge.paper;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -55,7 +55,7 @@ final class VanillaFeedbackCapture {
 
         CapturingAppender(List<String> lines) {
             super(
-                    "KuroBotVanillaFeedbackCapture",
+                    "KuroBridgeVanillaFeedbackCapture",
                     null,
                     null,
                     true,

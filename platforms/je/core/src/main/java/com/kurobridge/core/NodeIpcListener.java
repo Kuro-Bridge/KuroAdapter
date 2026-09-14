@@ -1,4 +1,4 @@
-package com.kurobot.core;
+package com.kurobridge.core;
 
 /**
  * Node 侧请求与 stderr 的回调。

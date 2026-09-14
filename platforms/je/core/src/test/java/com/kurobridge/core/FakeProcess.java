@@ -1,4 +1,4 @@
-package com.kurobot.core;
+package com.kurobridge.core;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;

@@ -1,4 +1,4 @@
-package com.kurobot.paper;
+package com.kurobridge.paper;
 
 import java.util.ArrayList;
 import java.util.List;

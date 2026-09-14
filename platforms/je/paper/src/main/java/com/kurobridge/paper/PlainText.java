@@ -1,4 +1,4 @@
-package com.kurobot.paper;
+package com.kurobridge.paper;
 
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.serializer.plain.PlainComponentSerializer;

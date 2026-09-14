@@ -1,4 +1,4 @@
-package com.kurobot.core;
+package com.kurobridge.core;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -258,7 +258,7 @@ final class EmbeddedRuntimeTest {
         assertTrue(Files.isRegularFile(cliEntry));
         assertTrue(Files.readString(cliEntry).endsWith("v1"));
         assertTrue(Files.isRegularFile(tempDir.resolve("napuketto/node_modules/zod/package.json")));
-        String sentinel = Files.readString(tempDir.resolve("napuketto/.kurobot-install.json"));
+        String sentinel = Files.readString(tempDir.resolve("napuketto/.kurobridge-install.json"));
         assertTrue(sentinel.contains("sha256"));
         assertTrue(logs.stream().anyMatch(line -> line.contains("napuketto 嵌包展开完成")));
     }

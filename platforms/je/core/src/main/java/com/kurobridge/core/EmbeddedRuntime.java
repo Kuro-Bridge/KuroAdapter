@@ -1,4 +1,4 @@
-package com.kurobot.core;
+package com.kurobridge.core;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -33,7 +33,7 @@ import java.util.zip.ZipInputStream;
  *
  * <p>MVP-4（ADR-029）napuketto 嵌包：manifest 含 {@code napukettoZip} 指针（sha256 对
  * {@code napuketto.zip} 本体——本体已在上面的逐文件循环中解到 bin/）时，把 zip 展开到
- * {@code bin/napuketto/node_modules/}。展开幂等：哨兵 {@code napuketto/.kurobot-install.json}
+ * {@code bin/napuketto/node_modules/}。展开幂等：哨兵 {@code napuketto/.kurobridge-install.json}
  * 记录上次展开的 zip sha256，一致 → 复用；不符/缺失/目录无哨兵 → 删目录重建（升级路径）。
  * zip entry 名防 zip slip：拒绝绝对路径/反斜杠/盘符，resolve+normalize 后必须落在目标目录内。
  *
@@ -52,7 +52,7 @@ public final class EmbeddedRuntime {
     private static final String FILE_NODE_EXE = "node.exe";
     private static final String FILE_BUNDLE = "index.mjs";
     private static final String FILE_NAPUKETTO_DIR = "napuketto";
-    private static final String FILE_NAPUKETTO_SENTINEL = ".kurobot-install.json";
+    private static final String FILE_NAPUKETTO_SENTINEL = ".kurobridge-install.json";
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     /** 资源源：名字 → 内容流（名字不含 {@code embedded/} 前缀；不存在须抛 IOException）。 */
@@ -72,7 +72,7 @@ public final class EmbeddedRuntime {
     /**
      * 安装 embedded 运行时到 bin 目录。
      *
-     * @param binDir 目标目录（如 {@code plugins/kurobot/bin}；不存在则创建）
+     * @param binDir 目标目录（如 {@code plugins/kurobridge/bin}；不存在则创建）
      * @param source JAR 资源源（名字 → 流，{@code embedded/} 前缀由实现方处理）
      * @param log 进度日志消费者（复用/解压/哈希不符均逐条输出）
      * @return node.exe 与 index.mjs 的磁盘路径
@@ -102,7 +102,7 @@ public final class EmbeddedRuntime {
                 continue;
             }
             if (Files.exists(target)) {
-                log.accept("检测到打包内容变更（升级），已重建 plugins/kurobot/bin 内文件：" + name);
+                log.accept("检测到打包内容变更（升级），已重建 plugins/kurobridge/bin 内文件：" + name);
             } else {
                 log.accept("embedded 文件缺失，从 JAR 解压：" + name);
             }
