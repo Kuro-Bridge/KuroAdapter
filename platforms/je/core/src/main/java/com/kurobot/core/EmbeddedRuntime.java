@@ -11,10 +11,13 @@ import java.security.DigestInputStream;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
+import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 import java.util.function.Consumer;
 import java.util.regex.Pattern;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
 
 /**
  * JAR 内 embedded 资源 → 磁盘 bin 目录的解压加载链（MVP 阶段二，ADR-014「node.exe 进 JAR」的
@@ -28,9 +31,15 @@ import java.util.regex.Pattern;
  *   <li>只在插件启动路径调用（node.exe 此时必然未运行，无文件占用问题），无运行期覆盖逻辑。</li>
  * </ul>
  *
- * <p>防 zip slip：manifest 的文件名必须匹配 {@link #SAFE_NAME}（单段、无路径分隔符、无 {@code ..}），
- * 且 resolve+normalize 后仍须落在 bin 目录内（双保险）。资源按固定名读取（不枚举 zip entry），
- * 不存在 entry 名注入面。
+ * <p>MVP-4（ADR-029）napuketto 嵌包：manifest 含 {@code napukettoZip} 指针（sha256 对
+ * {@code napuketto.zip} 本体——本体已在上面的逐文件循环中解到 bin/）时，把 zip 展开到
+ * {@code bin/napuketto/node_modules/}。展开幂等：哨兵 {@code napuketto/.kurobot-install.json}
+ * 记录上次展开的 zip sha256，一致 → 复用；不符/缺失/目录无哨兵 → 删目录重建（升级路径）。
+ * zip entry 名防 zip slip：拒绝绝对路径/反斜杠/盘符，resolve+normalize 后必须落在目标目录内。
+ *
+ * <p>防 zip slip（逐文件路径）：manifest 的文件名必须匹配 {@link #SAFE_NAME}（单段、无路径
+ * 分隔符、无 {@code ..}），且 resolve+normalize 后仍须落在 bin 目录内（双保险）。资源按固定名
+ * 读取（不枚举 zip entry），不存在 entry 名注入面。
  *
  * <p>零 Bukkit API（:core 模块纪律）；资源读取经 {@link ResourceSource} 注入（:paper 传
  * classloader，测试传内存映射）。日志经注入的 {@code log} 消费者输出（无级别前缀，由宿主定级）。
@@ -42,6 +51,8 @@ public final class EmbeddedRuntime {
     private static final String MANIFEST_NAME = "manifest.json";
     private static final String FILE_NODE_EXE = "node.exe";
     private static final String FILE_BUNDLE = "index.mjs";
+    private static final String FILE_NAPUKETTO_DIR = "napuketto";
+    private static final String FILE_NAPUKETTO_SENTINEL = ".kurobot-install.json";
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     /** 资源源：名字 → 内容流（名字不含 {@code embedded/} 前缀；不存在须抛 IOException）。 */
@@ -53,8 +64,8 @@ public final class EmbeddedRuntime {
     /** 安装结果：node 可执行文件与 bundle 的磁盘路径（绝对路径）+ manifest 声明的 node 版本。 */
     public record Installed(Path nodeExecutable, Path bundle, String nodeVersion) {}
 
-    /** manifest 内容：node 版本（仅日志展示）与 文件名 → sha256。 */
-    private record Manifest(String nodeVersion, TreeMap<String, String> files) {}
+    /** manifest 内容：node 版本（仅日志展示）、文件名 → sha256、napuketto 嵌包 zip sha（MVP-4 可选）。 */
+    private record Manifest(String nodeVersion, TreeMap<String, String> files, String napukettoZipSha) {}
 
     private EmbeddedRuntime() {}
 
@@ -98,9 +109,78 @@ public final class EmbeddedRuntime {
             extract(source, name, target, entry.getValue());
             extracted++;
         }
+        if (manifest.napukettoZipSha() != null) {
+            installNapuketto(
+                    normalizedBin.resolve(FILE_NAPUKETTO_DIR),
+                    normalizedBin.resolve("napuketto.zip"),
+                    manifest.napukettoZipSha(),
+                    log);
+        }
         log.accept("embedded 运行时就绪（node " + manifest.nodeVersion() + "）：解压 " + extracted + " / 复用 " + reused + " → "
                 + normalizedBin);
         return new Installed(targets.get(FILE_NODE_EXE), targets.get(FILE_BUNDLE), manifest.nodeVersion());
+    }
+
+    /**
+     * napuketto 嵌包展开（MVP-4）：bin/napuketto.zip → bin/napuketto/node_modules/...
+     * 哨兵 sha256 与 zip 一致 → 复用；否则删目录重建（升级/缺失自愈）。
+     */
+    private static void installNapuketto(Path targetDir, Path zipFile, String expectedSha, Consumer<String> log)
+            throws IOException {
+        Path sentinel = targetDir.resolve(FILE_NAPUKETTO_SENTINEL);
+        if (Files.isRegularFile(sentinel)) {
+            String recorded =
+                    MAPPER.readTree(Files.readAllBytes(sentinel)).path("sha256").asText("");
+            if (recorded.equals(expectedSha)) {
+                log.accept("napuketto 嵌包已就绪，复用（哨兵 sha256 一致）：" + targetDir.getFileName());
+                return;
+            }
+            log.accept("检测到 napuketto 嵌包变更（升级），重建 " + targetDir.getFileName() + " 目录");
+            deleteRecursively(targetDir);
+        } else if (Files.exists(targetDir)) {
+            log.accept("napuketto 目录存在但无安装哨兵（残留/损坏），重建：" + targetDir.getFileName());
+            deleteRecursively(targetDir);
+        }
+        Files.createDirectories(targetDir);
+        int count = 0;
+        try (ZipInputStream zip = new ZipInputStream(Files.newInputStream(zipFile))) {
+            ZipEntry entry;
+            while ((entry = zip.getNextEntry()) != null) {
+                Path target = safeZipTarget(targetDir, entry.getName());
+                if (entry.isDirectory()) {
+                    Files.createDirectories(target);
+                    continue;
+                }
+                Files.createDirectories(target.getParent());
+                Files.copy(zip, target, StandardCopyOption.REPLACE_EXISTING);
+                count++;
+            }
+        }
+        String sentinelJson = MAPPER.writeValueAsString(Map.of("sha256", expectedSha));
+        Files.writeString(sentinel, sentinelJson);
+        log.accept("napuketto 嵌包展开完成（" + count + " 个文件）→ " + targetDir);
+    }
+
+    /** zip entry 名校验：拒绝绝对路径/反斜杠/盘符；normalize 后必须仍在目标目录内（防 ../ 逃逸）。 */
+    private static Path safeZipTarget(Path targetDir, String name) throws IOException {
+        if (name.isBlank() || name.startsWith("/") || name.contains("\\") || name.contains(":")) {
+            throw new IOException("napuketto.zip 含非法条目名（疑似路径注入）：" + name);
+        }
+        Path target = targetDir.resolve(name).normalize();
+        if (!target.startsWith(targetDir)) {
+            throw new IOException("napuketto.zip 条目解析后逃出目标目录：" + name);
+        }
+        return target;
+    }
+
+    private static void deleteRecursively(Path root) throws IOException {
+        List<Path> paths;
+        try (var walk = Files.walk(root)) {
+            paths = walk.sorted((a, b) -> b.getNameCount() - a.getNameCount()).toList();
+        }
+        for (Path path : paths) {
+            Files.deleteIfExists(path);
+        }
     }
 
     private static Manifest readManifest(ResourceSource source) throws IOException {
@@ -119,7 +199,11 @@ public final class EmbeddedRuntime {
                 .forEachRemaining(
                         field -> files.put(field.getKey(), field.getValue().asText()));
         JsonNode version = root.get("nodeVersion");
-        return new Manifest(version == null ? "?" : version.asText("?"), files);
+        JsonNode napukettoZip = root.get("napukettoZip");
+        String napukettoSha = napukettoZip != null && napukettoZip.has("sha256")
+                ? napukettoZip.get("sha256").asText()
+                : null;
+        return new Manifest(version == null ? "?" : version.asText("?"), files, napukettoSha);
     }
 
     private static void requireProduct(Manifest manifest, String name) throws IOException {

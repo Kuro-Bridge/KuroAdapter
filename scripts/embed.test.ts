@@ -6,6 +6,7 @@
  */
 
 import { createHash } from "node:crypto";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -13,6 +14,9 @@ import { crc32, deflateRawSync } from "node:zlib";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
+    buildZip,
+    collectLicenses,
+    collectZipEntries,
     distUrls,
     type EmbedResult,
     extractZipEntry,
@@ -28,6 +32,30 @@ function sha256(data: Buffer): string {
     return createHash("sha256").update(data).digest("hex");
 }
 
+/** 假 npm install：造一个最小但结构真实的依赖树（真实文件，含 @scope 包与 .bin 噪声） */
+function fakeNapukettoInstall(_version: string, targetDir: string): void {
+    const nm = join(targetDir, "node_modules");
+    const cli = join(nm, "@napuketto", "cli");
+    mkdirSync(join(cli, "dist"), { recursive: true });
+    writeFileSync(
+        join(cli, "package.json"),
+        JSON.stringify({ name: "@napuketto/cli", version: _version, license: "MIT" }),
+        "utf8",
+    );
+    writeFileSync(join(cli, "dist", "index.mjs"), "// napuketto cli entry", "utf8");
+    writeFileSync(join(cli, "LICENSE"), "MIT license text (cli)", "utf8");
+    const kernel = join(nm, "@napuketto", "kernel");
+    mkdirSync(kernel, { recursive: true });
+    writeFileSync(join(kernel, "package.json"), "{}", "utf8");
+    writeFileSync(join(kernel, "LICENSE.md"), "MIT license text (kernel)", "utf8");
+    const zod = join(nm, "zod");
+    mkdirSync(zod, { recursive: true });
+    writeFileSync(join(zod, "package.json"), "{}", "utf8");
+    writeFileSync(join(zod, "LICENSE"), "MIT license text (zod)", "utf8");
+    mkdirSync(join(nm, ".bin"), { recursive: true });
+    writeFileSync(join(nm, ".bin", "napuketto.cmd"), "shim should not be bundled", "utf8");
+}
+
 interface TestEntry {
     name: string;
     data: Buffer;
@@ -35,7 +63,7 @@ interface TestEntry {
 }
 
 /** 手搓最小 zip（无 extra/comment，数据紧跟本地头；中央目录 + EOCD 收尾）。 */
-function buildZip(entries: TestEntry[]): Buffer {
+function testZip(entries: TestEntry[]): Buffer {
     const parts: Buffer[] = [];
     const centrals: Buffer[] = [];
     let offset = 0;
@@ -113,7 +141,7 @@ describe("extractZipEntry", () => {
     it("deflate 与 stored 条目均按内容取出并过 crc32", () => {
         const deflateData = Buffer.from("fake node exe binary payload");
         const storedData = Buffer.from("Node.js license (MIT) fake text");
-        const zip = buildZip([
+        const zip = testZip([
             { name: `${NODE_PLATFORM_DIR}/node.exe`, data: deflateData, method: 8 },
             { name: `${NODE_PLATFORM_DIR}/LICENSE`, data: storedData, method: 0 },
         ]);
@@ -122,16 +150,64 @@ describe("extractZipEntry", () => {
     });
 
     it("条目不存在 → 报错", () => {
-        const zip = buildZip([{ name: "a.txt", data: Buffer.from("x") }]);
+        const zip = testZip([{ name: "a.txt", data: Buffer.from("x") }]);
         expect(() => extractZipEntry(zip, "missing.txt")).toThrow("找不到条目");
     });
 
     it("内容损坏（crc32 不符）→ 报错", () => {
         // stored 条目：本地头(30) + 名(5) 之后即数据段，破坏它直接命中 crc32 校验
-        const zip = buildZip([{ name: "a.txt", data: Buffer.from("hello"), method: 0 }]);
+        const zip = testZip([{ name: "a.txt", data: Buffer.from("hello"), method: 0 }]);
         const dataOffset = 30 + "a.txt".length;
         zip[dataOffset] = (zip[dataOffset] ?? 0) ^ 0xff;
         expect(() => extractZipEntry(zip, "a.txt")).toThrow("crc32");
+    });
+});
+
+describe("buildZip / collectZipEntries / collectLicenses（MVP-4）", () => {
+    it("buildZip 产物可被既有 reader 读回（deflate/stored 对称）", () => {
+        const small = Buffer.from("x"); // 压缩后更大 → stored
+        const large = Buffer.from("deflate me please ".repeat(50)); // 压缩更小 → deflate
+        const zip = buildZip([
+            { name: "node_modules/a/pkg/stored.bin", data: small },
+            { name: "node_modules/a/pkg/deflated.js", data: large },
+        ]);
+        expect(extractZipEntry(zip, "node_modules/a/pkg/stored.bin")).toEqual(small);
+        expect(extractZipEntry(zip, "node_modules/a/pkg/deflated.js")).toEqual(large);
+    });
+
+    it("collectZipEntries：扁平化为 zip 名（node_modules/ 前缀 + / 分隔）、跳过 .bin 与 symlink、排序稳定", async () => {
+        const root = await mkdtemp(join(tmpdir(), "kurobot-nk-"));
+        try {
+            fakeNapukettoInstall("1.2.3", root);
+            const entries = await collectZipEntries(join(root, "node_modules"));
+            const names = entries.map((entry) => entry.name);
+            expect(names).toEqual([
+                "node_modules/@napuketto/cli/LICENSE",
+                "node_modules/@napuketto/cli/dist/index.mjs",
+                "node_modules/@napuketto/cli/package.json",
+                "node_modules/@napuketto/kernel/LICENSE.md",
+                "node_modules/@napuketto/kernel/package.json",
+                "node_modules/zod/LICENSE",
+                "node_modules/zod/package.json",
+            ]);
+            expect(names.some((name) => name.includes(".bin"))).toBe(false);
+        } finally {
+            await rm(root, { recursive: true, force: true });
+        }
+    });
+
+    it("collectLicenses：聚合全部顶层包许可（@scope 下钻），一包一许可带路径头", async () => {
+        const root = await mkdtemp(join(tmpdir(), "kurobot-nk-"));
+        try {
+            fakeNapukettoInstall("1.2.3", root);
+            const licenses = (await collectLicenses(join(root, "node_modules"))).toString("utf8");
+            expect(licenses).toContain("MIT license text (cli)");
+            expect(licenses).toContain("MIT license text (kernel)");
+            expect(licenses).toContain("MIT license text (zod)");
+            expect(licenses).toContain("node_modules/@napuketto/cli/LICENSE");
+        } finally {
+            await rm(root, { recursive: true, force: true });
+        }
     });
 });
 
@@ -160,6 +236,7 @@ describe("runEmbed", () => {
         cacheDir: string;
         zipRequests: number;
         rerun: () => Promise<EmbedResult>;
+        installCount: () => number;
     }
 
     async function setup(): Promise<Harness> {
@@ -167,7 +244,7 @@ describe("runEmbed", () => {
         const outDir = join(root, "embedded");
         const cacheDir = join(root, "cache");
         await writeFile(join(root, "index.mjs"), fakeBundle);
-        const zip = buildZip([
+        const zip = testZip([
             { name: `${NODE_PLATFORM_DIR}/node.exe`, data: fakeExe },
             { name: `${NODE_PLATFORM_DIR}/LICENSE`, data: fakeLicense },
         ]);
@@ -183,6 +260,11 @@ describe("runEmbed", () => {
             }
             return Promise.reject(new Error(`测试下载器不认识：${url}`));
         };
+        let installs = 0;
+        const install = (version: string, targetDir: string): void => {
+            installs += 1;
+            fakeNapukettoInstall(version, targetDir);
+        };
         const rerun = () =>
             runEmbed({
                 distBundle: join(root, "index.mjs"),
@@ -191,17 +273,20 @@ describe("runEmbed", () => {
                 distBase: "https://example.test/node",
                 download,
                 log: (message) => logs.push(message),
+                napuketto: { cliVersion: "1.2.3", install },
             });
-        return { outDir, cacheDir, zipRequests, rerun };
+        return { outDir, cacheDir, zipRequests, rerun, installCount: () => installs };
     }
 
-    it("从假 dist 产出四件产物，manifest 与磁盘内容一致", async () => {
+    it("从假 dist 产出六件产物，manifest 与磁盘内容一致", async () => {
         const harness = await setup();
         const result = await harness.rerun();
         expect(result.copied.sort()).toEqual([
+            "NAPUKETTO_LICENSES",
             "NODE_LICENSE",
             "index.mjs",
             "manifest.json",
+            "napuketto.zip",
             "node.exe",
         ]);
 
@@ -211,10 +296,12 @@ describe("runEmbed", () => {
 
         const manifest = JSON.parse(await readFile(join(harness.outDir, "manifest.json"), "utf8"));
         expect(manifest.nodeVersion).toBe(NODE_VERSION);
-        expect(manifest.files).toEqual({
-            "node.exe": sha256(fakeExe),
-            NODE_LICENSE: sha256(fakeLicense),
-            "index.mjs": sha256(fakeBundle),
+        expect(manifest.files["napuketto.zip"]).toBeTypeOf("string");
+        expect(manifest.files["NAPUKETTO_LICENSES"]).toBeTypeOf("string");
+        expect(manifest.napukettoZip).toEqual({
+            name: "napuketto.zip",
+            sha256: manifest.files["napuketto.zip"],
+            cliVersion: "1.2.3",
         });
     });
 
@@ -222,15 +309,19 @@ describe("runEmbed", () => {
         const harness = await setup();
         await harness.rerun();
         const zipDownloadsFirstRun = harness.zipRequests;
+        const installsFirstRun = harness.installCount();
         const second = await harness.rerun();
         expect(second.copied).toEqual([]);
         expect(second.reused.sort()).toEqual([
+            "NAPUKETTO_LICENSES",
             "NODE_LICENSE",
             "index.mjs",
             "manifest.json",
+            "napuketto.zip",
             "node.exe",
         ]);
         expect(harness.zipRequests).toBe(zipDownloadsFirstRun);
+        expect(harness.installCount()).toBe(installsFirstRun);
     });
 
     it("产物损坏后自动重建（哈希不符 → 覆盖）", async () => {
@@ -245,7 +336,7 @@ describe("runEmbed", () => {
     it("zip sha256 与 SHASUMS 不符 → 拒绝", async () => {
         const root = await makeTemp();
         await writeFile(join(root, "index.mjs"), fakeBundle);
-        const zip = buildZip([{ name: `${NODE_PLATFORM_DIR}/node.exe`, data: fakeExe }]);
+        const zip = testZip([{ name: `${NODE_PLATFORM_DIR}/node.exe`, data: fakeExe }]);
         const shasums = `${"0".repeat(64)}  ${ZIP_NAME}\n`; // 与 zip 实际哈希不符
         const attempt = runEmbed({
             distBundle: join(root, "index.mjs"),
@@ -267,7 +358,7 @@ describe("runEmbed", () => {
     ): Promise<{ attempt: Promise<EmbedResult>; localLogs: string[]; root: string }> {
         const root = await makeTemp();
         await writeFile(join(root, "index.mjs"), fakeBundle);
-        const zip = buildZip([
+        const zip = testZip([
             { name: `${NODE_PLATFORM_DIR}/node.exe`, data: fakeExe },
             { name: `${NODE_PLATFORM_DIR}/LICENSE`, data: fakeLicense },
         ]);

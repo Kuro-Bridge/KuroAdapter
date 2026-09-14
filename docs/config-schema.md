@@ -62,6 +62,44 @@ WS 监听段：external 协议端（如独立部署的 napukettoqq）的连入�
 - `port`/`host` 修改经 watch / `/kurobot reload` 重读，但**监听已在启动时绑定**——改后
   需重启服务器（或重启插件）生效。
 
+### `embedded: object`（可选，MVP-4 引入）
+
+嵌入段：JAR 内嵌 napuketto CLI（ADR-029）的开关与路径。**整段缺省 = 现状不变**
+（stub 孙进程 / external 对端形态）。形状 SSOT 归 core zod（与 `ws` 段同款，ADR-028 先例），
+消费方在 Node 引导层（bridge/embedded）。
+
+```json
+{
+    "embedded": {
+        "napuketto": {
+            "enabled": true,
+            "configPath": "plugins/kurobot/napuketto.toml",
+            "dataDir": "plugins/kurobot/napuketto-data"
+        }
+    }
+}
+```
+
+- `napuketto.enabled: boolean`（**必填**，不给缺省）：嵌入是重行为（拉起 QQ 协议端整树，
+  含 napuketto CLI → boot → self-host 三层子进程），要求服主显式写明。
+- `napuketto.configPath: string`（可选，非空串）：napuketto 自己的 TOML 配置路径
+  （相对服务器根，也可绝对路径）。**napuketto 侧的配置 SSOT 是这份 TOML**（服主直接维护，
+  QQ 账号 / kurobot 连接段 `[accounts.kurobot]` 全在里面），KuroAdapter 只经 env
+  `NAPKETTO_CONFIG` 指路。缺省 `plugins/kurobot/napuketto.toml`。
+- `napuketto.dataDir: string`（可选，非空串）：napuketto 数据目录（env `NAPKETTO_DATA`）。
+  缺省 `plugins/kurobot/napuketto-data`——与服主日常 napuketto 部署**隔离**（同一账号
+  数据目录单实例锁 instance.lock，混用会互踢）。
+- **固定端口强制**：`enabled: true` 时 config 必须有 `ws.port`——napuketto TOML 里的
+  `url` 是静态的，动态端口无法喂给它。违反 → Node 启动明确 error + 非零退出（WsBindError
+  同族快速失败），由 Java 看护器按退避语义重试至放弃。建议同时配 `ws.host: "127.0.0.1"`
+  （本机孙进程不暴露公网）与 `token`（并与 napuketto.toml 的 `[accounts.kurobot].token`
+  一致）。
+- **平台**：QQ 宿主（napuketto self-host）仅支持 Windows；非 Windows 宿主下 `enabled: true`
+  → 明确 error 日志 + 不拉起（Node 继续作为纯 WS 服务端，external 对端不受影响）。
+- **QR 交接**：登录二维码会落地 `plugins/kurobot/qr.png` + `qr.json`（随刷新更新），
+  游戏内 `/kurobot qr` 查看图片路径与登录链接。
+- `configPath`/`dataDir` 变更需重启生效（napuketto 在 Node 启动时拉起，运行期不重读）。
+
 ## 完整示例
 
 ```json
@@ -80,11 +118,18 @@ WS 监听段：external 协议端（如独立部署的 napukettoqq）的连入�
     "ws": {
         "host": "127.0.0.1",
         "port": 25580
+    },
+    "embedded": {
+        "napuketto": {
+            "enabled": true
+        }
     }
 }
 ```
 
-> 上例 `ws` 段为 external 部署示例（同机协议端 + 固定端口）；内嵌形态无需该段。
+> 上例为 embedded 形态（JAR 内嵌 napuketto + 固定端口 25580）：napuketto 以
+> `ws://127.0.0.1:25580` 连入（写在 napuketto.toml 的 `[accounts.kurobot].url`，
+> token 两边一致）。纯 external 部署（napuketto 独立机器/进程）删掉 `embedded` 段即可。
 
 ## 最小示例（MVP1 时代旧配置，0.3.0 仍兼容）
 

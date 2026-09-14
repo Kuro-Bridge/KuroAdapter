@@ -103,6 +103,8 @@ export interface NapukettoDeps {
     killTree?: ((pid: number) => void) | undefined;
     /** 优雅关停等待上限（对齐 napuketto FORCE_EXIT_MS=5000） */
     stopTimeoutMs?: number | undefined;
+    /** 捕获流出现 QR URL 日志时回调（接线 QR 状态文件用）；缺省不检测 */
+    onQrUrl?: ((url: string) => void) | undefined;
 }
 
 export interface UnexpectedExit {
@@ -152,8 +154,8 @@ export function spawnNapuketto(spec: NapukettoSpawnSpec, deps: NapukettoDeps): N
     let reported = false;
     const exitCbs: Array<(info: UnexpectedExit) => void> = [];
 
-    pipeLines(child.stdout, logger);
-    pipeLines(child.stderr, logger);
+    pipeLines(child.stdout, logger, deps.onQrUrl);
+    pipeLines(child.stderr, logger, deps.onQrUrl);
 
     const reportOnce = (code: number | null, error?: Error): void => {
         if (reported) {
@@ -201,9 +203,16 @@ export function spawnNapuketto(spec: NapukettoSpawnSpec, deps: NapukettoDeps): N
 /** CLI 逐行输出里的 pino-pretty 级别字样（大写、词边界，防正文误伤） */
 const LOG_LEVEL_ERROR = /\bERROR\b/;
 const LOG_LEVEL_WARN = /\bWARN\b/;
+/** QR URL 日志（napuketto kernel 固定文案，全角括号；URL 解析 best-effort——格式变更即失效，PNG 路径为主） */
+const QR_URL_LOG = /请扫描二维码登录（保存:\s*.+?\s*\|\s*URL:\s*(\S+?)）/;
+/** 级别字样 + QR 日志匹配在行级热路径，预编译为顶层常量（lint/performance/useTopLevelRegex） */
 
 /** 逐行捕获并按 pino-pretty 固定的级别字样分流（ASCII 二维码/BANNER 无级别字样 → info 透传） */
-function pipeLines(stream: Readable | null, logger: Logger): void {
+function pipeLines(
+    stream: Readable | null,
+    logger: Logger,
+    onQrUrl: ((url: string) => void) | undefined,
+): void {
     if (stream === null) {
         return;
     }
@@ -216,6 +225,12 @@ function pipeLines(stream: Readable | null, logger: Logger): void {
             logger.warn(text);
         } else {
             logger.info(text);
+        }
+        if (onQrUrl !== undefined) {
+            const match = QR_URL_LOG.exec(line);
+            if (match !== null && match[1] !== undefined) {
+                onQrUrl(match[1]);
+            }
         }
     });
 }

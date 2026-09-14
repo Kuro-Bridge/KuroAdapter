@@ -21,7 +21,7 @@
 import { type ChildProcess, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
-import { dirname } from "node:path";
+import { dirname, resolve } from "node:path";
 import {
     AdminTable,
     BindingTable,
@@ -39,6 +39,7 @@ import { StdioIpcChannel } from "./ipc-stdio.js";
 import { createStderrLogger } from "./logger.js";
 import { decideNapukettoLaunch, type NapukettoHandle, spawnNapuketto } from "./napuketto.js";
 import { NodeClock, NodeScheduler } from "./node-platform.js";
+import { type QrWatcher, startQrWatcher } from "./qr-watcher.js";
 import { NodeWsServer } from "./ws-server.js";
 
 const SERVER_ID = "kurobot-spike";
@@ -65,10 +66,13 @@ function terminate(spawned: ChildProcess | null, exitCode: number): void {
 }
 
 /**
- * napuketto 分支（MVP-4，ADR-029）：守卫 + 拉起嵌入 CLI。
- * spawn → 句柄；skip（非 Windows）→ null（继续纯 WS 服务端）；fatal → 本进程退出。
+ * napuketto 分支（MVP-4，ADR-029）：守卫 + 拉起嵌入 CLI + QR 状态文件 watcher。
+ * spawn → 句柄组；skip（非 Windows）→ null（继续纯 WS 服务端）；fatal → 本进程退出。
  */
-function launchNapukettoBranch(config: KurobotConfig, logger: Logger): NapukettoHandle | null {
+function launchNapukettoBranch(
+    config: KurobotConfig,
+    logger: Logger,
+): { napuketto: NapukettoHandle; qr: QrWatcher } | null {
     const binDir = process.argv[1] !== undefined ? dirname(process.argv[1]) : process.cwd();
     const decision = decideNapukettoLaunch({
         config,
@@ -85,13 +89,19 @@ function launchNapukettoBranch(config: KurobotConfig, logger: Logger): Napuketto
         process.exit(1);
     }
     mkdirSync(decision.dataDir, { recursive: true });
+    // QR 状态文件落地 plugins/kurobot/（cwd = 服务器根；:paper /kurobot qr 消费）
+    const qr = startQrWatcher({
+        dataDir: decision.dataDir,
+        qrDir: resolve(process.cwd(), "plugins", "kurobot"),
+        logger,
+    });
     const handle = spawnNapuketto(
         {
             cliEntry: decision.cliEntry,
             configPath: decision.configPath,
             dataDir: decision.dataDir,
         },
-        { logger },
+        { logger, onQrUrl: (url) => qr.setUrl(url) },
     );
     handle.onUnexpectedExit(({ code, error }) => {
         const cause = error === undefined ? "" : `，${String(error)}`;
@@ -101,7 +111,7 @@ function launchNapukettoBranch(config: KurobotConfig, logger: Logger): Napuketto
         );
         process.exit(1);
     });
-    return handle;
+    return { napuketto: handle, qr };
 }
 
 async function main(): Promise<void> {
@@ -153,6 +163,7 @@ async function main(): Promise<void> {
 
     let stub: ChildProcess | null = null;
     let napuketto: NapukettoHandle | null = null;
+    let qrWatcher: QrWatcher | null = null;
     const relay = new Relay({
         context,
         server,
@@ -169,6 +180,7 @@ async function main(): Promise<void> {
     // 统一关停路径：napuketto 优雅树杀（taskkill /T /F，等 exit ≤5s）→ stub 有界强杀 → 自退
     const shutdown = async (exitCode: number): Promise<void> => {
         relay.dispose();
+        qrWatcher?.stop();
         if (napuketto !== null) {
             await napuketto.stop();
         }
@@ -202,7 +214,11 @@ async function main(): Promise<void> {
     const napukettoEnabled = initialConfig.embedded?.napuketto.enabled === true;
     const stubPath = process.env["KUROBOT_STUB_PEER"];
     if (napukettoEnabled) {
-        napuketto = launchNapukettoBranch(initialConfig, logger);
+        const branch = launchNapukettoBranch(initialConfig, logger);
+        if (branch !== null) {
+            napuketto = branch.napuketto;
+            qrWatcher = branch.qr;
+        }
     } else if (stubPath !== undefined && stubPath.length > 0) {
         stub = spawn(process.execPath, [stubPath, String(port)], {
             stdio: ["ignore", "ignore", "inherit"],

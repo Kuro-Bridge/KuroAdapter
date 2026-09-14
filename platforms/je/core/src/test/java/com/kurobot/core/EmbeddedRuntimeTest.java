@@ -197,4 +197,120 @@ final class EmbeddedRuntimeTest {
 
         assertThrows(IOException.class, () -> EmbeddedRuntime.install(tempDir, source, logs::add));
     }
+
+    // ---- MVP-4：napuketto 嵌包展开 ----
+
+    /** 造嵌包 zip（entry: a/pkg/f.txt + b.js）与带 napukettoZip 指针的 manifest 源。 */
+    private InMemorySource napukettoSource(String zipContentMarker) throws IOException {
+        byte[] zipBytes = napukettoZip(zipContentMarker);
+        InMemorySource source = new InMemorySource();
+        source.resources.put(
+                "manifest.json",
+                manifestWithNapuketto(
+                        Map.of(
+                                "node.exe", "fake-node-exe".getBytes(StandardCharsets.UTF_8),
+                                "index.mjs", "fake-bundle".getBytes(StandardCharsets.UTF_8),
+                                "napuketto.zip", zipBytes),
+                        sha256(zipBytes)));
+        source.resources.put("node.exe", "fake-node-exe".getBytes(StandardCharsets.UTF_8));
+        source.resources.put("index.mjs", "fake-bundle".getBytes(StandardCharsets.UTF_8));
+        source.resources.put("napuketto.zip", zipBytes);
+        return source;
+    }
+
+    private static byte[] napukettoZip(String contentMarker) throws IOException {
+        java.io.ByteArrayOutputStream buffer = new java.io.ByteArrayOutputStream();
+        try (java.util.zip.ZipOutputStream zip = new java.util.zip.ZipOutputStream(buffer)) {
+            zip.putNextEntry(new java.util.zip.ZipEntry("node_modules/@napuketto/cli/dist/index.mjs"));
+            zip.write(("cli entry " + contentMarker).getBytes(StandardCharsets.UTF_8));
+            zip.closeEntry();
+            zip.putNextEntry(new java.util.zip.ZipEntry("node_modules/zod/package.json"));
+            zip.write("{\"name\":\"zod\"}".getBytes(StandardCharsets.UTF_8));
+            zip.closeEntry();
+        }
+        return buffer.toByteArray();
+    }
+
+    private static byte[] manifestWithNapuketto(Map<String, byte[]> files, String napukettoSha) {
+        StringBuilder json = new StringBuilder("{\"nodeVersion\":\"26.7.0-test\",\"files\":{");
+        for (Map.Entry<String, byte[]> entry : files.entrySet()) {
+            if (json.charAt(json.length() - 1) != '{') {
+                json.append(',');
+            }
+            json.append("\"")
+                    .append(entry.getKey())
+                    .append("\":\"")
+                    .append(sha256(entry.getValue()))
+                    .append("\"");
+        }
+        json.append("},\"napukettoZip\":{\"name\":\"napuketto.zip\",\"sha256\":\"")
+                .append(napukettoSha)
+                .append("\",\"cliVersion\":\"0.1.17\"}}");
+        return json.toString().getBytes(StandardCharsets.UTF_8);
+    }
+
+    @Test
+    void installExpandsNapukettoZipWithSentinel() throws IOException {
+        InMemorySource source = napukettoSource("v1");
+        EmbeddedRuntime.install(tempDir, source, logs::add);
+
+        Path cliEntry = tempDir.resolve("napuketto/node_modules/@napuketto/cli/dist/index.mjs");
+        assertTrue(Files.isRegularFile(cliEntry));
+        assertTrue(Files.readString(cliEntry).endsWith("v1"));
+        assertTrue(Files.isRegularFile(tempDir.resolve("napuketto/node_modules/zod/package.json")));
+        String sentinel = Files.readString(tempDir.resolve("napuketto/.kurobot-install.json"));
+        assertTrue(sentinel.contains("sha256"));
+        assertTrue(logs.stream().anyMatch(line -> line.contains("napuketto 嵌包展开完成")));
+    }
+
+    @Test
+    void installReusesNapukettoWhenSentinelShaMatches() throws IOException {
+        InMemorySource source = napukettoSource("v1");
+        EmbeddedRuntime.install(tempDir, source, logs::add);
+        logs.clear();
+
+        EmbeddedRuntime.install(tempDir, source, logs::add);
+
+        assertTrue(logs.stream().anyMatch(line -> line.contains("napuketto 嵌包已就绪，复用")));
+        assertTrue(logs.stream().noneMatch(line -> line.contains("napuketto 嵌包展开完成")));
+    }
+
+    @Test
+    void installRebuildsNapukettoOnZipChange() throws IOException {
+        EmbeddedRuntime.install(tempDir, napukettoSource("v1"), logs::add);
+        logs.clear();
+
+        EmbeddedRuntime.install(tempDir, napukettoSource("v2"), logs::add);
+
+        Path cliEntry = tempDir.resolve("napuketto/node_modules/@napuketto/cli/dist/index.mjs");
+        assertTrue(Files.readString(cliEntry).endsWith("v2"));
+        assertTrue(logs.stream().anyMatch(line -> line.contains("napuketto 嵌包变更（升级）")));
+    }
+
+    @Test
+    void installRejectsZipSlipEntry() throws IOException {
+        byte[] evilZip;
+        java.io.ByteArrayOutputStream buffer = new java.io.ByteArrayOutputStream();
+        try (java.util.zip.ZipOutputStream zip = new java.util.zip.ZipOutputStream(buffer)) {
+            zip.putNextEntry(new java.util.zip.ZipEntry("../evil.txt"));
+            zip.write("evil".getBytes(StandardCharsets.UTF_8));
+            zip.closeEntry();
+        }
+        evilZip = buffer.toByteArray();
+        InMemorySource source = new InMemorySource();
+        source.resources.put(
+                "manifest.json",
+                manifestWithNapuketto(
+                        Map.of(
+                                "node.exe", "fake-node-exe".getBytes(StandardCharsets.UTF_8),
+                                "index.mjs", "fake-bundle".getBytes(StandardCharsets.UTF_8),
+                                "napuketto.zip", evilZip),
+                        sha256(evilZip)));
+        source.resources.put("node.exe", "fake-node-exe".getBytes(StandardCharsets.UTF_8));
+        source.resources.put("index.mjs", "fake-bundle".getBytes(StandardCharsets.UTF_8));
+        source.resources.put("napuketto.zip", evilZip);
+
+        IOException e = assertThrows(IOException.class, () -> EmbeddedRuntime.install(tempDir, source, logs::add));
+        assertTrue(e.getMessage().contains("逃出目标目录"));
+    }
 }

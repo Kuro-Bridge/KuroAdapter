@@ -1,25 +1,31 @@
 /**
- * scripts/embed.ts —— 嵌入式打包工具（MVP 阶段二，docs/MVP2-PROMPT.md §3 阶段 1）
+ * scripts/embed.ts —— 嵌入式打包工具（MVP 阶段二；MVP-4 扩展 napuketto 嵌包）
  *
  * 职责：下载/校验 node 官方 dist（win-x64）→ 只取 node.exe + LICENSE，连同
- * bridge/embedded/dist/index.mjs 产出到 platforms/je/paper/src/main/resources/embedded/
- * （node.exe / index.mjs / NODE_LICENSE / manifest.json）。
+ * bridge/embedded/dist/index.mjs 产出到 platforms/je/paper/src/main/resources/embedded/。
+ * MVP-4（ADR-029）：另收集 @napuketto/cli 依赖树（npm 安装到缓存，真实文件非 symlink）
+ * → 单一 zip 资源 napuketto.zip + 许可聚合 NAPUKETTO_LICENSES → 进 manifest。
  *
  * - 只用 Node 内置依赖；Node ≥ 23.6 原生 TS 剥离直接执行（pnpm build:jar 接线，无需编译）。
  * - 幂等：产物已存在且 sha256 一致则跳过；写盘 tmp + rename 原子替换。
  * - zip 有本地缓存（缺省 <仓库根>/.cache/node-dist/，gitignored）；镜像与缓存可经环境变量
- *   覆盖：KUROBOT_NODE_DIST_BASE（默认 https://nodejs.org/dist）、KUROBOT_NODE_CACHE_DIR。
+ *   覆盖：KUROBOT_NODE_DIST_BASE（默认 https://nodejs.org/dist）、KUROBOT_NODE_CACHE_DIR、
+ *   KUROBOT_NPM_REGISTRY（napuketto 安装镜像，网络敏感时切 npmmirror）。
  *   换镜像不改校验逻辑（sha256 仍对官方 SHASUMS256.txt）。
  * - node 版本钉 26.7.0（与 mise 一致，任务书 §1.2）；多平台矩阵是后续债务。
+ * - 红线：napuketto.zip 只含 npm 发布物（MIT 及其许可注记的资产）；wrapper.node / QQ
+ *   安装包等腾讯二进制绝不出现（napuketto 运行期自取）。
  *
  * 用法（仓库根，pnpm -r build 之后）：node scripts/embed.ts
  */
 
+import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdir, readdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { crc32, inflateRawSync } from "node:zlib";
+import { crc32, deflateRawSync, inflateRawSync } from "node:zlib";
 
 /** 任务书 §1.2：只嵌 win-x64，版本钉 26.7.0（与 mise 一致）。导出供测试对齐。 */
 export const NODE_VERSION = "26.7.0";
@@ -43,13 +49,17 @@ const MANIFEST_NAME = "manifest.json";
 const PRODUCT_NODE_EXE = "node.exe";
 const PRODUCT_BUNDLE = "index.mjs";
 const PRODUCT_LICENSE = "NODE_LICENSE";
+/** MVP-4 嵌包产物名（:core EmbeddedRuntime 按 manifest.napukettoZip 指针展开到 bin/napuketto/） */
+export const PRODUCT_NAPUKETTO_ZIP = "napuketto.zip";
+export const PRODUCT_NAPUKETTO_LICENSES = "NAPUKETTO_LICENSES";
+const ENV_NPM_REGISTRY = "KUROBOT_NPM_REGISTRY";
 
 export interface EmbedOptions {
     /** bridge/embedded/dist/index.mjs（须先 pnpm -r build）。 */
     distBundle: string;
     /** 产物目录（platforms/je/paper/src/main/resources/embedded）。 */
     outDir: string;
-    /** zip / SHASUMS256.txt 缓存目录。 */
+    /** zip / SHASUMS256.txt / napuketto 依赖树缓存目录。 */
     cacheDir: string;
     /** dist 基址（镜像覆盖）；缺省取 KUROBOT_NODE_DIST_BASE 或官方地址。 */
     distBase?: string;
@@ -62,6 +72,15 @@ export interface EmbedOptions {
      * 缺省读环境变量 KUROBOT_NODE_DIST_STRICT=1，未设为 false（回退 + WARN）。
      */
     strict?: boolean;
+    /**
+     * napuketto 嵌包（MVP-4）。cliVersion 是 @napuketto/cli 的精确版本（SSOT =
+     * bridge/embedded/package.json，runCli 读取）；install 可注入（测试不发真网），
+     * 缺省 npm install 到 <cacheDir>/napuketto-cli-<version>/。
+     */
+    napuketto?: {
+        cliVersion: string;
+        install?: (version: string, targetDir: string) => void;
+    };
 }
 
 export interface EmbedResult {
@@ -142,7 +161,7 @@ export function extractZipEntry(zip: Buffer, entryName: string): Buffer {
     return data;
 }
 
-/** 主流程：确保 zip 就位（下载/校验/缓存）→ 产出四件产物（幂等）。 */
+/** 主流程：确保 zip 就位（下载/校验/缓存）→ [napuketto 依赖树打包] → 产物（幂等）。 */
 export async function runEmbed(options: EmbedOptions): Promise<EmbedResult> {
     const log = options.log ?? ((message: string) => console.log(message));
     const download = options.download ?? fetchUrl;
@@ -170,6 +189,18 @@ export async function runEmbed(options: EmbedOptions): Promise<EmbedResult> {
         { name: PRODUCT_LICENSE, data: license },
         { name: PRODUCT_BUNDLE, data: bundleData },
     ];
+    let napukettoZipSha: string | undefined;
+    if (options.napuketto !== undefined) {
+        const bundle = await ensureNapukettoBundle({
+            cacheDir: options.cacheDir,
+            cliVersion: options.napuketto.cliVersion,
+            install: options.napuketto.install ?? defaultInstallNapuketto,
+            log,
+        });
+        products.push({ name: PRODUCT_NAPUKETTO_ZIP, data: bundle.zip });
+        products.push({ name: PRODUCT_NAPUKETTO_LICENSES, data: bundle.licenses });
+        napukettoZipSha = sha256Buffer(bundle.zip);
+    }
     await mkdir(options.outDir, { recursive: true });
 
     const files: Record<string, string> = {};
@@ -189,7 +220,15 @@ export async function runEmbed(options: EmbedOptions): Promise<EmbedResult> {
         );
     }
 
-    const manifest = `${JSON.stringify({ nodeVersion: NODE_VERSION, files }, null, 4)}\n`;
+    const manifestBody: Record<string, unknown> = { nodeVersion: NODE_VERSION, files };
+    if (napukettoZipSha !== undefined) {
+        manifestBody["napukettoZip"] = {
+            name: PRODUCT_NAPUKETTO_ZIP,
+            sha256: napukettoZipSha,
+            cliVersion: options.napuketto?.cliVersion,
+        };
+    }
+    const manifest = `${JSON.stringify(manifestBody, null, 4)}\n`;
     const manifestData = Buffer.from(manifest, "utf8");
     const outcome = await writeIfChanged(
         join(options.outDir, MANIFEST_NAME),
@@ -296,6 +335,256 @@ async function writeIfChanged(path: string, data: Buffer, sha256: string): Promi
     return true;
 }
 
+// ---- napuketto 嵌包（MVP-4，ADR-029）----
+
+interface ZipInputEntry {
+    /** zip 内相对名，"/" 分隔（zip 规范） */
+    name: string;
+    data: Buffer;
+}
+
+/**
+ * 零依赖 zip writer（与既有最小 reader 对称）：stored/deflate 择优 + crc32，
+ * UTF-8 名字标志位（bit 11）。不支持 extra/comment/zip64——自包含依赖树用不到。
+ */
+export function buildZip(entries: ZipInputEntry[]): Buffer {
+    const localParts: Buffer[] = [];
+    const centralParts: Buffer[] = [];
+    let offset = 0;
+    for (const entry of entries) {
+        const name = Buffer.from(entry.name, "utf8");
+        const deflated = deflateRawSync(entry.data);
+        const method = deflated.length < entry.data.length ? 8 : 0;
+        const payload = method === 8 ? deflated : Buffer.from(entry.data);
+        const checksum = crc32(entry.data);
+        const local = Buffer.alloc(30);
+        local.writeUInt32LE(0x04034b50, 0);
+        local.writeUInt16LE(20, 4); // version needed
+        local.writeUInt16LE(0x0800, 6); // flags: UTF-8 名字
+        local.writeUInt16LE(method, 8);
+        local.writeUInt32LE(checksum, 14);
+        local.writeUInt32LE(payload.length, 18);
+        local.writeUInt32LE(entry.data.length, 22);
+        local.writeUInt16LE(name.length, 26);
+        localParts.push(local, name, payload);
+
+        const central = Buffer.alloc(46);
+        central.writeUInt32LE(0x02014b50, 0);
+        central.writeUInt16LE(20, 4); // version made by
+        central.writeUInt16LE(20, 6); // version needed
+        central.writeUInt16LE(0x0800, 8); // flags
+        central.writeUInt16LE(method, 10);
+        central.writeUInt32LE(checksum, 16);
+        central.writeUInt32LE(payload.length, 20);
+        central.writeUInt32LE(entry.data.length, 24);
+        central.writeUInt16LE(name.length, 28);
+        central.writeUInt32LE(offset, 42); // local header offset
+        centralParts.push(central, name);
+        offset += 30 + name.length + payload.length;
+    }
+    const central = Buffer.concat(centralParts);
+    const eocd = Buffer.alloc(22);
+    eocd.writeUInt32LE(0x06054b50, 0);
+    eocd.writeUInt16LE(entries.length, 8);
+    eocd.writeUInt16LE(entries.length, 10);
+    eocd.writeUInt32LE(central.length, 12);
+    eocd.writeUInt32LE(offset, 16);
+    return Buffer.concat([...localParts, central, eocd]);
+}
+
+/** node_modules → zip 条目（"/" 分隔名）；跳过 .bin（npm shim/symlink，运行期不需要）与非普通文件 */
+export async function collectZipEntries(nodeModulesDir: string): Promise<ZipInputEntry[]> {
+    const entries: ZipInputEntry[] = [];
+    async function walk(dir: string, relative: string): Promise<void> {
+        for (const item of await readdir(dir, { withFileTypes: true })) {
+            if (item.name === ".bin") {
+                continue;
+            }
+            const childRelative = relative === "" ? item.name : `${relative}/${item.name}`;
+            const childAbsolute = join(dir, item.name);
+            if (item.isDirectory()) {
+                await walk(childAbsolute, childRelative);
+                continue;
+            }
+            if (!item.isFile()) {
+                continue; // symlink 等：npm 安装产物应全为真实文件，异常内容不进 zip
+            }
+            entries.push({
+                name: `node_modules/${childRelative}`,
+                data: await readFile(childAbsolute),
+            });
+        }
+    }
+    await walk(nodeModulesDir, "");
+    entries.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+    return entries;
+}
+
+const LICENSE_FILE_NAMES = new Set([
+    "LICENSE",
+    "LICENSE.MD",
+    "LICENSE.TXT",
+    "LICENCE",
+    "LICENCE.MD",
+    "LICENCE.TXT",
+]);
+
+/**
+ * 包内子目录资产的许可文件（顶层扫描覆盖不到的）：@napuketto/loader 自带 7zip 资产是
+ * LGPL（与 npm 包原样分发），其许可文本必须随聚合产物走（待遇对齐 NODE_LICENSE）。
+ */
+const EXTRA_LICENSE_FILES = [
+    "node_modules/@napuketto/loader/assets/7zip/License.txt",
+    "node_modules/@napuketto/loader/assets/7zip/License-linux.txt",
+];
+
+/** 聚合依赖树内全部顶层包的许可文件（@scope 包下钻一层）→ 单一文本（待遇对齐 NODE_LICENSE） */
+export async function collectLicenses(nodeModulesDir: string): Promise<Buffer> {
+    const chunks: string[] = [];
+    const addPackage = async (pkgDir: string): Promise<void> => {
+        for (const name of await readdir(pkgDir)) {
+            if (!LICENSE_FILE_NAMES.has(name.toUpperCase())) {
+                continue;
+            }
+            const text = await readFile(join(pkgDir, name), "utf8");
+            const packagePath = pathToPosix(
+                join("node_modules", pkgDir.slice(nodeModulesDir.length + 1)),
+            );
+            chunks.push(`${"=".repeat(78)}\n${packagePath}/${name}\n${"=".repeat(78)}\n${text}\n`);
+            return; // 一包一许可（首个命中即停）
+        }
+    };
+    await forEachTopLevelPackage(nodeModulesDir, addPackage);
+    for (const relative of EXTRA_LICENSE_FILES) {
+        try {
+            const text = await readFile(join(nodeModulesDir, relative), "utf8");
+            chunks.push(`${"=".repeat(78)}\n${relative}\n${"=".repeat(78)}\n${text}\n`);
+        } catch {
+            // 资产不在（包版本变动）——跳过；嵌包清单在 NOTES 记录核对要求
+        }
+    }
+    return Buffer.from(chunks.join(""), "utf8");
+}
+
+/** 遍历依赖树顶层包目录（含 @scope 下钻一层），对每个包目录执行 action */
+async function forEachTopLevelPackage(
+    nodeModulesDir: string,
+    action: (pkgDir: string) => Promise<void>,
+): Promise<void> {
+    for (const item of await readdir(nodeModulesDir, { withFileTypes: true })) {
+        if (!item.isDirectory() || item.name.startsWith(".")) {
+            continue;
+        }
+        const entryDir = join(nodeModulesDir, item.name);
+        if (item.name.startsWith("@")) {
+            for (const scoped of await readdir(entryDir, { withFileTypes: true })) {
+                if (scoped.isDirectory()) {
+                    await action(join(entryDir, scoped.name));
+                }
+            }
+        } else {
+            await action(entryDir);
+        }
+    }
+}
+
+function pathToPosix(value: string): string {
+    return value.split("\\").join("/");
+}
+
+/** 确保 napuketto 依赖树 + zip + 许可就位（缓存幂等）；返回待嵌入产物内容。 */
+async function ensureNapukettoBundle(deps: {
+    cacheDir: string;
+    cliVersion: string;
+    install: (version: string, targetDir: string) => void;
+    log: (message: string) => void;
+}): Promise<{ zip: Buffer; licenses: Buffer }> {
+    const { cacheDir, cliVersion, install, log } = deps;
+    const targetDir = join(cacheDir, `napuketto-cli-${cliVersion}`);
+    const nodeModules = join(targetDir, "node_modules");
+    const cliPackage = join(nodeModules, "@napuketto", "cli", "package.json");
+    const zipCache = join(targetDir, "bundle.zip");
+    const licensesCache = join(targetDir, "NAPUKETTO_LICENSES");
+    if (
+        (await fileExists(zipCache)) &&
+        (await fileExists(licensesCache)) &&
+        (await fileExists(cliPackage))
+    ) {
+        log(`[embed] napuketto 缓存命中（@napuketto/cli ${cliVersion}），跳过安装与打包`);
+        return { zip: await readFile(zipCache), licenses: await readFile(licensesCache) };
+    }
+    if (!(await fileExists(cliPackage))) {
+        log(`[embed] npm 安装 @napuketto/cli@${cliVersion}（真实文件树，供打 zip）`);
+        install(cliVersion, targetDir);
+    }
+    const entries = await collectZipEntries(nodeModules);
+    if (entries.length === 0) {
+        throw new Error(`napuketto 依赖树为空：${nodeModules}`);
+    }
+    const zip = buildZip(entries);
+    const licenses = await collectLicenses(nodeModules);
+    await mkdir(targetDir, { recursive: true });
+    await writeIfChanged(zipCache, zip, sha256Buffer(zip));
+    await writeIfChanged(licensesCache, licenses, sha256Buffer(licenses));
+    log(
+        `[embed] napuketto 打包完成：${entries.length} 个文件，zip ${zip.length} 字节，` +
+            `许可聚合 ${licenses.length} 字节`,
+    );
+    return { zip, licenses };
+}
+
+/** 缺省安装器：npm install 到 targetDir（真实文件，非 pnpm symlink）；镜像经 KUROBOT_NPM_REGISTRY */
+function defaultInstallNapuketto(version: string, targetDir: string): void {
+    mkdirSync(targetDir, { recursive: true });
+    writeFileSync(
+        join(targetDir, "package.json"),
+        `${JSON.stringify({ name: "kurobot-napuketto-bundle", private: true, version: "0.0.0" }, null, 4)}\n`,
+        "utf8",
+    );
+    const args = [
+        "install",
+        `@napuketto/cli@${version}`,
+        "--omit=dev",
+        "--no-audit",
+        "--no-fund",
+        "--loglevel=error",
+    ];
+    const registry = process.env[ENV_NPM_REGISTRY];
+    if (registry !== undefined && registry !== "") {
+        args.push("--registry", registry);
+    }
+    const result = spawnSync("npm", args, {
+        cwd: targetDir,
+        stdio: "inherit",
+        shell: process.platform === "win32",
+    });
+    if (result.status !== 0) {
+        throw new Error(
+            `npm install @napuketto/cli@${version} 失败（exit=${result.status}）；` +
+                `网络敏感时可设 ${ENV_NPM_REGISTRY}=https://registry.npmmirror.com 重试`,
+        );
+    }
+}
+
+/** 精确 semver（防 workspace 区间之类的值混进嵌包版本 SSOT） */
+const EXACT_SEMVER = /^\d+\.\d+\.\d+$/;
+
+/** @napuketto/cli 版本 SSOT = bridge/embedded/package.json（精确 pin 校验） */
+export function readNapukettoCliVersion(repoRoot: string): string {
+    const raw: unknown = JSON.parse(
+        readFileSync(join(repoRoot, "bridge", "embedded", "package.json"), "utf8"),
+    );
+    const version = (raw as { dependencies?: Record<string, unknown> }).dependencies?.[
+        "@napuketto/cli"
+    ];
+    if (typeof version !== "string" || !EXACT_SEMVER.test(version)) {
+        throw new Error(
+            `bridge/embedded/package.json 缺少 @napuketto/cli 的精确版本 pin（当前值：${String(version)}）`,
+        );
+    }
+    return version;
+}
+
 async function readProduct(path: string, what: string): Promise<Buffer> {
     try {
         return await readFile(path);
@@ -379,6 +668,7 @@ async function runCli(): Promise<void> {
         distBundle: join(root, "bridge", "embedded", "dist", "index.mjs"),
         outDir: join(root, "platforms", "je", "paper", "src", "main", "resources", "embedded"),
         cacheDir: process.env[ENV_CACHE_DIR] ?? join(root, ".cache", "node-dist"),
+        napuketto: { cliVersion: readNapukettoCliVersion(root) },
     });
     console.log(
         `[embed] 产物目录就绪（写入 ${result.copied.length}，复用 ${result.reused.length}）`,
