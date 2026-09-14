@@ -10,9 +10,9 @@
   Java 手写 DTO 唯一例外）、`ProcessFactory`（进程启动抽象，测试可注入）、`IpcResult`/
   `NodeIpcListener`（回调契约）。JUnit 5：FakeProcess 替身（30+ 用例）+ 真 node/bundle/stub
   的管道集成测试。
-- `:paper`（Paper 1.21.4，compileOnly paper-api）：`KuroBotPlugin`（生命周期/组装/命令注册）、
+- `:paper`（Paper 1.21.4，compileOnly paper-api）：`KuroBridgePlugin`（生命周期/组装/命令注册）、
   `ChatListener`（AsyncChatEvent → game_chat）、`ConnectionListener`（PlayerJoin/QuitEvent →
-  player_join/player_quit + status 快照）、`KurobotCommand`（/kurobot send）、
+  player_join/player_quit + status 快照）、`KurobridgeCommand`（/kurobridge send）、
   `NodeRequestHandler`（Node 请求 → runTask 回主线程执行 + 回执）。**零业务、零单元测试**
   （依赖沙盒验收兜底，MVP-2 债务）。
 - `fabric` / `neoforge` / `velocity`：预留骨架（ADR-021 版本矩阵策略）。
@@ -27,7 +27,7 @@
 - `NodeIpc.sendGameChat` 返回 boolean（候选 E：通道不可用 → false，上层明确反馈）；
   新增 `sendPlayerJoin` / `sendPlayerQuit` / `sendStatus`（同模式）。
 - `ProcessFactory.start` 增第三参 workingDirectory（null = 继承 cwd = 服务器根，Node 侧据此
-  定位 plugins/kurobot/config.json）；`NodeIpc.setWorkingDirectory` 包内可见（start 前调用），
+  定位 plugins/kurobridge/config.json）；`NodeIpc.setWorkingDirectory` 包内可见（start 前调用），
   集成测试用 @TempDir 预置绑定配置。
 - status 快照取数：TPS=`Bukkit.getTPS()[0]`（clamp≥0 保留 1 位小数）、在线数=
   `Bukkit.getOnlinePlayers().size()`、uptime=`ManagementFactory`（JVM uptime，JDK 标准接口）。
@@ -36,7 +36,7 @@
 ## MVP 阶段二（2026-09-13）：打包闭环
 
 > 任务书：`docs/MVP2-PROMPT.md`。目标：JAR 自含 Node 运行时，装上就能用（不再依赖
-> `KUROBOT_NODE`/`KUROBOT_BUNDLE` 环境变量）。
+> `KUROBRIDGE_NODE`/`KUROBRIDGE_BUNDLE` 环境变量）。
 
 ### scripts/embed 打包工具（产物契约）
 
@@ -44,7 +44,7 @@
 
 - 下载 node-v26.7.0-win-x64.zip（nodejs.org 官方 dist）+ SHASUMS256.txt sha256 校验；
   本地缓存 `.cache/node-dist/`（gitignored）。镜像/缓存可经环境变量覆盖：
-  `KUROBOT_NODE_DIST_BASE`（默认 `https://nodejs.org/dist`）、`KUROBOT_NODE_CACHE_DIR`。
+  `KUROBRIDGE_NODE_DIST_BASE`（默认 `https://nodejs.org/dist`）、`KUROBRIDGE_NODE_CACHE_DIR`。
 - 只取 zip 内 `node.exe` + `LICENSE`（手写最小 zip 读取器：EOCD→中央目录→本地头，
   stored/deflate 两法 + crc32 校验；不支持 zip64——产物 <4GB），连同
   `bridge/embedded/dist/index.mjs` 产出到 `platforms/je/paper/src/main/resources/embedded/`：
@@ -67,28 +67,28 @@
   必须匹配 `[A-Za-z0-9][A-Za-z0-9._-]*`（单段、无路径分隔符、无 `..`），解析后的目标路径
   normalize 后必须仍在 bin 目录内（双保险）；**名字校验整体前置**——任何越权名在触碰磁盘前
   拒绝整个 manifest（JUnit 断言零落盘）。
-- **bin 目录推导**（:paper 侧）：相对服务器根的 `plugins/kurobot/bin/`（小写 kurobot，
-  与 Node 侧 `plugins/kurobot/config.json` 同基）。**不用 getDataFolder()**——
-  paper-plugin.yml 的 name 是 `KuroBot`，大小写敏感文件系统上会得到 `plugins/KuroBot/`
+- **bin 目录推导**（:paper 侧）：相对服务器根的 `plugins/kurobridge/bin/`（小写 kurobridge，
+  与 Node 侧 `plugins/kurobridge/config.json` 同基）。**不用 getDataFolder()**——
+  paper-plugin.yml 的 name 是 `KuroBridge`，大小写敏感文件系统上会得到 `plugins/KuroBridge/`
   两个目录。两侧统一以 cwd（=服务器根）为基准推导，语义对称。
 - 解压失败 → SEVERE 日志 + 插件保持加载但无 IPC（对齐既有「开发模式」降级语义），不崩服。
 - 在 onEnable（STARTUP）同步执行：首启约 1-2s（85MB 哈希+拷贝），后续启动走复用路径；
   换来加载顺序天然正确（解压完才拉进程）。node.exe 只在启动路径解压（必然未运行，
   无文件占用问题），不做运行期覆盖。
 
-### 环境变量优先级（KUROBOT_NODE/KUROBOT_BUNDLE 保留为开发覆盖）
+### 环境变量优先级（KUROBRIDGE_NODE/KUROBRIDGE_BUNDLE 保留为开发覆盖）
 
 | 场景 | node 可执行 | bundle | stub |
 |---|---|---|---|
-| `KUROBOT_BUNDLE` 已设（开发覆盖） | `KUROBOT_NODE` 缺省 `"node"`（现状） | 环境变量值 | env → bundle 相对推导（现状） |
-| 未设（JAR 模式） | `KUROBOT_NODE` 缺省 `bin/node.exe` | `bin/index.mjs` | env → **无**（INFO 说明，外部协议端形态） |
+| `KUROBRIDGE_BUNDLE` 已设（开发覆盖） | `KUROBRIDGE_NODE` 缺省 `"node"`（现状） | 环境变量值 | env → bundle 相对推导（现状） |
+| 未设（JAR 模式） | `KUROBRIDGE_NODE` 缺省 `bin/node.exe` | `bin/index.mjs` | env → **无**（INFO 说明，外部协议端形态） |
 
-`KUROBOT_STUB_PEER` 语义不变；stub 不进 JAR（测试件），沙盒继续经它指向仓库内 stub。
+`KUROBRIDGE_STUB_PEER` 语义不变；stub 不进 JAR（测试件），沙盒继续经它指向仓库内 stub。
 
 ### 沙盒脚本
 
-`scripts/paper-start.sh`：不再强制导出 `KUROBOT_NODE`/`KUROBOT_BUNDLE`（保留透传能力），
-补 `KUROBOT_STUB_PEER` 缺省值（仓库内 stub 路径）——验收「JAR 真装路径」。
+`scripts/paper-start.sh`：不再强制导出 `KUROBRIDGE_NODE`/`KUROBRIDGE_BUNDLE`（保留透传能力），
+补 `KUROBRIDGE_STUB_PEER` 缺省值（仓库内 stub 路径）——验收「JAR 真装路径」。
 
 ## 债务清偿二（DEBT-2，2026-09-13）：进程健壮性
 
@@ -125,7 +125,7 @@
 ### PID 文件（:core NodeIpc 承担）
 
 - `setPidFile(Path)`（public，start 前调用；null = 不启用）→ spawn 成功即写 winpid
-  （`Process.pid()`）到 `plugins/kurobot/node.pid`（路径由 :paper 传入）。
+  （`Process.pid()`）到 `plugins/kurobridge/node.pid`（路径由 :paper 传入）。
 - **优雅关停删除**（shutdown 内，waitForExit 之后）；**异常退出（teardown）不删**——
   残留正是「上次可能异常退出」的证据：下次 spawn 前发现残留文件 → INFO 提示。
 - 明确不做（任务书 §1.2 拍板）：跨进程互斥/防双实例——Paper 插件单实例由容器保证。
@@ -141,22 +141,22 @@
 
 ### :paper 接线与可观测
 
-- `KuroBotPlugin.startNodeIpc` 改为组装 `NodeSupervisor`（factory 闭包内更新 volatile
+- `KuroBridgePlugin.startNodeIpc` 改为组装 `NodeSupervisor`（factory 闭包内更新 volatile
   `ipc` 字段——重启后监听器/命令自动指向新实例）；`onDisable` 先 `supervisor.stop()`
   再 `ipc.shutdown("plugin disable")`。
 - **就绪汇总行**：ready 回调后输出一行 `就绪：插件 vX / node vY / 协议 vZ`。版本来源：
   插件版本 = paper-plugin.yml 的 version（`getPluginMeta()`）；node 版本 = JAR 模式取
   `EmbeddedRuntime.Installed.nodeVersion()`（install 结果新增），开发覆盖模式无 manifest
-  → 显示 `dev`（D2 决策记录）；协议版本 = :core 常量 `KurobotVersions.PROTOCOL_VERSION`
+  → 显示 `dev`（D2 决策记录）；协议版本 = :core 常量 `KurobridgeVersions.PROTOCOL_VERSION`
   （**硬编码副本**，唯一维护约束：改协议版本须同步，测试对齐 stub 断言兜底）。
 - **升级提示**：`EmbeddedRuntime` 哈希不符重建路径的日志文案改为
-  「检测到打包内容变更（升级），已重建 plugins/kurobot/bin/<名>」。
+  「检测到打包内容变更（升级），已重建 plugins/kurobridge/bin/<名>」。
 
 ### 实现回填（相对本节设计的差异，2026-09-13 验收后）
 
 - **onReady 签名**：`NodeIpcListener.onReady(int wsPort, boolean autoRestart)`——
   ready.autoRestart 在 NodeIpc.handleReady 归一化（null→true，兼容旧 Node）后随回调
-  下发；设计里「Ready record 加 Boolean」的形状落位为接口签名（KuroBotPlugin.onNodeReady
+  下发；设计里「Ready record 加 Boolean」的形状落位为接口签名（KuroBridgePlugin.onNodeReady
   消费，setAutoRestart 更新看护器）。放弃 start future 携带（保持
   `CompletableFuture<Integer>` 形状）。
 - **teardown 链扩充**：非优雅拆除（stdout EOF / stdin 写失败）时——存活进程
@@ -164,11 +164,11 @@
   路径无人调 shutdown，否则每次崩溃泄漏一个调度器线程）。优雅路径行为不变。
 - **看护器接线**：:paper 专用虚拟线程 ScheduledExecutorService 适配 DelayScheduler；
   :core 日志行 `[NodeSupervisor][SEVERE]` 由 relayIpcLog 分流到 logger.severe（既有
-  `[NodeIpc][WARN]` 分流同款）。KurobotCommand 在 given-up 时返回专属报错文案。
+  `[NodeIpc][WARN]` 分流同款）。KurobridgeCommand 在 given-up 时返回专属报错文案。
 - **重要发现（影响孤儿治理定位）**：Node 26（libuv）Windows 下子进程随父级联死亡——
   taskkill 强杀 node 后 stub 立即消失（sandbox+最小环境双实测），MVP1 的「stub 无限
   重连孤儿」不再出现；stub 重连上限退居纵深防御（DEBT2-NOTES 发现 A）。
-- **沙盒复现手段**：`KUROBOT_NODE=<坏路径>` 经 paper-start.sh 透传注入 → 6s 走完
+- **沙盒复现手段**：`KUROBRIDGE_NODE=<坏路径>` 经 paper-start.sh 透传注入 → 6s 走完
   3 次失败 → SEVERE 放弃（放弃终态的沙盒验证路径）。
 
 ### :paper 单元测试政策
@@ -203,9 +203,9 @@ NodeIpcTest 扩展），:paper 仍靠沙盒验收兜底。
   变体的文本行；权限判定恒 true = 控制台语义，与原 ConsoleSender 等价）执行命令，执行完
   `result.ok(output)`。回执时序变化：Node 侧等待真实执行完成（主线程卡死 >10s 走既有
   IPC 请求超时）。
-- `KurobotCommand` 增 `reload` 子命令（kurobot.admin）→ `sendConfigReload()` → 即时回
+- `KurobridgeCommand` 增 `reload` 子命令（kurobridge.admin）→ `sendConfigReload()` → 即时回
   「已通知重载」；重载效果（绑定变更推送）由 Node 侧 bindings_updated 路径体现。
-- `ChatListener` 增 `kurobot.relay` 权限检查：false → 该玩家聊天不上报（default: true
+- `ChatListener` 增 `kurobridge.relay` 权限检查：false → 该玩家聊天不上报（default: true
   既有声明不变，negate 即静音语义）；paper-plugin.yml 补注释说明。
 
 ### 测试政策

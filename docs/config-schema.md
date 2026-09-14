@@ -1,12 +1,12 @@
-# KuroBot 配置说明（config.json）
+# KuroBridge 配置说明（config.json）
 
 > **SSOT 声明**：配置的形状与缺省值唯一来源是 `bridge/core` 的 zod schema
 > （`bridge/core/src/business/config.ts` 的 `configSchema` / `defaultConfig()`）——本文件只是
 > 人类可读的说明，二者不一致时以代码为准（发现漂移请修代码或本文件并记录 NOTES）。
 >
-> 文件位置：`<服务器根>/plugins/kurobot/config.json`（Node 子进程以服务器根为 cwd 读取）。
+> 文件位置：`<服务器根>/plugins/kurobridge/config.json`（Node 子进程以服务器根为 cwd 读取）。
 > 缺失时首次启动自动生成默认配置；解析失败不致命——启动降级为默认配置、运行期 watch 保留
-> 旧值并等服主修复。改完保存即生效（mtime 轮询 watch，默认 2s）；`/kurobot reload` 也可手动
+> 旧值并等服主修复。改完保存即生效（mtime 轮询 watch，默认 2s）；`/kurobridge reload` 也可手动
 > 触发重读。**例外**：`token` 在 Node 进程生命周期内固定，改后需重启服务器（或重启插件）。
 
 ## 逐字段说明
@@ -59,7 +59,7 @@ WS 监听段：external 协议端（如独立部署的 napukettoqq）的连入�
   请服主解决端口冲突后重启插件或等待看护器窗口外恢复。
 - **安全基线**：配置了 `ws` 段但 `token` 为空 → 启动打 WARN（external 模式暴露面大，
   建议配置 token）；不阻断启动。跨公网部署请走 TLS 隧道/反代（协议本身不做 wss）。
-- `port`/`host` 修改经 watch / `/kurobot reload` 重读，但**监听已在启动时绑定**——改后
+- `port`/`host` 修改经 watch / `/kurobridge reload` 重读，但**监听已在启动时绑定**——改后
   需重启服务器（或重启插件）生效。
 
 ### `embedded: object`（可选，MVP-4 引入）
@@ -73,8 +73,8 @@ WS 监听段：external 协议端（如独立部署的 napukettoqq）的连入�
     "embedded": {
         "napuketto": {
             "enabled": true,
-            "configPath": "plugins/kurobot/napuketto.toml",
-            "dataDir": "plugins/kurobot/napuketto-data"
+            "configPath": "plugins/kurobridge/napuketto.toml",
+            "dataDir": "plugins/kurobridge/napuketto-data"
         }
     }
 }
@@ -84,10 +84,10 @@ WS 监听段：external 协议端（如独立部署的 napukettoqq）的连入�
   含 napuketto CLI → boot → self-host 三层子进程），要求服主显式写明。
 - `napuketto.configPath: string`（可选，非空串）：napuketto 自己的 TOML 配置路径
   （相对服务器根，也可绝对路径）。**napuketto 侧的配置 SSOT 是这份 TOML**（服主直接维护，
-  QQ 账号 / kurobot 连接段 `[accounts.kurobot]` 全在里面），KuroAdapter 只经 env
-  `NAPKETTO_CONFIG` 指路。缺省 `plugins/kurobot/napuketto.toml`。
+  QQ 账号 / kurobridge 连接段 `[accounts.kurobot]` 全在里面），KuroAdapter 只经 env
+  `NAPKETTO_CONFIG` 指路。缺省 `plugins/kurobridge/napuketto.toml`。
 - `napuketto.dataDir: string`（可选，非空串）：napuketto 数据目录（env `NAPKETTO_DATA`）。
-  缺省 `plugins/kurobot/napuketto-data`——与服主日常 napuketto 部署**隔离**（同一账号
+  缺省 `plugins/kurobridge/napuketto-data`——与服主日常 napuketto 部署**隔离**（同一账号
   数据目录单实例锁 instance.lock，混用会互踢）。
 - **固定端口强制**：`enabled: true` 时 config 必须有 `ws.port`——napuketto TOML 里的
   `url` 是静态的，动态端口无法喂给它。违反 → Node 启动明确 error + 非零退出（WsBindError
@@ -96,8 +96,8 @@ WS 监听段：external 协议端（如独立部署的 napukettoqq）的连入�
   一致）。
 - **平台**：QQ 宿主（napuketto self-host）仅支持 Windows；非 Windows 宿主下 `enabled: true`
   → 明确 error 日志 + 不拉起（Node 继续作为纯 WS 服务端，external 对端不受影响）。
-- **QR 交接**：登录二维码会落地 `plugins/kurobot/qr.png` + `qr.json`（随刷新更新），
-  游戏内 `/kurobot qr` 查看图片路径与登录链接。
+- **QR 交接**：登录二维码会落地 `plugins/kurobridge/qr.png` + `qr.json`（随刷新更新），
+  游戏内 `/kurobridge qr` 查看图片路径与登录链接。
 - `configPath`/`dataDir` 变更需重启生效（napuketto 在 Node 启动时拉起，运行期不重读）。
 
 ## 完整示例

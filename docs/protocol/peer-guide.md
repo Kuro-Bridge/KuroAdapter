@@ -1,6 +1,6 @@
-# kurobot-ws 对端接入指南（Peer Guide）
+# kurobridge-ws 对端接入指南（Peer Guide）
 
-> **本文是外部协议端（napukettoqq / 其它实现）实现 kurobot-ws 客户端的唯一实现依据。**
+> **本文是外部协议端（napukettoqq / 其它实现）实现 kurobridge-ws 客户端的唯一实现依据。**
 > 帧名与字段以 `bridge/protocol/src` 的 zod schema 为 SSOT——本文与 schema 不一致时以
 > schema 为准（发现漂移请修本文并通知仓库方）。协议版本演进记录见该包 `docs/design.md`。
 >
@@ -8,17 +8,17 @@
 
 ## 0. 角色与拓扑
 
-- **kurobot 永远是 WS 服务端**，协议端（你）是 WS 客户端，**主动连入**。不存在反向连接。
+- **kurobridge 永远是 WS 服务端**，协议端（你）是 WS 客户端，**主动连入**。不存在反向连接。
 - 服务端支持**多个对端并存**：每个已握手对端都会收到全部游戏侧事件（按频道 fan-out）。
   但**一个逻辑协议端只保持一条连接**——同一逻辑端开两条连接会导致平台消息重复广播进游戏。
-- 服务端监听地址/端口由 MC 服主在配置里声明（`plugins/kurobot/config.json` 的 `ws` 段）：
+- 服务端监听地址/端口由 MC 服主在配置里声明（`plugins/kurobridge/config.json` 的 `ws` 段）：
   external 部署**必须配置固定端口**（`ws.port`），否则服务端用动态端口（对端无从连入）。
   `ws.host` 可选（如 `127.0.0.1` = 只听本机，适合服务端与协议端同机的隧道部署）。
 
 ## 1. 连接建立与子协议
 
 - URL：`ws://<host>:<port>`（路径不校验，建议用根路径 `/`）。
-- **必须携带子协议头** `Sec-WebSocket-Protocol: kurobot-ws.v1`——缺失时服务端在握手期
+- **必须携带子协议头** `Sec-WebSocket-Protocol: kurobridge-ws.v1`——缺失时服务端在握手期
   直接拒绝（HTTP 400），不会进入协议层。
 - 升级成功后立刻进入握手期（见 §3）：**10 秒内必须发出 `hello`**，否则服务端以
   close 1002（"hello timeout"）关闭连接。
@@ -43,7 +43,7 @@
 
 ```
 对端                                服务端
- │  WS 升级（子协议 kurobot-ws.v1）   │
+ │  WS 升级（子协议 kurobridge-ws.v1）   │
  │ ─────────────────────────────────► │
  │  hello（请求，id 必填）             │  10s 内必须发出
  │ ─────────────────────────────────► │
@@ -215,12 +215,12 @@
 **实际线格式为单行文本**）：
 
 ```
-# 1. WS 升级：GET ws://mc.example.com:25580，头带 Sec-WebSocket-Protocol: kurobot-ws.v1
+# 1. WS 升级：GET ws://mc.example.com:25580，头带 Sec-WebSocket-Protocol: kurobridge-ws.v1
 P→ {"header":{"type":"hello","id":"3f9d2c1e-8b4a-4c3e-9a2d-7f1e5b6c8d90"},
     "body":{"peerId":"napuketto-01","platform":"qq","version":"1.0.0",
             "protocolVersion":"0.3.1","token":"s3cret","client":"napukettoqq/1.0"}}
 S→ {"header":{"type":"hello_ack","id":"3f9d2c1e-8b4a-4c3e-9a2d-7f1e5b6c8d90"},
-    "body":{"ok":true,"serverId":"kurobot-spike","version":"0.1.0",
+    "body":{"ok":true,"serverId":"kurobridge-spike","version":"0.1.0",
             "protocolVersion":"0.3.1","channelBindings":["114514","1919810"]}}
 
 # 2. 心跳（周期 5–15s）

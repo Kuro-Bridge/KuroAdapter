@@ -1,12 +1,12 @@
-# kurobot-ws 协议草案 v0.1（draft）
+# kurobridge-ws 协议草案 v0.1（draft）
 
-> 协议 SSOT 形态：本文描述语义与机制；**最终字段以 `docs/protocol/` 下的 zod schema 为准**（`@kurobot/protocol`，ADR-008）。任何文件禁止手写消息类型。
-> 版本机制（ADR-003）：WS 子协议 `kurobot-ws.v1` 声明大版本（不兼容变化，握手期拒绝）；`hello.protocolVersion`（语义化 `0.1.0`）做小版本/能力协商。
+> 协议 SSOT 形态：本文描述语义与机制；**最终字段以 `docs/protocol/` 下的 zod schema 为准**（`@kurobridge/protocol`，ADR-008）。任何文件禁止手写消息类型。
+> 版本机制（ADR-003）：WS 子协议 `kurobridge-ws.v1` 声明大版本（不兼容变化，握手期拒绝）；`hello.protocolVersion`（语义化 `0.1.0`）做小版本/能力协商。
 
 ## 1. 传输与握手
 
-- 传输：WebSocket，kurobot 为 **WS 服务端**，对端主动连入。
-- 握手：客户端连接时声明 `Sec-WebSocket-Protocol: kurobot-ws.v1`；不匹配 → 服务端拒绝（HTTP 426/子协议协商失败）。
+- 传输：WebSocket，kurobridge 为 **WS 服务端**，对端主动连入。
+- 握手：客户端连接时声明 `Sec-WebSocket-Protocol: kurobridge-ws.v1`；不匹配 → 服务端拒绝（HTTP 426/子协议协商失败）。
 - 鉴权：连接建立后首个消息为 `hello`（Server→Peer 注册）或 `hello`（Peer→Server 注册），随后服务端回 `helloAck`；携带鉴权 token（后续版本）。
 - 帧格式（参考 HuHoBot 思路）：
 
@@ -19,7 +19,7 @@
 
 ## 2. 事件集（初步）
 
-### Server → Peer（kurobot 发出）
+### Server → Peer（kurobridge 发出）
 
 | type | body 要点 | 说明 |
 |---|---|---|
@@ -37,7 +37,7 @@
 |---|---|---|
 | `hello` | peerId、platform（koishi/embedded/…）、version、protocolVersion | 对端注册 |
 | `chat` | 群消息（群号、发送者、内容）→ 游戏广播 | 需服务端校验转发规则 |
-| `command` | 群指令 → 执行游戏命令 | 权限校验在 kurobot 侧 |
+| `command` | 群指令 → 执行游戏命令 | 权限校验在 kurobridge 侧 |
 | `query` | 查询（在线列表 / 绑定 / 白名单…） | UUID 请求-响应 |
 | `ping` / `pong` | 业务心跳 + 假连接检测 | 载荷可带时间戳/随机数 |
 
@@ -54,7 +54,7 @@
 1. 鉴权 token 的传输方式与过期策略。
 2. `channelBindings` 字段形态（群号 ↔ 服务器频道映射）。
 3. 消息内容格式（纯文本起步；富文本/图片为二期）。
-4. 权限模型：kurobot 侧指令白名单 + 群管理员映射。
+4. 权限模型：kurobridge 侧指令白名单 + 群管理员映射。
 5. `status` 上报频率与订阅机制（对端可否按需拉取）。
 6. 多服务器（serverId 多实例）互联语义。
 
