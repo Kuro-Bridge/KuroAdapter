@@ -226,3 +226,47 @@
 - **生命周期（Windows）**：优雅关停 = `taskkill /PID <cli> /T /F` 树杀（考据：napuketto boot 层无信号处理器、全链无父死检测，`child.kill()` 强杀 supervisor 必留 self-host 孤儿持 instance.lock——napuketto 自家 `napuketto stop` 同款树杀）→ 有界等待 → Node 自退；CLI 意外退出 → Node error + 非零退出 → Java 看护器退避重启 → 重拉 CLI（凭据在腾讯原生层，quick-login 自动恢复）。强杀 Node → CLI 树预期随 Node 26 Job Object 级联死亡（DEBT-2 发现，四层树复验记 NOTES）。
 - **理由**：选 1 要重造登录会话/重启/凭据三块 napuketto 已稳定的能力，且更贴近腾讯原生层（KuroAdapter 的职责边界失守）；CLI 入口让 napuketto 侧零改动、npm 版本升级即收益。taskkill 树杀是对 napuketto 进程模型的如实适配而非「不优雅」——其自带 stop 命令同款，凭据与锁均有残留自愈设计。
 - **回退条件**：napuketto 提供真正的受控关停 API（信号处理/退出钩子）时，可换优雅信号路径；文件式 QR 交接失效（napuketto 改日志/路径格式）时优先仍保 PNG 路径，URL 解析独立降级。
+
+## ADR-030 品牌迁移 KuroBot → KuroBridge：标识映射 + 协议 0.4.0 + one-name-only 零迁移（2026-09-14，改名册）
+
+> 任务书 `docs/RENAME-PROMPT.md`；执行决策与实录见 `docs/RENAME-NOTES.md`（R-01 起）。
+> 本 ADR 是新旧名混读的唯一权威映射（历史册正文不改写，混读以此表为准）。
+
+- **背景**：GitHub 组织已迁 **Kuro-Bridge**（主仓 KuroAdapter，remote 已迁）；「KuroBot」名号淘汰。
+  此刻无存量部署、napuketto 端 kurobot 支持尚未发布（MVP4-NOTES 发现 H）——是零迁移成本、
+  避免双重发布的唯一窗口。
+- **用户四拍板（2026-09-14 开题对齐）**：①npm scope `@kurobot/*` → `@kuro-bridge/*`；②用户标识
+  统一 `kurobridge`；③线协议 `kurobot-ws.v1` → `kurobridge-ws.v1`，协议 0.3.1 → 0.4.0；④含两仓
+  联动（本仓主册 + NapukettoQQ 联动册，单会话只写一仓）。
+- **新旧标识映射表**：
+
+  | 维度 | 旧 | 新 |
+  |---|---|---|
+  | npm scope | `@kurobot/protocol` / `@kurobot/bridge-core` / `@kurobot/bridge-embedded` | `@kuro-bridge/protocol` / `@kuro-bridge/bridge-core` / `@kuro-bridge/bridge-embedded` |
+  | 根包名 | `kurobot` | `kurobridge`（private，platforms/be/lse 同名根包同理） |
+  | MC 命令 | `/kurobot send\|reload\|qr` | `/kurobridge send\|reload\|qr` |
+  | 数据目录 | `plugins/kurobot/` | `plugins/kurobridge/` |
+  | 插件名 | `KuroBot` | `KuroBridge` |
+  | Java 包 | `com.kurobot`（`com.kurobot.core` / `com.kurobot.paper`） | `com.kurobridge`（`com.kurobridge.core` / `com.kurobridge.paper`） |
+  | Java 类 | `KuroBotPlugin` / `KurobotCommand` / `KurobotVersions` | `KuroBridgePlugin` / `KurobridgeCommand` / `KurobridgeVersions` |
+  | TS 类 | `KurobotServer` | `KurobridgeServer`（core 内部符号，非线协议） |
+  | JAR | `kurobot-0.1.0.jar` / `plugins/kurobot.jar` | `kurobridge-0.1.0.jar` / `plugins/kurobridge.jar` |
+  | 哨兵文件 | `.kurobot-install.json` | `.kurobridge-install.json` |
+  | env 前缀 | `KUROBOT_STUB_PEER` / `KUROBOT_NODE` / `KUROBOT_BUNDLE` / `KUROBOT_NPM_REGISTRY` / `KUROBOT_NODE_DIST_STRICT` / `KUROBOT_NODE_DIST_BASE` / `KUROBOT_NK_TEST_PASS` / `KUROBOT_STUB_WS_URL` / `KUROBOT_STUB_CLIENT` | 同名换 `KUROBRIDGE_` 前缀 |
+  | 线协议 | `PROTOCOL_NAME "kurobot-ws"` / `WS_SUBPROTOCOL "kurobot-ws.v1"` | `"kurobridge-ws"` / `"kurobridge-ws.v1"`（`.v1` 大版本语义不变） |
+  | 协议版本 | 0.3.1 | **0.4.0** |
+  | 沙盒令牌示例值 | `kurobot-sandbox-token` | `kurobridge-sandbox-token`（config.json 与 napuketto.toml 两侧同步） |
+
+- **协议 0.4.0 breaking 说明**：唯一 breaking 是握手协商字符串 `Sec-WebSocket-Protocol` 与
+  `PROTOCOL_NAME` 品牌变更（旧对端 `kurobot-ws.v1` 直接握手拒绝，语义不变）；`.v1` 大版本不变，
+  **帧 schema 形状零变化**（golden fixture 仅品牌字符串差异）；hello.protocolVersion 主版本兼容
+  区间规则不动（0.2.x/0.3.x 对端在版本号维度仍兼容，但子协议字符串已换 → 实际不可连，即
+  one-name-only）。不做双名兼容、不做自动迁移（无存量部署）。
+- **迁移策略**：无存量部署 → 不做任何自动迁移；sandbox/ 本地目录 `plugins/kurobot/` 整体改名
+  `plugins/kurobridge/`（config.json / napuketto.toml 内容平移，napuketto-data 凭据与
+  instance.lock 按 pid+cmdline 自愈）。
+- **napuketto 外部契约不动清单**（独立产品，归联动册/上游）：env `NAPKETTO_CONFIG` /
+  `NAPKETTO_DATA` / `NAPUTO_QQ_PATH`；文件名 `napuketto.toml`；TOML 段名 `[accounts.kurobot]`；
+  对端自报 `client = "napukettoqq/..."`；`@napuketto/*` 包名与 pin（0.1.17，版本变化归联动册）。
+- **版本策略**：protocol 包 workspace 版本 0.0.0 机制不动；对外版本 SSOT = `meta.ts`
+  PROTOCOL_VERSION（0.4.0 待用户在 npm org 建立后发布，协作清单）。
