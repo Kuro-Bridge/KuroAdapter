@@ -222,8 +222,11 @@ src/
   - 不传 `-q`：CLI 走 autoStart（读 TOML `[[accounts]]` 拉起全部启用账号）——napuketto
     侧配置 SSOT 是它自己的 TOML，KuroAdapter 只指路。
 - stdio 捕获：逐行 → `[napuketto] ` 前缀走注入 logger；行内可辨识 ` WARN `/` ERROR `
-  级别字样（pino-pretty 固定格式）分流 warn/error，其余 info。ASCII 二维码块与 BANNER
-  原样透传（考据：CLI 无 TTY 检测，pipe 下照样输出，容忍即可）。
+  级别字样（pino-pretty 固定格式）分流 warn/error，其余 info。**终端 ASCII 二维码按
+  突发折叠**（终验期反转早先「透容忍」决策：实机体验该图经编码转发后本就扫不了，
+  还把 console.log 与 `/kurobot qr` 回复淹没）：去 ANSI 后块元素（U+2580–U+259F）≥10
+  或整行 ≥15 个 `?`（编码降级残骸）判为图行，连续图行折叠为单行提示（上限 200 行防
+  流污染）；QR URL 提取（见下）不受折叠影响。BANNER 等正常输出不命中、原样透传。
 - **生命周期**（考据结论：napuketto boot 层无信号处理器、全链无父死检测——只 kill CLI
   本体必留 self-host 孤儿持 instance.lock）：
   - 优雅关停（shutdown 帧 / stdin EOF）：Windows `taskkill /PID <cliPid> /T /F` 树杀

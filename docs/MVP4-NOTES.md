@@ -217,3 +217,53 @@
    ⚠️ 同一账号数据目录单实例（instance.lock）：确认日常 napuketto 已停再试。
 8. 验收后：`bash scripts/paper-stop.sh` 优雅关停（stop → 树杀 → 无孤儿可复验
    `tasklist | grep node`）。
+
+## 7. 终验期增量（真机终验进行中，边验边记）
+
+### 发现 G（真登录首例）：QR 扫码成功 → kernel「激活 session」超时 → 自愈循环
+
+- 实测时间线：扫码 `scanned` 22:01:29 → `logged_in` 22:01:30 → 真正
+  `登录成功 uin=…` 22:02:43（QR 状态与完成登录相隔 ~73s）→ 22:03:04
+  `激活 session init 失败: session init 超时`（napuketto kernel 20s 阈值）→
+  supervisor `autoRestart` 自动重启 boot → 回到 QR 层（发现 A 自愈链在真实故障
+  （非模拟）下复验成立；KuroAdapter 的 QR 刷新检测正确跟到新码）。
+- **凭据未持久化**：重启后 boot 报「无历史登录账号」→ quick-login 不可用，只能重扫
+  ——凭据落盘发生在 session 完全启动之后，init 超时导致本次登录啥都没存。
+- 桌面 QQ 全程未运行（tasklist 复核），排除双实例争用；WS 侧无任何连入（netstat
+  仅 LISTENING）与「链路没走到」一致，KuroAdapter 侧行为正确。上游定位
+  （kernel session init 阈值 / QQ 9.9.33-52230 wrapper 兼容性）归 NapukettoQQ 仓。
+
+### 发现 H（真登录首例之二）：kurobot adapter 未被拉起——嵌包 CLI 版本不含 kurobot 支持
+
+- 二次扫码（uin=3567141148，与 TOML 对齐）**登录全链成功**：`激活 session init +
+  start 完成`（0.5s，对照首次的 20s 超时——确证首登超时为偶发，重扫即过）、
+  `QQ session 就绪（getMsgService 可用）`、`[self-host] bootstrap 完成`。
+- 但 napuketto 起的是 `onebot11` / `satori` 两个默认 adapter，**kurobot adapter
+  零动作**（无出站连接尝试，netstat 仅 LISTENING；kurobot 侧无认证失败日志）。
+- 根因（NapukettoQQ 仓只读考据 + 嵌包产物 grep 实证）：**npm 发布的
+  @napuketto/cli 0.1.17（嵌包 pin）不含 kurobot 接线**——`cli/dist/index.mjs` 中
+  `kurobot` 零命中，`[accounts.kurobot]` 被当未知段静默忽略；adapter 0.2.1 的
+  dist 同样无 kurobot 代码。而 NapukettoQQ **工作区已齐备**（config-parse.ts 的
+  ProtocolKey、config-template.ts 文档、adapter/src/kurobot/、assemble-
+  protocols.ts:242 `kurobot adapter started`）——支持已写好但从未发布
+  （工作区版本号未 bump，npm latest 仍 0.1.17）。
+- 处置：跨仓动作归 NapukettoQQ（bump + publish），随后 KuroAdapter 换 pin 重打
+  JAR。**本次登录凭据已持久化**，升级重启后预期 quick-login 免扫码直连。
+
+### M4-11 捕获流折叠终端 ASCII 二维码（反转 M4-05 时代的「容忍」）
+
+- 实机体验：napuketto 的终端二维码经 pipe→console.log 编码转发后是扫不了的残骸，
+  却把日志和 `/kurobot qr` 回复整个淹没——「容忍即可」不成立，按突发折叠为单行
+  提示（判定与上限见 embedded design「stdio 捕获」）。QR URL 提取不受影响。
+
+### M4-12 沙盒 PowerShell 一键脚本 + `/kurobot qr` 相对年龄
+
+- 痛点：PowerShell 裸敲 `bash` 会命中 WSL（`/mnt/c` 路径 + 无 mise 双重症状，
+  paper-start.sh 首踩）；发控制台命令要手拼 Git Bash 全路径 + `echo >> cmd.in`；
+  QR 图片要自己去文件管理器找。
+- 新增 `scripts/paper-{start,stop,cmd,qr}.cmd`（.cmd 壳定位 Git Bash / 规避执行
+  策略）+ `paper-cmd.ps1`（cmd.in 追加 + console.log 增量轮询回显，UTF-8 **带 BOM**
+  ——PS 5.1 把无 BOM 脚本按 ANSI 读，中文注释直接解析错误）+ `paper-qr.ps1`
+  （发 qr 命令 + 系统看图器自动打开 qr.png）。
+- `/kurobot qr` 检测时间后追加「距今 N 秒/分钟/小时前」——QR 120s 过期，过没过期
+  一眼可见（paper-cmd.ps1 的增量回显天然只含响应行，噪声问题双保险）。

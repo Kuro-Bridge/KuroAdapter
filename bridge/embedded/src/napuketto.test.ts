@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
     decideNapukettoLaunch,
+    isQrArtLine,
     type NapukettoDeps,
     spawnNapuketto,
     type UnexpectedExit,
@@ -201,6 +202,26 @@ describe("decideNapukettoLaunch", () => {
     });
 });
 
+describe("isQrArtLine", () => {
+    it("带 ANSI 色码的二维码图行（块元素 ≥10）→ true", () => {
+        expect(isQrArtLine("\u001B[47m\u001B[30m ▄▄▄▄▄▄▄ ██████ ▄▄▄▄▄▄▄ \u001B[0m")).toBe(true);
+    });
+
+    it("控制台编码降级的 ? 残骸行（≥15 个问号）→ true", () => {
+        expect(isQrArtLine("\u001B[47m\u001B[30m????????????????????????\u001B[0m")).toBe(true);
+    });
+
+    it("正常日志行不误伤：URL 提示 / pino 字段 / 少量问号", () => {
+        expect(
+            isQrArtLine(
+                "WARN (kernel/1): 请扫描二维码登录（保存: C:\\cache\\qrcode.png | URL: https://txz.qq.com/p?k=abc）",
+            ),
+        ).toBe(false);
+        expect(isQrArtLine('19:00:00.000 INFO (kernel/1): state: "waiting_scan"?')).toBe(false);
+        expect(isQrArtLine("   /_/ |_/\\")).toBe(false);
+    });
+});
+
 describe("spawnNapuketto", () => {
     it("spawn 参数：node 自身执行 CLI 入口、env 指路 + 原样透传、stdio 全 pipe", () => {
         const h = makeHarness();
@@ -238,6 +259,29 @@ describe("spawnNapuketto", () => {
             true,
         );
         expect(byLevel("info").some((m) => m.includes("ASCII QR"))).toBe(true);
+        // 收尾：结束句柄等待的 stop（不产生孤儿计时器）
+        const stopped = handle.stop();
+        h.child.emitExit(0);
+        await stopped;
+    });
+
+    it("终端 ASCII 二维码按突发折叠为一行提示；URL 提取与后续日志不受影响", async () => {
+        const h = makeHarness();
+        const urls: string[] = [];
+        const handle = spawnNapuketto(SPEC, { ...h.deps, onQrUrl: (u) => urls.push(u) });
+        h.child.stdout.write(
+            "WARN (kernel/1): 请扫描二维码登录（保存: C:\\cache\\qrcode.png | URL: https://txz.qq.com/p?k=abc）\n",
+        );
+        for (let i = 0; i < 35; i++) {
+            h.child.stdout.write("\u001B[47m\u001B[30m ▄▄▄▄▄▄▄ ██████ ▄▄▄▄▄▄▄ \u001B[0m\n");
+        }
+        h.child.stdout.write('INFO (kernel/1): state: "waiting_scan"\n');
+        await drain();
+        const infos = h.logs.filter((l) => l.level === "info").map((l) => l.message);
+        expect(infos.filter((m) => m.includes("▄▄▄"))).toHaveLength(0);
+        expect(infos.some((m) => m.includes("终端二维码输出已折叠"))).toBe(true);
+        expect(infos.some((m) => m.includes("waiting_scan"))).toBe(true);
+        expect(urls).toEqual(["https://txz.qq.com/p?k=abc"]);
         // 收尾：结束句柄等待的 stop（不产生孤儿计时器）
         const stopped = handle.stop();
         h.child.emitExit(0);

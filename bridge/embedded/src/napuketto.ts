@@ -207,7 +207,58 @@ const LOG_LEVEL_WARN = /\bWARN\b/;
 const QR_URL_LOG = /请扫描二维码登录（保存:\s*.+?\s*\|\s*URL:\s*(\S+?)）/;
 /** 级别字样 + QR 日志匹配在行级热路径，预编译为顶层常量（lint/performance/useTopLevelRegex） */
 
-/** 逐行捕获并按 pino-pretty 固定的级别字样分流（ASCII 二维码/BANNER 无级别字样 → info 透传） */
+/** ANSI 颜色转义（napuketto 无 TTY 检测，pipe 下仍带颜色码） */
+// biome-ignore lint/suspicious/noControlCharactersInRegex: 匹配 ANSI 转义序列本就依赖 ESC 控制字符，合法目标
+const ANSI_ESCAPE = /\u001B\[[0-9;]*m/g;
+/** Unicode 块元素区段（U+2580–U+259F：▀▄█░▒▓ 等）——终端二维码的全部构成字符 */
+const QR_ART_BLOCK = /[\u2580-\u259F]/g;
+
+/**
+ * napuketto 终端 ASCII 二维码行判定（导出供单测）：
+ * 去 ANSI 后块元素 ≥10（QR 图行），或去 ANSI 后整行 ≥15 个 `?`（底层字符经
+ * 控制台编码降级后的残骸行）。正常日志（含中文/时间戳/pino 字段）不会命中。
+ */
+export function isQrArtLine(line: string): boolean {
+    const plain = line.replace(ANSI_ESCAPE, "");
+    if ((plain.match(QR_ART_BLOCK)?.length ?? 0) >= 10) {
+        return true;
+    }
+    let questions = 0;
+    for (const ch of plain) {
+        if (ch === "?" && ++questions >= 15) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/** 单次折叠突发允许的最大行数（防御：超过视为流污染，恢复透传不再吞行） */
+const QR_ART_FOLD_CAP = 200;
+
+/** 按级别字样分流转发一行（复杂度拆分：热路径主循环只管折叠状态机） */
+function logNapukettoLine(logger: Logger, line: string): void {
+    const text = `[napuketto] ${line}`;
+    if (LOG_LEVEL_ERROR.test(line)) {
+        logger.error(text);
+    } else if (LOG_LEVEL_WARN.test(line)) {
+        logger.warn(text);
+    } else {
+        logger.info(text);
+    }
+}
+
+/** QR URL 日志提取（行级 best-effort；命中即回调，与折叠/分流无关） */
+function emitQrUrlIfMatched(line: string, onQrUrl: ((url: string) => void) | undefined): void {
+    if (onQrUrl === undefined) {
+        return;
+    }
+    const match = QR_URL_LOG.exec(line);
+    if (match !== null && match[1] !== undefined) {
+        onQrUrl(match[1]);
+    }
+}
+
+/** 逐行捕获并按 pino-pretty 固定的级别字样分流；终端 ASCII 二维码按突发折叠成一行提示 */
 function pipeLines(
     stream: Readable | null,
     logger: Logger,
@@ -216,21 +267,22 @@ function pipeLines(
     if (stream === null) {
         return;
     }
+    let foldedRun = 0;
     const rl = createInterface({ input: stream, terminal: false });
     rl.on("line", (line: string) => {
-        const text = `[napuketto] ${line}`;
-        if (LOG_LEVEL_ERROR.test(line)) {
-            logger.error(text);
-        } else if (LOG_LEVEL_WARN.test(line)) {
-            logger.warn(text);
-        } else {
-            logger.info(text);
-        }
-        if (onQrUrl !== undefined) {
-            const match = QR_URL_LOG.exec(line);
-            if (match !== null && match[1] !== undefined) {
-                onQrUrl(match[1]);
+        emitQrUrlIfMatched(line, onQrUrl);
+        if (isQrArtLine(line)) {
+            if (foldedRun === 0) {
+                logger.info(
+                    "[napuketto] （终端二维码输出已折叠；图片路径与登录链接请看 kurobot qr）",
+                );
+            }
+            foldedRun += 1;
+            if (foldedRun < QR_ART_FOLD_CAP) {
+                return;
             }
         }
+        foldedRun = 0;
+        logNapukettoLine(logger, line);
     });
 }

@@ -7,6 +7,7 @@ import com.kurobot.core.NodeIpc;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -101,9 +102,10 @@ public final class KurobotCommand extends Command {
             sender.sendMessage(Component.text("QR 状态文件读取失败（可能正在写入，稍后重试）：" + e.getMessage()));
             return;
         }
-        sender.sendMessage(Component.text("QQ 登录二维码状态（检测时间 "
-                + TIME_FORMAT.format(
-                        Instant.ofEpochMilli(state.path("detectedAt").asLong(0))) + "）："));
+        long detectedAt = state.path("detectedAt").asLong(0);
+        String age = detectedAt > 0 ? "，距今 " + humanAge(detectedAt) : "";
+        sender.sendMessage(
+                Component.text("QQ 登录二维码状态（检测时间 " + TIME_FORMAT.format(Instant.ofEpochMilli(detectedAt)) + age + "）："));
         String pngPath = state.path("pngPath").asText("");
         if (!pngPath.isEmpty()) {
             sender.sendMessage(Component.text("  二维码图片（手机 QQ 扫描）：" + pngPath));
@@ -115,5 +117,19 @@ public final class KurobotCommand extends Command {
             sender.sendMessage(Component.text("  登录链接（手机 QQ 打开）：" + url));
         }
         sender.sendMessage(Component.text("二维码过期会自动刷新；登录成功后本命令显示的内容即为最后一次扫码状态"));
+    }
+
+    /** 检测时间的相对年龄（N 秒/分钟/小时前）：二维码 120s 过期，过没过期要一眼可见 */
+    private static String humanAge(long epochMilli) {
+        long seconds = Math.max(
+                0L, Duration.ofMillis(System.currentTimeMillis() - epochMilli).toSeconds());
+        if (seconds < 90L) {
+            return seconds + " 秒前";
+        }
+        long minutes = seconds / 60L;
+        if (minutes < 90L) {
+            return minutes + " 分钟前";
+        }
+        return minutes / 60L + " 小时前";
     }
 }
