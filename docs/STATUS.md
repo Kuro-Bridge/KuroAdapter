@@ -231,3 +231,44 @@ napukettoqq 协议端接入与多平台 node 矩阵留给后续阶段（债务�
 9d06bbd（ws 段 + 参数化）→ 4a834d4（stub + 冒烟）→ a8ee695（peer-guide）→ 本册收尾。
 下一步：napukettoqq 侧 kurobot 适配器任务书（以 peer-guide.md 为 SSOT，NapukettoQQ
 仓库执行）；MVP-4（embedded 形态）与本册债务清单续排。
+
+## MVP 阶段四结论（2026-09-14，master）
+
+> 任务书见 `docs/MVP4-PROMPT.md`，全部决策与沙盒实录见 `docs/MVP4-NOTES.md`（M4-01~10）。
+
+**「开箱即用」最后一环落地：JAR 内嵌真 QQ 协议端——embedded 形态完成。** ADR-022 孙进程
+从 stub 换成 napuketto 真身，进程树 `Java → node → napuketto CLI(supervisor) → boot →
+self-host`（最深四层）全链实证；协议 0.3.1 一字未动、napuketto 仓零改动。验收清单 §4
+无人值守部分全过（实录表见 MVP4-NOTES §4）：
+
+- **config 增顶层 `embedded` 段**（形状 SSOT 归 core zod，ADR-028 先例）：
+  `{ napuketto: { enabled, configPath?, dataDir? } }`；整段缺省 = 现状不变。
+  **固定端口强制**：enabled 且无 `ws.port` → 明确 error + exit(1)（WsBindError 同族，
+  看护器退避收敛）；非 Windows 宿主 → error + 不拉起（Node 继续纯 WS 服务端）。
+- **napuketto spawner**（bridge/embedded，全依赖可注入）：env 只注入
+  `NAPKETTO_CONFIG`/`NAPKETTO_DATA`（napuketto TOML 是其侧 SSOT，KuroAdapter 只指路）、
+  stdio 全 pipe 逐行捕获 `[napuketto]` 前缀按级别分流、守卫纯函数化
+  （`decideNapukettoLaunch`）。生命周期：优雅关停 = `taskkill /T /F` 树杀（考据：boot 层
+  无信号处理器，napuketto 自家 stop 同款）→ 5s 有界等待；CLI 意外退出 → node exit(1) →
+  看护器退避重启 → 重拉 CLI（凭据原生层 quick-login 自恢复）。
+- **打包链**：embed.ts 增 napuketto 嵌包收集（npm 真实文件树 → 零依赖 zip writer →
+  单一 `napuketto.zip` 7.6MB + `NAPUKETTO_LICENSES` 124KB 许可聚合，版本 SSOT =
+  bridge/embedded package.json 精确 pin）；EmbeddedRuntime 增哨兵幂等展开
+  （`.kurobot-install.json` 记 zip sha256，升级重建，zip slip 防护）。
+  JAR 41MB → **48.5MB**；红线 grep：wrapper.node / QQ 安装包零命中（嵌包清单与许可
+  全表见 MVP4-NOTES §3）。
+- **QR 文件交接（零协议变更）**：node 轮询 napuketto 数据目录 `cache/qrcode.png`
+  （mtime+size，多账号取最新）+ 捕获流固定文案 URL 正则 → 原子写 `plugins/kurobot/
+  qr.png` + `qr.json`；`:paper` 增 `kurobot qr` 子命令只读展示（零 IPC）。QR 过期自动
+  刷新链路实测可见。
+- **沙盒实录**：无 embedded 段回归（stub/动态端口/关停无孤儿）→ 固定端口快速失败
+  （退避 3 次放弃、napuketto 未拉起）→ embedded 启动链（`[napuketto]` 日志、QQ 定位
+  零下载、QR 生成、四层树实证）→ 生命周期矩阵（stop 树杀零孤儿 / 强杀 node T+1s
+  四层级联死（DEBT-2 发现复验）/ CLI 意外退出看护器重启 / instance.lock 残留自愈）。
+- **架构发现**：napuketto 自身 autoRestart 在登录超时后自愈重启 boot（嵌入层无感）；
+  NAPUTO_SMOKE/PROBE 均需真登录，无免登录烟测路径（无人值守验收止于 QR 层）。
+
+门禁终态：`pnpm check` / `pnpm test`（167 用例）/ `pnpm -r build` / `gradlew build` +
+`:core:test --rerun`（:core 69 用例）全绿。真机扫码终验步骤见 MVP4-NOTES §6 协作清单。
+下一步：koishi-plugin-kurobot 独立仓库启动、platforms/be（LSE/Endstone）、债务清单
+（wine 宿主、多平台构建矩阵等）续排。

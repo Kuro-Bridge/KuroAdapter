@@ -262,3 +262,21 @@ src/
 - spawner：注入假 spawnFn（记录 argv/env/stdio）+ 假平台，覆盖分支校验、env 组装、
   退出回调、taskkill 调用形状；真进程链路留沙盒验收（无人值守不碰真 QQ 登录——考据：
   napuketto 的 SMOKE/PROBE 钩子均在真登录之后，无免登录烟测可用）。
+
+### 实现回填（2026-09-14 验收后）
+
+- **守卫语义分化（M4-04）**：无 `ws.port` 与 CLI 入口缺失 → `fatal`（error + exit(1)，
+  WsBindError 同族）；非 Windows → `skip`（error 日志 + 不拉起，node 继续纯 WS 服务端，
+  external 兜底）。`decideNapukettoLaunch` 返回三态 union（spawn/skip/fatal），守卫与
+  路径解析纯函数化，bootstrap 的 `launchNapukettoBranch` 只接线。
+- **spawner 报告点收敛**：exit 与 error 双事件（spawn ENOENT 只有 error）经
+  `reported` 标志只报告一次；`stopping` 标志区分关停路径（不触发 onUnexpectedExit）。
+- **关停接线**：`shutdown()` 统一路径（relay.dispose → qrWatcher.stop → napuketto.stop
+  → terminate(stub)），shutdown 帧 / stdin EOF / SIGTERM 三入口共用。
+- **QR watcher（src/qr-watcher.ts）**：2s 轮询 `cache/qrcode.png`（mtime+size 双指标，
+  多账号取 mtime 最新）拷贝为 qr.png；URL 由 spawner `onQrUrl` 回调喂入（napuketto
+  kernel 固定文案正则，best-effort）；`qr.json` tmp+rename 原子写；timer unref 不拖
+  退出；拷贝失败（napuketto 覆写中）不更新基线、下轮自然重试。
+- **沙盒证据（MVP4-NOTES §4）**：四层树实证（node→CLI→boot→self-host）、`[napuketto]`
+  前缀日志、QR 落地 + 过期刷新、固定端口快速失败退避 3 次放弃、stop 树杀零孤儿、
+  强杀 node T+1s 级联死、CLI 意外退出 → 看护器 1s 重启 → instance.lock 自愈接管。
