@@ -191,3 +191,74 @@ src/
   （listen(0) → 读端口 → 释放）不受影响。
 - 沙盒证据（MVP3-NOTES 验收表）：固定端口 25580、绑定失败退避 3 次放弃、空 token WARN、
   双独立 stub 并存（WS_URL/CLIENT 钩子）。
+
+## MVP 阶段四（MVP-4，2026-09-14）：napuketto spawner（JAR 内嵌协议端真身）
+
+> 任务书：`docs/MVP4-PROMPT.md`；ADR-029。ADR-022 孙进程模型从 stub 换成真身：
+> 进程树 Java → node（kurobot WS 服务端）→ napuketto CLI（supervisor）→ boot →
+> self-host（最深四层）。协议 0.3.1 零变更；stub 路径零改动（napuketto 是新增分支）。
+
+### 分支接线（bootstrap）
+
+- `config.embedded?.napuketto.enabled === true` → napuketto 分支（**不再拉 stub**——
+  一个 kurobot 实例只有一个逻辑协议端）；其余（无段 / enabled=false）→ 现状不变。
+- 分支前置校验（顺序执行，均注入 platform 便于测试）：
+  1. 非 Windows 宿主 → error 日志 + **不拉起**（node 继续以纯 WS 服务端跑，external
+     对端不受影响；wine 记债务）。
+  2. config 无 `ws.port` → error 日志（含「为什么」）+ **exit(1)**（WsBindError 同族：
+     napuketto TOML 的 `url` 静态，动态端口无法喂给；收敛于 Java 看护器退避）。
+  3. CLI 入口缺失（`<bin>/napuketto/node_modules/@napuketto/cli/dist/index.mjs` 不存在，
+     开发覆盖模式未装包）→ error + exit(1)（配置要求嵌入形态而产物缺失 = 快速失败）。
+
+### napuketto spawner 契约（src/napuketto.ts）
+
+- `createNapukettoSpawner(options)` → `{ child, stop(), onExit(cb) }`；依赖全部可注入：
+  `spawnFn`（默认 node:child_process.spawn）、`platform`（默认 process.platform）、
+  `execTaskkill`（默认 spawn taskkill）、logger、时钟（QR 轮询间隔）。
+- 拉起：`spawn(process.execPath, [cliEntry], { env, stdio: ["pipe", "pipe", "pipe"] })`。
+  - env = `{ ...process.env, NAPKETTO_CONFIG: <绝对路径>, NAPKETTO_DATA: <绝对路径> }`
+    ——其余 env（`NAPUTO_QQ_PATH` 等）原样透传，KuroAdapter 不默认设置。
+  - **stdio 全 pipe、绝不 inherit**（node 的 stdout 是 IPC 通道，污染即断 IPC）。
+  - 不传 `-q`：CLI 走 autoStart（读 TOML `[[accounts]]` 拉起全部启用账号）——napuketto
+    侧配置 SSOT 是它自己的 TOML，KuroAdapter 只指路。
+- stdio 捕获：逐行 → `[napuketto] ` 前缀走注入 logger；行内可辨识 ` WARN `/` ERROR `
+  级别字样（pino-pretty 固定格式）分流 warn/error，其余 info。ASCII 二维码块与 BANNER
+  原样透传（考据：CLI 无 TTY 检测，pipe 下照样输出，容忍即可）。
+- **生命周期**（考据结论：napuketto boot 层无信号处理器、全链无父死检测——只 kill CLI
+  本体必留 self-host 孤儿持 instance.lock）：
+  - 优雅关停（shutdown 帧 / stdin EOF）：Windows `taskkill /PID <cliPid> /T /F` 树杀
+    （napuketto 自家 `napuketto stop` 同款；/T 连带 boot/self-host）→ 有界等待 exit
+    （5s，对齐 napuketto FORCE_EXIT_MS）→ node 自退。
+  - CLI 意外退出（非关停路径 exit）→ error 日志 + node `exit(1)` → Java 看护器退避重启
+    → 重拉 CLI（凭据在腾讯原生层，quick-login 自动恢复）。
+  - 强杀 node → CLI 树预期随 Node 26 Job Object 级联死亡（DEBT-2 发现；四层树验收复验）。
+
+### QR 状态文件（零协议变更交接）
+
+- node 轮询（默认 2s）两路信号：
+  1. 数据目录扫描 `<dataDir>/*/cache/qrcode.png`（`*` = 账号 uin 目录）mtime+size 变化
+     → 拷贝为 `plugins/kurobot/qr.png`；
+  2. 捕获流正则 `请扫描二维码登录（保存: … | URL: …）`（napuketto 固定文案，全角括号）
+     → 提取 URL。
+- 任一信号触发 → 原子写 `plugins/kurobot/qr.json`：
+  `{ pngPath: string, url?: string, detectedAt: number }`（pngPath = qr.png 绝对路径；
+  node.pid 式运维文件先例）。拷贝失败（PNG 写入中）下次轮询自然重试，不致命。
+- 消费方：`:paper` 的 `/kurobot qr` 只读展示（Java 不解析内容，纯文件读取）。
+
+### 打包形状（与 scripts/embed.ts 的分工）
+
+- embed.ts 新增：`pnpm`/`npm` 拉取 `@napuketto/cli@<pin>` 到缓存目录（真实文件，非 pnpm
+  symlink）→ node_modules 树打成**单一 zip 资源** `embedded/napuketto.zip`（零依赖
+  zip writer，deflate + crc32，与既有 reader 对称）→ manifest 增条目 + 许可文件
+  `NAPUKETTO_LICENSES`（各 @napuketto/* 的 MIT LICENSE 拼接收集，待遇对齐 NODE_LICENSE）。
+- EmbeddedRuntime（:core）扩展：manifest 含 `napukettoZip` 条目 → 解压到
+  `bin/napuketto/node_modules/`（JDK ZipInputStream；entry 名 normalize 包含检查防
+  zip slip；哨兵文件 `.kurobot-install.json` 记 zip sha256 幂等复用/升级重建）。
+- 红线：zip 内只有 npm 发布物；wrapper.node / QQ 安装包 / QQNT 二进制绝不出现
+  （验收 grep 证据）。
+
+### vitest 策略
+
+- spawner：注入假 spawnFn（记录 argv/env/stdio）+ 假平台，覆盖分支校验、env 组装、
+  退出回调、taskkill 调用形状；真进程链路留沙盒验收（无人值守不碰真 QQ 登录——考据：
+  napuketto 的 SMOKE/PROBE 钩子均在真登录之后，无免登录烟测可用）。

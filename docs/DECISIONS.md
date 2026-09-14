@@ -211,3 +211,18 @@
 - **结论**：**选 2**。WS 监听参数是宿主事务（红线 2）：`KurobotServer`/`WsServer` 接口不感知 host/port，`start()` 返回实际端口的契约不变，ready 帧照报实际端口；core 只新增顶层可选段 `ws: {host?, port?}` 的 zod 形状（整段缺省 = 动态端口 + 全部接口，现状不变；只配 host = 动态端口 + 指定地址，合法）。绑定失败（含异步 EADDRINUSE——实测 ws 库经 `error` 事件异步到达、构造不抛）→ 明确 error 日志（含端口与原因）+ Node 非零退出，**不新增重试机制**：Java 看护器 1s/5s/15s 退避、10 分钟窗 3 次放弃（DEBT-2）自然覆盖长期端口冲突。安全基线：config 含 ws 段且 token 为空 → 启动 WARN 不阻断（保持空 token 向后兼容语义）。
 - **理由**：SSOT 单一来源避免 config-schema 文档与双实现漂移；Java 零感知（选 3 会把 WS 监听细节漏进桥接薄壳，违背红线 2/3）；绑定失败收敛于既有看护器语义，避免第二套重试状态机与「服务端自旋重绑」的风暴风险。
 - **协议增量**：0.3.0 → 0.3.1（patch），hello 可选 `client` 自报身份串（建议 `名称/版本`），仅连接日志辨识、不做行为分支；0.2.x/0.3.0 对端双向兼容（可选字段 + 剥离未知键）。
+
+## ADR-029 embedded 形态内嵌 napuketto CLI：嵌包边界 + 固定端口强制 + 文件式 QR 交接 + taskkill 树杀（2026-09-14，MVP-4）
+
+- **背景**：ADR-022 的孙进程协议端至今只有 stub；「装个 JAR、扫一次码即得群服互通」缺最后一环。napuketto 侧 kurobot 适配器已完成（`@napuketto/adapter` 0.2.1，golden 锁本仓协议 0.3.1 @ b0809ef）。
+- **选项**（嵌入入口）：
+  1. KuroAdapter 自造 supervisor：直接拉起 `@napuketto/loader` self-host，自管 QQ 登录/重启/凭据。
+  2. **嵌入 `@napuketto/cli`（dist 入口）**：supervisor、QR 三呈现、凭据持久化全部现成；KuroAdapter 只做拉起、stdio 捕获→logger、生命周期接线。
+- **结论**：**选 2**。协议 0.3.1 一字不动（目标零协议变更）；QQ 登录流程完全交给 napuketto，KuroAdapter 不解析不干预。
+- **嵌包边界（ADR-014 特化）**：进 JAR 的只有 MIT 的 npm 发布物（`@napuketto/*` 及其 npm 依赖，含 loader 包自带的**自研** stub QQNT.dll 与 7zip 资产 LGPL——与 `npm install` 等价的原样分发）；**wrapper.node、QQ 安装包、QQNT 腾讯二进制绝不进 JAR 不进仓**（napuketto 运行期自取）。
+- **config 顶层可选 `embedded` 段**（形状 SSOT 归 core zod，消费在 embedded——先例 ADR-028）：`{ napuketto: { enabled, configPath?, dataDir? } }`；整段缺省 = 现状（stub/external 形态不变）。
+- **固定端口强制**：`enabled` 且 config 无 `ws.port` → 明确 error + Node 非零退出（WsBindError 同族：napuketto TOML 的 `url` 是静态的，动态端口无法喂给它）；重启收敛于 Java 看护器退避（DEBT-2）。非 Windows 宿主 → 明确 error + 不拉起（Node 继续以纯 WS 服务端运行，external 对端不受影响；wine 记债务）。
+- **QR 文件交接（零协议变更路径）**：Node 轮询 napuketto 数据目录 `*/cache/qrcode.png` 变化 + 捕获流中固定格式 URL 日志 → 落地 `plugins/kurobot/qr.png` + `qr.json`（node.pid 式运维文件先例）；`:paper` 增 `/kurobot qr` 只读展示。URL 解析 best-effort，PNG 为主。放弃 IPC 帧方案（要动协议 0.3.2 + napuketto 侧 golden 重对齐，代价不成比例）。
+- **生命周期（Windows）**：优雅关停 = `taskkill /PID <cli> /T /F` 树杀（考据：napuketto boot 层无信号处理器、全链无父死检测，`child.kill()` 强杀 supervisor 必留 self-host 孤儿持 instance.lock——napuketto 自家 `napuketto stop` 同款树杀）→ 有界等待 → Node 自退；CLI 意外退出 → Node error + 非零退出 → Java 看护器退避重启 → 重拉 CLI（凭据在腾讯原生层，quick-login 自动恢复）。强杀 Node → CLI 树预期随 Node 26 Job Object 级联死亡（DEBT-2 发现，四层树复验记 NOTES）。
+- **理由**：选 1 要重造登录会话/重启/凭据三块 napuketto 已稳定的能力，且更贴近腾讯原生层（KuroAdapter 的职责边界失守）；CLI 入口让 napuketto 侧零改动、npm 版本升级即收益。taskkill 树杀是对 napuketto 进程模型的如实适配而非「不优雅」——其自带 stop 命令同款，凭据与锁均有残留自愈设计。
+- **回退条件**：napuketto 提供真正的受控关停 API（信号处理/退出钩子）时，可换优雅信号路径；文件式 QR 交接失效（napuketto 改日志/路径格式）时优先仍保 PNG 路径，URL 解析独立降级。

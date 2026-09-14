@@ -104,6 +104,53 @@ describe("parseConfig", () => {
         expect(() => parseConfig({ channels: [], ws: "25580" })).toThrow(ConfigError);
     });
 
+    it("embedded 段：整段缺省 / 完整 / 只带 enabled（MVP-4）", () => {
+        const base = { channels: ["10001"], token: "", admins: [], runtime: { autoRestart: true } };
+        // 整段缺省 = 现状不变（无 embedded 键）
+        expect(parseConfig({ channels: ["10001"] })).not.toHaveProperty("embedded");
+        expect(
+            parseConfig({
+                channels: ["10001"],
+                embedded: {
+                    napuketto: { enabled: true, configPath: "napuketto.toml", dataDir: "data" },
+                },
+            }),
+        ).toEqual({
+            ...base,
+            embedded: {
+                napuketto: { enabled: true, configPath: "napuketto.toml", dataDir: "data" },
+            },
+        });
+        // enabled 必填（不给缺省）；configPath/dataDir 可选
+        expect(parseConfig({ channels: [], embedded: { napuketto: { enabled: false } } })).toEqual({
+            ...base,
+            channels: [],
+            embedded: { napuketto: { enabled: false } },
+        });
+    });
+
+    it("embedded 段非法值 → ConfigError（MVP-4）", () => {
+        // enabled 缺失 / 非布尔（显式声明要求，不给缺省）
+        expect(() => parseConfig({ channels: [], embedded: { napuketto: {} } })).toThrow(
+            ConfigError,
+        );
+        expect(() =>
+            parseConfig({ channels: [], embedded: { napuketto: { enabled: "yes" } } }),
+        ).toThrow(ConfigError);
+        // napuketto 段缺失 / embedded 形状错误 / 可选字段空串
+        expect(() => parseConfig({ channels: [], embedded: {} })).toThrow(ConfigError);
+        expect(() => parseConfig({ channels: [], embedded: "napuketto" })).toThrow(ConfigError);
+        expect(() =>
+            parseConfig({
+                channels: [],
+                embedded: { napuketto: { enabled: true, configPath: "" } },
+            }),
+        ).toThrow(ConfigError);
+        expect(() =>
+            parseConfig({ channels: [], embedded: { napuketto: { enabled: true, dataDir: 3 } } }),
+        ).toThrow(ConfigError);
+    });
+
     it("defaultConfig 为空绑定 + 不鉴权 + 无管理员 + autoRestart true，且不含 ws 段", () => {
         expect(defaultConfig()).toEqual({
             channels: [],
@@ -112,5 +159,6 @@ describe("parseConfig", () => {
             runtime: { autoRestart: true },
         });
         expect(defaultConfig()).not.toHaveProperty("ws");
+        expect(defaultConfig()).not.toHaveProperty("embedded");
     });
 });

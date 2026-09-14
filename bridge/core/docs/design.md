@@ -245,3 +245,32 @@ bindings_updated）→ load 失败 error 日志、保留旧值等下次修复。
   `not.toHaveProperty("ws")`）；defaultConfig 同样无 ws 键。
 - 沙盒与单测证据：config.test.ts +4（形态/非法值/缺省无 ws 键）、embedded
   ws-server.test.ts +4（真网）、沙盒固定端口/绑定失败/WARN/双对端全过（MVP3-NOTES）。
+
+## MVP 阶段四（MVP-4，2026-09-14）：config 增 embedded 段（SSOT 形状）
+
+> 任务书：`docs/MVP4-PROMPT.md`。与 ws 段同款（ADR-028 先例）：**形状 SSOT 归 core zod，
+> 消费方在 bridge/embedded 引导层**。本包只新增顶层可选段 `embedded` 的形状与解析，
+> 不含任何行为（拉起/守卫/QR 全在 embedded）。
+
+- `configSchema` 增顶层可选段：
+
+  ```
+  embedded: {
+      napuketto: {
+          enabled: boolean,
+          configPath?: string,   // napuketto TOML 路径（相对服务器根）；缺省 plugins/kurobot/napuketto.toml
+          dataDir?: string,      // napuketto 数据目录（相对服务器根）；缺省 plugins/kurobot/napuketto-data
+      },
+  }
+  ```
+
+  - `napuketto` 段必填 `enabled: boolean`（显式声明，不给缺省——嵌入是重行为，要求服主
+    写明）；`configPath`/`dataDir` 非空串可选。
+  - **整段缺省 = 现状不变**（无 napuketto 分支：stub 孙进程 / external 对端形态）。
+  - `defaultConfig()` 不含 embedded 段（与 ws 段同款：默认配置维持最小形态）。
+- 语义约定（消费方在 embedded 实现，此处仅记录形状意图）：
+  - `enabled=true` 强制要求 config 有 `ws.port`（napuketto TOML 的 `url` 静态，动态端口
+    无法喂给——违反即 embedded 侧快速失败，WsBindError 同族）。
+  - `configPath`/`dataDir` 经 env `NAPKETTO_CONFIG` / `NAPKETTO_DATA` 指给 napuketto
+    （napuketto 侧配置 SSOT 是它自己的 TOML，KuroAdapter 只指路）。
+- 归属论证同 ADR-028/ADR-029：避免 `docs/config-schema.md` 第二处来源；Java 零感知。

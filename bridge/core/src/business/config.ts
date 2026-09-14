@@ -37,6 +37,21 @@ export interface KurobotConfig {
         readonly host?: string | undefined;
         readonly port?: number | undefined;
     };
+    /**
+     * 嵌入段（MVP-4，可选）：JAR 内嵌 napuketto CLI（ADR-029）。整段缺省 = 现状
+     * （stub 孙进程 / external 对端）。形状 SSOT 在此（ADR-028 先例），消费方在
+     * embedded 引导层（spawner / 守卫 / QR 交接均是宿主事务）。
+     */
+    readonly embedded?: {
+        readonly napuketto: {
+            /** 显式声明不给缺省：嵌入是重行为（拉起 QQ 协议端整树） */
+            readonly enabled: boolean;
+            /** napuketto TOML 路径（相对服务器根）；缺省 plugins/kurobot/napuketto.toml */
+            readonly configPath?: string | undefined;
+            /** napuketto 数据目录（相对服务器根）；缺省 plugins/kurobot/napuketto-data */
+            readonly dataDir?: string | undefined;
+        };
+    };
 }
 
 /** 配置读写抽象（宿主注入；watch 返回取消订阅函数） */
@@ -75,6 +90,15 @@ const wsListenSchema = z.object({
     port: z.number().int().min(1).max(65535).optional(),
 });
 
+const napukettoSchema = z.object({
+    /** 显式声明不给缺省：嵌入是重行为（拉起 QQ 协议端整树），要求服主写明 */
+    enabled: z.boolean(),
+    /** napuketto TOML 路径（相对服务器根）；缺省 plugins/kurobot/napuketto.toml */
+    configPath: z.string().min(1).optional(),
+    /** napuketto 数据目录（相对服务器根）；缺省 plugins/kurobot/napuketto-data */
+    dataDir: z.string().min(1).optional(),
+});
+
 const configSchema = z.object({
     channels: z.array(z.string().min(1)),
     /** WS 鉴权 token（v0.3.0）；缺省 "" = 不鉴权 */
@@ -85,6 +109,12 @@ const configSchema = z.object({
     runtime: runtimeSchema.default({ autoRestart: true }),
     /** WS 监听段（MVP-3）；整段缺省 = 动态端口 + 全部接口（现状不变） */
     ws: wsListenSchema.optional(),
+    /** 嵌入段（MVP-4）；整段缺省 = 无 napuketto 分支（现状不变） */
+    embedded: z
+        .object({
+            napuketto: napukettoSchema,
+        })
+        .optional(),
 });
 
 /** 去重保序 */
@@ -119,7 +149,7 @@ export function parseConfig(raw: unknown): KurobotConfig {
         parsed = configSchema.parse(raw);
     } catch (error: unknown) {
         throw new ConfigError(
-            "配置不合法（期望 { channels: string[], token?: string, admins?: {channel, users}[], runtime?: { autoRestart?: boolean }, ws?: { host?: string, port?: number } }）",
+            "配置不合法（期望 { channels: string[], token?: string, admins?: {channel, users}[], runtime?: { autoRestart?: boolean }, ws?: { host?: string, port?: number }, embedded?: { napuketto: { enabled: boolean, configPath?: string, dataDir?: string } } }）",
             error,
         );
     }
@@ -129,14 +159,16 @@ export function parseConfig(raw: unknown): KurobotConfig {
             channels.push(channel);
         }
     }
-    // ws 段条件展开（exactOptionalPropertyTypes：段缺省时不产生 ws: undefined 键）
+    // 可选段条件展开（exactOptionalPropertyTypes：段缺省时不产生对应 undefined 键）
     const ws = parsed.ws;
+    const embedded = parsed.embedded;
     return {
         channels,
         token: parsed.token,
         admins: normalizeAdmins(parsed.admins),
         runtime: { autoRestart: parsed.runtime.autoRestart },
         ...(ws === undefined ? {} : { ws }),
+        ...(embedded === undefined ? {} : { embedded }),
     };
 }
 
