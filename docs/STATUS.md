@@ -272,3 +272,26 @@ self-host`（最深四层）全链实证；协议 0.3.1 一字未动、napuketto
 `:core:test --rerun`（:core 69 用例）全绿。真机扫码终验步骤见 MVP4-NOTES §6 协作清单。
 下一步：koishi-plugin-kurobridge 独立仓库启动、platforms/be（LSE/Endstone）、债务清单
 （wine 宿主、多平台构建矩阵等）续排。
+
+## 改名阶段结论（2026-09-14，master）
+
+> 任务书 `docs/RENAME-PROMPT.md`，决策与验收实录见 `docs/RENAME-NOTES.md`（R-00~06），
+> 映射表见 **ADR-030**。历史册正文未改写，新旧名混读以 ADR-030 映射表为准。
+
+**品牌迁移 KuroBot → KuroBridge 一次改净——完成。** 每阶段至少一提交、门禁逐阶段绿，
+提交链 d9028de → ebdc1e6 → 264bae5 → c1262ec → 460a717 → 4a29d33 → 收尾提交：
+
+- **协议 0.4.0（唯一 breaking = 握手子协议字符串）**：`kurobridge-ws` / `kurobridge-ws.v1` /
+  0.4.0（ADR-030）；帧形状零变化（171 用例零逻辑改动背书）；`.v1` 大版本语义与主版本兼容
+  区间协商规则不动。
+- **全链标识换新**：npm scope `@kuro-bridge/*`（workspace 重链后构建绿）、用户标识
+  `kurobridge`（`/kurobridge` 命令、`plugins/kurobridge/`、插件名 KuroBridge、Java 包
+  `com.kurobridge`、JAR `kurobridge-0.1.0.jar`、哨兵 `.kurobridge-install.json`）、env 前缀
+  `KUROBRIDGE_*`。napuketto 外部契约原样（env/文件名/`[accounts.kurobot]` 段/client 自报/
+  `@napuketto/*` pin 0.1.17）。
+- **验收全过**：门禁（TS 171 用例 + gradle `:core:test --rerun`）、残留 grep（仅 3 处契约
+  豁免，见 RENAME-NOTES R-03）、打包（嵌包与 48.5MB 基线逐字节同源）、沙盒 stub 冒烟
+  （子协议协商 + token 鉴权 + 三子命令 + 无孤儿关停）。
+- **待协作**：npm 建 org 发布 `@kuro-bridge/protocol@0.4.0` → NapukettoQQ 联动册
+  （RENAME-PROMPT §7）→ 真链路互通复验并关闭发现 H。此刻 napuketto 端尚未发布 kurobot
+  支持（MVP4-NOTES 发现 H），正好以新名一次性发布，避免双重发布。
