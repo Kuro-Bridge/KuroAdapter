@@ -31,15 +31,24 @@
 napuketto-data 已平移，预期 quick-login 免扫码）。stub 链冒烟全过（子协议协商 + token
 鉴权 + 三子命令 + 无孤儿关停）。
 
-**卡点（发现 H）**：npm 发布的 `@napuketto/cli` 0.1.17 **不含 kurobot 接线**——
-NapukettoQQ 工作区已齐备但从未发布。收尾路径（须 NapukettoQQ 侧协作）：
+**卡点已解除（2026-09-15）**：NapukettoQQ 侧已发布 `@napuketto/cli` **0.1.19** /
+`@napuketto/adapter` **0.3.1**（含 kurobridge 接线 + 协议镜像对齐 `kurobridge-ws.v1` /
+0.4.0；`@kuro-bridge/protocol@0.4.0` 已发。注：0.1.18/0.3.0 因发布物泄漏 `workspace:*`
+作废）。发布物已解包实测：运行时常量为 `kurobridge-ws.v1`、依赖为真实版本号。
 
-1. npm 建 org `kuro-bridge`，发布 `@kuro-bridge/protocol@0.4.0`（可顺带
-   `npm deprecate @kurobot/protocol` 指新包）。
-2. NapukettoQQ 仓执行联动册（[history/RENAME-PROMPT.md](history/RENAME-PROMPT.md) §7）：
-   发布含 kurobridge 接线的 CLI。
-3. 本仓换 pin 重打 JAR → quick-login 验握手（hello client=napukettoqq/x）+ 群消息双向
-   → 关闭发现 H → 终验收尾（[history/MVP4-NOTES.md](history/MVP4-NOTES.md) §6 +
+**收官链（下一步）**：
+
+1. 本仓 `bridge/embedded/package.json` pin `@napuketto/cli` 0.1.17 → **0.1.19** →
+   `pnpm build:jar` 重打包。
+2. 重启沙盒（`scripts\paper-stop.cmd` → `paper-start.cmd`）→ 预期 **quick-login 免扫码**
+   （凭据已落盘）；若回 QR 层用 `scripts\paper-qr.cmd` 重扫。
+3. 验握手：hello 自报 `client=napukettoqq/0.3.1`（对端 0.4.0 兼容连入，子协议
+   `kurobridge-ws.v1`）+ 25580 出现 ESTABLISHED。
+4. 群消息双向（用户协作）：config.json `channels` 填真群号、`admins` 加真号 →
+   `scripts\paper-cmd.cmd kurobridge reload` → 群消息进服广播 + `kurobridge send <文本>`
+   进群。
+5. 全过 → 关闭发现 H，本节改写为「终验通过」结论（终验实录口径见
+   [history/MVP4-NOTES.md](history/MVP4-NOTES.md) §6/§7 +
    [history/RENAME-NOTES.md](history/RENAME-NOTES.md) 协作清单）。
 
 ## 待定事项
