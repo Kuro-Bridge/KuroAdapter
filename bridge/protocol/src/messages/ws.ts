@@ -1,5 +1,6 @@
 /**
- * WS 侧消息（kurobridge-ws，draft-v0.1.md §2 + §6 v0.2 增量 + v0.3.0 增量）
+ * WS 侧消息（kurobridge-ws；逐帧字段表 SSOT 见 docs/protocol/peer-guide.md §5，
+ * 原始设想与 v0.2 增量沿革见 docs/history/draft-v0.1.md §2/§6）
  *
  * v0.2（MVP 阶段一）：chat 双向携带 channel；hello_ack ok 体携带 channelBindings（ADR-004）；
  * 新增 join / leave / status / bindings_updated 事件（Server→Peer）。

@@ -35,7 +35,7 @@
 
 ## MVP 阶段二（2026-09-13）：打包闭环
 
-> 任务书：`docs/MVP2-PROMPT.md`。目标：JAR 自含 Node 运行时，装上就能用（不再依赖
+> 任务书：`docs/history/MVP2-PROMPT.md`。目标：JAR 自含 Node 运行时，装上就能用（不再依赖
 > `KUROBRIDGE_NODE`/`KUROBRIDGE_BUNDLE` 环境变量）。
 
 ### scripts/embed 打包工具（产物契约）
@@ -92,7 +92,7 @@
 
 ## 债务清偿二（DEBT-2，2026-09-13）：进程健壮性
 
-> 任务书：`docs/DEBT2-PROMPT.md`。目标：node 死了自动重启（看护器）、进程卫生（PID 文件、
+> 任务书：`docs/history/DEBT2-PROMPT.md`。目标：node 死了自动重启（看护器）、进程卫生（PID 文件、
 > 退出通知）、就绪可观测（汇总行、升级提示）。本节是动代码前的设计定稿。
 
 ### NodeIpc 进程退出通知（:core）
@@ -178,7 +178,7 @@ NodeIpcTest 扩展），:paper 仍靠沙盒验收兜底。
 
 ## 债务清偿一（DEBT-1，2026-09-13）：player_death / 输出收集 / reload / relay 权限
 
-> 任务书：`docs/DEBT1-PROMPT.md` §3 阶段 4。在 DEBT-2 重构后的 NodeIpc/看护器形状上实现
+> 任务书：`docs/history/DEBT1-PROMPT.md` §3 阶段 4。在 DEBT-2 重构后的 NodeIpc/看护器形状上实现
 > （复跑指引 5）。协议版本硬编码副本同步 0.3.0。
 
 ### :core IPC 扩展（零 Bukkit API）

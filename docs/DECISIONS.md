@@ -1,6 +1,8 @@
 # KuroBot 决策记录（DECISIONS）
 
 > 借鉴 NapukettoQQ 的 `DECISIONS.md` 形态。每项决策记录背景 → 选项 → 结论 → 理由。编号按时间序，永不改写历史。
+>
+> 2026-09-15 归档注：条目中引用的 `docs/*-PROMPT.md` / `*-NOTES.md` / `docs/protocol/draft-v0.1.md` 已移入 `docs/history/`（路径口径见其 README.md）；条目正文未改。
 
 ---
 

@@ -1,6 +1,6 @@
 # KuroBridge 架构书
 
-> 状态：**设计定稿（2026-08-10）**。工程体系借鉴 NapukettoQQ（文档分层 / biome+tsconfig / pnpm workspace / 测试设施）。本文是架构 SSOT，改动先更新本文再动代码。
+> 状态：**设计定稿（2026-08-10），2026-09-15 按 MVP-1~4 / DEBT-1~2 / 改名后的实现实况校准**。工程体系借鉴 NapukettoQQ（文档分层 / biome+tsconfig / pnpm workspace / 测试设施）。本文是架构 SSOT，改动先更新本文再动代码。
 
 ## 1. 定位与范围
 
@@ -24,7 +24,7 @@ flowchart LR
         subgraph JAR["kurobridge.jar（Java 薄壳）"]
             EV[Bukkit 事件监听] --> IPC
             CM[命令/权限] --> IPC
-            PM[子进程管理<br/>stdin EOF 自杀 + PID + Watchdog]
+            PM[子进程管理<br/>stdin EOF 自杀 + PID + NodeSupervisor 看护器]
             IPC[stdin/stdout JSON-lines]
         end
         subgraph NODE["内嵌 Node 子进程"]
@@ -34,7 +34,7 @@ flowchart LR
     end
 
     subgraph PEER["对端（协议端）"]
-        EMB["embedded：napukettoqq（随 JAR 附带）"]
+        EMB["embedded：napuketto CLI<br/>（随 JAR 附带，node 孙进程拉起）"]
         EXT["external：koishi-plugin-kurobridge → Koishi adapter"]
         EXT2["其它协议实现"]
     end
@@ -46,11 +46,14 @@ flowchart LR
 
 ## 3. 两种模式
 
-| | `mode=embedded`（默认） | `mode=external` |
+**没有顶层 `mode` 开关**——差异只在 config 两段（形状 SSOT 归 core zod，ADR-028/029）：
+
+| | embedded（默认不开） | external |
 |---|---|---|
+| 开法 | `embedded.napuketto.enabled: true`（且强制 `ws.port` 固定端口） | 不配 `embedded` 段；`ws.port` 可固定可缺省（缺省 = 动态端口 + 全部接口） |
 | 内嵌 Node 业务核心 | ✅ 拉起 | ✅ 拉起 |
-| 协议端 | 内嵌 napukettoqq（JAR 附带） | 外部对端（koishi-plugin-kurobridge 等） |
-| 开箱即用 | ✅ 控制台扫码 | 需另配 Koishi |
+| 协议端 | napuketto CLI（JAR 附带，node 孙进程拉起，控制台扫码） | 外部对端（koishi-plugin-kurobridge 等）连入 |
+| 开箱即用 | ✅ | 需另配对端 |
 | 架构差异 | **无**，仅打包/配置差异 | |
 
 > 注：早期「external 不拉内嵌进程」的结论已作废（ADR-006）——业务核心在 Node 里，两种模式都必须拉 Node。
@@ -76,7 +79,9 @@ bridge/embedded   esbuild 单文件（embedded 形态）     platforms/je（Java
 
 - **Java ↔ Node**：stdin/stdout **JSON-lines**，零端口零配置（ADR-010）。请求-响应（UUID）+ 事件推送两种帧。
 - **Node ↔ 对端**：WS，动态端口 `listen(0)`（embedded，避免僵尸进程占端口）或配置端口（external）。端口号经 IPC 从 Node 回传给 Java（日志展示/管理用）。
-- **子进程生命周期**：stdin EOF 自杀 + PID 文件 + Watchdog 心跳 + 崩溃兜底重启。
+- **子进程生命周期**：stdin EOF 自杀（Node 侧）+ PID 文件（`plugins/kurobridge/node.pid`）+
+  `NodeSupervisor` 看护器（1s/5s/15s 退避重启，10 分钟窗累计 3 次失败 SEVERE 放弃；
+  `runtime.autoRestart: false` 只通知不重启）。
 
 ## 6. 业务归属
 
@@ -95,9 +100,9 @@ kurobridge/
 ├── package.json（仅脚本 + workspaces）/ pnpm-workspace.yaml
 ├── biome.json / tsconfig.json / vitest.config.ts / .editorconfig   # 对齐 NapukettoQQ
 ├── docs/
-│   ├── architecture.md（本文）/ DECISIONS.md / STATUS.md
-│   └── protocol/            # 协议说明文档（draft 等）
-│       └── draft-v0.1.md    # 协议草案说明（schema 源见 bridge/protocol）
+│   ├── architecture.md（本文）/ DECISIONS.md / STATUS.md / config-schema.md
+│   ├── protocol/            # 协议说明文档（对端实现依据 peer-guide.md）
+│   └── history/             # 已完成阶段的任务书/实录归档（正文不改写，索引见其 README.md）
 ├── platforms/
 │   ├── je/                  # Java 交付物根（Gradle 多模块：一个服务端 = 一个模块，ADR-019）
 │   │   ├── build.gradle.kts / settings.gradle.kts
@@ -118,8 +123,9 @@ kurobridge/
 │   ├── protocol/            # @kurobridge/protocol：zod schema SSOT
 │   ├── core/                # @kurobridge/bridge-core（平台无关）
 │   └── embedded/            # 嵌入式瘦身对端（esbuild 单文件，打进 JAR）
-├── scripts/                 # 构建/工具脚本（embed.ts：嵌入式打包；paper 启停沙盒）
-└── sandbox/                 # 运行产物全 gitignore（Paper 服务端等）
+├── scripts/                 # 构建/工具脚本：embed.ts（嵌入式打包）/ build-jar.mjs（跨壳全链路）/
+│   │                          paper-start|stop（沙盒启停）/ paper-cmd|qr（.cmd/.ps1 快捷脚本）
+└── sandbox/                 # 运行产物全 gitignore（Paper 服务端等；fake-player.mjs 离线假人）
 ```
 
 > koishi-plugin-kurobridge（external 形态官方对端）在独立仓库开发，不在本目录树内。
@@ -130,7 +136,7 @@ kurobridge/
 
 | 模块 | 语言 | 关键依赖 | 构建 | 测试 |
 |---|---|---|---|---|
-| `docs/protocol` | TS | zod（SSOT） | tsdown | vitest |
+| `bridge/protocol` | TS | zod（SSOT） | tsdown | vitest |
 | `bridge/core` | TS | zod；零框架零 Node API | tsdown | vitest（+ fast-check，二期） |
 | `bridge/embedded` | TS | 无框架 | esbuild 单文件 | 集成测试（起真 WS server） |
 | `platforms/je` | Java 21 字节码（工具链 25，target 21） | Paper API（compileOnly）+ Jackson | Gradle shadowJar | JUnit 5（IPC 编解码 + 进程生命周期） |
@@ -143,20 +149,33 @@ kurobridge/
 - **Java 侧（第一版）**：`-Xlint:all -Werror` + Spotless(Palantir) + JUnit 5 + JaCoCo 存在性门禁（行 ≥60%）。**Error Prone / NullAway 第一版不上**（ADR-011），薄壳定型后再评估。
 - **协议防漂移门禁**：消息类型只能 import `@kurobridge/protocol`（lint 规则强制）；改 schema 不更新消费方 → `pnpm check` 红。
 
-## 9. 嵌入式打包要点（沿用 Napuketto 许可证方案）
+## 9. 嵌入式打包要点（沿用 Napuketto 许可证方案，MVP-4 实况）
 
-- `node.exe`（MIT）→ 进 JAR；`wrapper.node`（腾讯闭源）→ **不进 JAR**，运行期从 QQ 安装目录发现拷贝；stub 闭源件走 release 附带。
-- 动态端口（`listen(0)`）避免僵尸进程端口占用问题。
-- 子进程生命周期：stdin EOF 自杀 + PID 文件 + Watchdog 心跳 + 崩溃兜底。
-- 嵌入式打包：`scripts/embed.ts` 下载/校验 node 官方 dist（win-x64，sha256 对 SHASUMS256.txt）
-  → 连同 `bridge/embedded` 产物拷入 `platforms/je/paper/src/main/resources/embedded/`
-  （含 manifest.json 清单，运行期解压比对）；多平台矩阵记债务。
+- `node.exe`（MIT）→ 进 JAR；**腾讯闭源件（wrapper.node / QQ 安装包 / QQNT 二进制）不进
+  JAR**（红线，构建期 grep 门禁）；napuketto 嵌包仅自研件（其 stub `QQNT.dll` 为 napuketto 自研）。
+- 嵌入式打包：`scripts/embed.ts` 下载/校验 node 官方 dist（win-x64，sha256 对
+  SHASUMS256.txt，镜像/缓存可换）+ 收集 napuketto 嵌包（npm 真实文件树 → 零依赖 zip
+  writer）→ `embedded/{node.exe, index.mjs, NODE_LICENSE, manifest.json}` + 单一
+  `napuketto.zip`（7.6MB）+ `NAPUKETTO_LICENSES` 进 `:paper` resources；napuketto 版本
+  SSOT = bridge/embedded package.json 精确 pin。多平台矩阵记债务。
+- 运行期解压（`:core EmbeddedRuntime`）：manifest sha256 幂等比对（复用/缺失/不符重建）+
+  zip slip 防护 + 哨兵 `.kurobridge-install.json` 记 zip sha256（napuketto 同款幂等展开）。
+- 端口：external 缺省动态端口 `listen(0)`（避免僵尸进程占端口）；embedded 强制固定端口
+  （napuketto 需要知道连哪，缺配快速失败）。
+- 子进程生命周期：stdin EOF 自杀 + PID 文件 + NodeSupervisor 看护器（见 §5）。
 
 ## 10. 协议
 
-协议草案见 [`docs/protocol/draft-v0.1.md`](protocol/draft-v0.1.md)。
+现行协议（`kurobridge-ws` **0.4.0**）的语义与逐帧字段表 SSOT：
+[`docs/protocol/peer-guide.md`](protocol/peer-guide.md)（对端实现依据，对照 zod 现源）；
+schema 本体在 `bridge/protocol/src/`。最早设想见 [history/draft-v0.1.md](history/draft-v0.1.md)（停在 v0.2，仅供考古）。
 
-要点：协议名 `kurobridge-ws`；WS 子协议 `Sec-WebSocket-Protocol: kurobridge-ws.v1`（大版本，握手期拒绝不兼容对端）+ `hello` 内 `protocolVersion`（小版本/能力协商）；帧 `{ header: { type, id }, body }`；绑定频道列表随 `hello` 上报 + `bindingsUpdated` 增量事件；UUID 请求-响应 + `msgContinue` 流式回报；业务心跳 + 假连接检测；指数退避重连。
+要点：WS 子协议 `Sec-WebSocket-Protocol: kurobridge-ws.v1`（大版本，握手期拒绝不兼容对端）
++ `hello.protocolVersion` 主版本兼容区间协商（0.2.x 可连 0.3.x/0.4.0 服务端，1.x 拒绝，
+ADR-026）；帧 `{ header: { type, id }, body }`；单程握手（Peer `hello` → Server
+`hello_ack` 携带 channelBindings 快照，ADR-023）+ `bindings_updated` 全量推送；UUID
+请求-响应（`*_result` 显式响应帧，ADR-025）；token 鉴权（非空时 close 1008）；业务心跳 +
+服务端空闲检测；未知帧两段式容忍。`msgContinue` 流式回报**未实装**（债务，见 STATUS 债务索引）。
 
 ## 11. 红线
 

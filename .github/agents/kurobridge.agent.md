@@ -14,7 +14,7 @@ user-invocable: true
 - 硬性约束（违反 = 错误）：许可证 MIT 全自研（不复制 HuHoBot/NapCat 代码）；业务核心在 Node（TS）侧，Java 薄壳不做业务；`bridge/core` 平台无关（禁止 Node API，传输层可注入，target ES2020，QuickJS 可跑）；协议 SSOT 唯一（消息类型只能 import `@kurobridge/protocol`，禁止手写）；kurobridge 永远是 WS 服务端角色；不采用 OneBot 11；IPC 唯一通道 = stdin/stdout JSON-lines（Java ↔ Node）；不做自研通用消息语义层 / 嵌入式 QQ 协议端。
 - 工作流：`pnpm check`（biome + tsc，提交前必跑）、`pnpm fix`（自动修复）、`pnpm test`（vitest）、`pnpm -r build`（TS 全量构建）、`gradlew build`（Java 侧，platforms/je）、`pnpm build:jar`（全链路：TS → gradle :paper:shadowJar，嵌入式打包待重建）。
 - 代码风格：space+4 缩进、LF 行尾、双引号 + 分号 + 尾逗号、行宽 100、strict 全家桶、类型导入一律 `import type`、禁止 `any`（例外必须注释）、异步调用必须 `await` 或显式 `.catch`、`noExcessiveCognitiveComplexity(15)` 为 error、业务错误抛类型化错误、日志走注入的 logger 接口。
-- 实现模式：设计先行（写代码前先更新对应包 `docs/design.md`）；一个模块一个模块实现，每完成一个模块跑一次 `pnpm check`；core 无全局单例（由 `CoreContext` 持有）。
+- 实现模式：设计先行（写代码前先更新对应包 `docs/design.md`）；一个模块一个模块实现，每完成一个模块跑一次 `pnpm check`；core 无全局单例（由 `CoreContext` 持有）。阶段册（`*-PROMPT.md` / `*-NOTES.md`）收尾后归档到 `docs/history/`（正文不改写 + 补索引），`docs/` 根只放活文档。
 
 ## 约束
 

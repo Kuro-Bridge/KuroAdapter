@@ -38,7 +38,7 @@ src/
 
 ## 原型阶段（spike，2026-09-12）
 
-> 任务书：`docs/PROTOTYPE-PROMPT.md` §1.2 / §4.2。完整设计（内嵌 napukettoqq）不变，本节只标注原型裁剪。
+> 任务书：`docs/history/PROTOTYPE-PROMPT.md` §1.2 / §4.2。完整设计（内嵌 napukettoqq）不变，本节只标注原型裁剪。
 
 本阶段本包退化为 **Node 引导层（bootstrap）**，不含 napukettoqq：
 
@@ -53,7 +53,7 @@ src/
 
 ## MVP 阶段一（2026-09-13）
 
-> 任务书：`docs/MVP1-PROMPT.md` §3 阶段 2/3。本包在 spike 形态上补 Node 能力注入与配置。
+> 任务书：`docs/history/MVP1-PROMPT.md` §3 阶段 2/3。本包在 spike 形态上补 Node 能力注入与配置。
 
 - **Node 能力实现（阶段 2）**：`src/node-platform.ts` —— core 的 `Clock`/`TimerScheduler`
   Node 实现（`Date.now` + `setTimeout` + `unref`），与 ws 适配器同为「唯一的 Node API 落点」。
@@ -72,7 +72,7 @@ src/
 
 ## MVP 阶段二（2026-09-13）
 
-> 任务书：`docs/MVP2-PROMPT.md`（打包闭环）。本包源码零改动，本节记录形态变化。
+> 任务书：`docs/history/MVP2-PROMPT.md`（打包闭环）。本包源码零改动，本节记录形态变化。
 
 - **产物进 JAR**：`dist/index.mjs` 经 `scripts/embed.ts` 拷入
   `platforms/je/paper/src/main/resources/embedded/index.mjs`（随 manifest.json 带 sha256），
@@ -85,7 +85,7 @@ src/
 
 ## 债务清偿二（DEBT-2，2026-09-13）：autoRestart 上报 + stub 重连上限
 
-> 任务书：`docs/DEBT2-PROMPT.md` §1.2。两件小事，均不触碰 core。
+> 任务书：`docs/history/DEBT2-PROMPT.md` §1.2。两件小事，均不触碰 core。
 
 ### bootstrap 上报 autoRestart（协议 0.2.1）
 
@@ -117,7 +117,7 @@ src/
 
 ## 债务清偿一（DEBT-1，2026-09-13）：bootstrap 注入 token/admins + stub 0.3.0
 
-> 任务书：`docs/DEBT1-PROMPT.md` §3 阶段 3。在 DEBT-2 形态上叠加，不回退自杀逻辑。
+> 任务书：`docs/history/DEBT1-PROMPT.md` §3 阶段 3。在 DEBT-2 形态上叠加，不回退自杀逻辑。
 
 ### bootstrap
 
@@ -146,7 +146,7 @@ src/
 
 ## MVP 阶段三（MVP-3，2026-09-13）：NodeWsServer 参数化 + external 安全基线
 
-> 任务书：`docs/MVP3-PROMPT.md`。external 形态（napukettoqq 独立部署、经配置端口连入）的
+> 任务书：`docs/history/MVP3-PROMPT.md`。external 形态（napukettoqq 独立部署、经配置端口连入）的
 > 接入基座：固定端口 + 绑定地址 + 绑定失败语义 + 空 token WARN + stub 独立连入模式。
 
 ### NodeWsServer 参数化（host/port）
@@ -194,7 +194,7 @@ src/
 
 ## MVP 阶段四（MVP-4，2026-09-14）：napuketto spawner（JAR 内嵌协议端真身）
 
-> 任务书：`docs/MVP4-PROMPT.md`；ADR-029。ADR-022 孙进程模型从 stub 换成真身：
+> 任务书：`docs/history/MVP4-PROMPT.md`；ADR-029。ADR-022 孙进程模型从 stub 换成真身：
 > 进程树 Java → node（kurobridge WS 服务端）→ napuketto CLI（supervisor）→ boot →
 > self-host（最深四层）。协议 0.3.1 零变更；stub 路径零改动（napuketto 是新增分支）。
 

@@ -22,12 +22,12 @@
 ## 实现顺序
 
 1. 根骨架就绪（本文件所在阶段）。
-2. 按 `docs/protocol/draft-v0.1.md` 逐消息细化 schema（STATUS.md 第 1 步）。
+2. 按 `docs/history/draft-v0.1.md` 逐消息细化 schema（STATUS.md 第 1 步）。
 3. 每个 schema 配 vitest 单测（`safeParse` 合法/非法载荷）。
 
 ## 原型阶段（spike，2026-09-12）
 
-> 任务书：`docs/PROTOTYPE-PROMPT.md` §4.1。本文档的完整设计不变，本节只标注原型裁剪。
+> 任务书：`docs/history/PROTOTYPE-PROMPT.md` §4.1。本文档的完整设计不变，本节只标注原型裁剪。
 
 最小 schema 集（可增不可减）：
 
@@ -38,11 +38,11 @@
 
 原型裁剪掉的（正式版再上）：`join`/`leave`/`death`/`status`/`bindings_updated`/`command`/`query`/`msgContinue`/`msgEnd`、鉴权 token、channelBindings 字段。
 
-实测备注（决策 D-09，见 `docs/PROTOTYPE-NOTES.md`）：zod 4.4.3 不支持嵌套判别路径（`z.discriminatedUnion("header.type", ...)` 抛错），帧层聚合 schema 用 `z.union([...])`；每个消息的帧 schema 单独导出，消费方按方向选用。
+实测备注（决策 D-09，见 `docs/history/PROTOTYPE-NOTES.md`）：zod 4.4.3 不支持嵌套判别路径（`z.discriminatedUnion("header.type", ...)` 抛错），帧层聚合 schema 用 `z.union([...])`；每个消息的帧 schema 单独导出，消费方按方向选用。
 
 ## MVP 阶段一（协议 v0.2，2026-09-13）
 
-> 任务书：`docs/MVP1-PROMPT.md` §3 阶段 1。相对 spike 的增量：
+> 任务书：`docs/history/MVP1-PROMPT.md` §3 阶段 1。相对 spike 的增量：
 
 1. **channel 概念落地**（对齐 ADR-004）：
    - WS `chat` 双向 body 各加 `channel: string`（游戏侧 `{channel, playerName, content}`，平台侧 `{channel, sender, content}`）——channel 是绑定表里的频道标识（如群号），由服务端绑定表决定 fan-out，对端按自己的频道映射渲染。
@@ -62,7 +62,7 @@
 
 ## 债务清偿一（DEBT-1，协议 v0.3.0，2026-09-13）
 
-> 任务书：`docs/DEBT1-PROMPT.md`。把「只有事件集的 v0.2」升级为「带鉴权、兼容协商、请求-响应族与权限模型的 v0.3.0」。
+> 任务书：`docs/history/DEBT1-PROMPT.md`。把「只有事件集的 v0.2」升级为「带鉴权、兼容协商、请求-响应族与权限模型的 v0.3.0」。
 
 1. **版本协商改兼容区间**：hello 校验从「精确相等」改为「**主版本号相同即兼容**」（0.2.0 对端可连 0.3.0 服务端；1.x 拒绝）。规则实现为协议包纯函数 `isProtocolVersionCompatible(peerVersion, serverVersion)`（解析 `^\d+\.\d+\.\d+$` 三元组比主版本；任一解析失败 = 不兼容——虽然 hello schema 已强制格式，防御性兜底）。不兼容仍走既有拒绝路径（`hello_ack ok:false` + close 1002 + reason）。`hello_ack` 回服务端实际版本（现状保持）。
 2. **未知帧容忍策略**（协商区间的安全网，WS 服务端收帧侧行为）：未识别的**请求帧**（header 带 UUID id）→ 回同 id 的 `<type>_result` 帧体 `{ok:false, error:"unknown frame type"}`，不断连；未识别的**事件帧**（无 id）→ 忽略 + debug 日志，不断连。补充规则（ADR-026）：未知 type 以 `_result` 结尾（对端回了我们不认识的响应帧）视为响应帧**不回执**、仅 debug 忽略——避免「响应回执响应」的乒乓循环。协议包为此导出**通用线格式帧 schema**（`wireFrameSchema`：`{header:{type,id?}, body:unknown}`，type 仍受 snake_case 约束）供消费方「先取 type、再分发到具体 schema」的两段式解析；容忍行为本身在 core（server.ts）实现。IPC 侧不做容忍（Java 与 Node 同仓同版发布，属 lockstep 通道，未知帧 = 版本错位 bug，保持 warn+丢弃响亮暴露）。
@@ -77,7 +77,7 @@
 
 ## MVP 阶段三（协议 v0.3.1，2026-09-13）：external 接入基座
 
-> 任务书：`docs/MVP3-PROMPT.md`。本阶段服务端补「固定端口 + 绑定地址 + 安全基线」的
+> 任务书：`docs/history/MVP3-PROMPT.md`。本阶段服务端补「固定端口 + 绑定地址 + 安全基线」的
 > external 接入能力（napukettoqq 独立部署连入）；协议变更刻意最小（patch），帧形设计
 > 落点只有一处。
 

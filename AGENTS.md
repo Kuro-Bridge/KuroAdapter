@@ -61,6 +61,7 @@ pnpm build:jar          # 全链路：TS 构建 → gradle :paper:shadowJar（�
 - **新增协议端**（如外部独立协议端）→ 在 `bridge/` 内新增包，复用 core 框架（握手/心跳/请求-响应），**不改 Java、不改 protocol**。
 - **新增平台适配**（Koishi adapter）→ 在独立仓库 koishi-plugin-kurobridge 内扩展；平台渲染（富文本/颜色码/长度收敛）只出现在那个仓库，本仓库不涉及。
 - **写代码前先更新对应包的 `docs/design.md`**，设计先行。
+- **文档归档**：阶段册（`*-PROMPT.md` / `*-NOTES.md`）收尾后移入 `docs/history/`（正文不改写，在 `history/README.md` 索引表加一行）；`docs/` 根只放活文档（STATUS / architecture / DECISIONS / config-schema / protocol/）。
 
 ## 环境
 

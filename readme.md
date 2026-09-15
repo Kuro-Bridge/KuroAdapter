@@ -29,7 +29,7 @@ kurobridge（Paper JAR，Java 薄壳）
 │   ├── protocol/     # @kurobridge/protocol：协议 zod schema SSOT
 │   ├── core/         # 业务核心 + 协议服务端（TS，平台无关）
 │   └── embedded/     # 嵌入式瘦身对端（打进 JAR，无 Koishi）
-├── docs/             # 架构书 / 决策记录 / 现状 / 协议草案
+├── docs/             # 架构书 / 决策记录 / 现状 / 协议文档 / 历史册归档（history/）
 └── sandbox/          # 运行产物（gitignore）
 
 > koishi-plugin-kurobridge（external 官方对端）在**独立仓库**开发（ADR-018）。
@@ -38,9 +38,10 @@ kurobridge（Paper JAR，Java 薄壳）
 ## 文档
 
 - [架构书](docs/architecture.md) —— 分层、进程模型、红线、工具链
-- [决策记录](docs/DECISIONS.md) —— 每项拍板的来龙去脉
-- [现状与路线](docs/STATUS.md) —— 当前进度与下一步
-- [协议草案](docs/protocol/draft-v0.1.md) —— `kurobridge-ws` 协议 v0.1
+- [决策记录](docs/DECISIONS.md) —— 每项拍板的来龙去脉（ADR-001~030）
+- [现状与路线](docs/STATUS.md) —— 当前进度、卡点、债务索引
+- [对端接入指南](docs/protocol/peer-guide.md) —— `kurobridge-ws` 0.4.0 协议端实现依据
+- [历史册归档](docs/history/README.md) —— 已完成阶段的任务书/实录索引
 
 ## 工程约定
 

@@ -44,7 +44,7 @@ src/
 
 ## 原型阶段（spike，2026-09-12）
 
-> 任务书：`docs/PROTOTYPE-PROMPT.md` §4 阶段 2。完整设计不变，本节只标注原型裁剪。
+> 任务书：`docs/history/PROTOTYPE-PROMPT.md` §4 阶段 2。完整设计不变，本节只标注原型裁剪。
 
 最小闭环（connect → hello 握手 → 心跳 → chat 收发）：
 
@@ -58,7 +58,7 @@ src/
 
 ## MVP 阶段一（2026-09-13）
 
-> 任务书：`docs/MVP1-PROMPT.md` §3 阶段 2/3。本节是动代码前的设计定稿。
+> 任务书：`docs/history/MVP1-PROMPT.md` §3 阶段 2/3。本节是动代码前的设计定稿。
 
 ### 时钟/定时器注入（阶段 2）
 
@@ -109,7 +109,7 @@ chat/broadcast 携带 channel、hello_ack 携带 channelBindings（`ServerOption
 
 ## 债务清偿二（DEBT-2，2026-09-13）：断连清理与重连一致性
 
-> 任务书：`docs/DEBT2-PROMPT.md` §1.2。范围限定：**只做清理与一致性的测试背书与补缺**，
+> 任务书：`docs/history/DEBT2-PROMPT.md` §1.2。范围限定：**只做清理与一致性的测试背书与补缺**，
 > 不重构对端模型（单/多对端能力维持现状），不做消息排队补发。
 
 ### 现状梳理（设计核对结论）
@@ -152,7 +152,7 @@ bridge/embedded 引导层（配置 → ready body）。
 
 ## 债务清偿一（DEBT-1，协议 v0.3.0，2026-09-13）
 
-> 任务书：`docs/DEBT1-PROMPT.md`。鉴权、兼容协商、query 本地作答、command 权限与透传、
+> 任务书：`docs/history/DEBT1-PROMPT.md`。鉴权、兼容协商、query 本地作答、command 权限与透传、
 > death fan-out、config_reload。协议帧形设计见 `bridge/protocol/docs/design.md` 的 DEBT-1 节。
 
 ### 鉴权 token（hello 校验）
@@ -219,7 +219,7 @@ bindings_updated）→ load 失败 error 日志、保留旧值等下次修复。
 
 ## MVP 阶段三（MVP-3，2026-09-13）：config 增 ws 监听段（SSOT 形状）
 
-> 任务书：`docs/MVP3-PROMPT.md`。WS 监听参数（host/port）是**宿主事务**（红线 2）：
+> 任务书：`docs/history/MVP3-PROMPT.md`。WS 监听参数（host/port）是**宿主事务**（红线 2）：
 > core 只提供配置形状 SSOT 与解析，消费方在 bridge/embedded 引导层；`KurobridgeServer` 与
 > `WsServer` 接口**不感知**监听参数——`start()` 返回实际端口、ready 帧照报实际端口的
 > 契约不变，本包其余零改动。
@@ -248,7 +248,7 @@ bindings_updated）→ load 失败 error 日志、保留旧值等下次修复。
 
 ## MVP 阶段四（MVP-4，2026-09-14）：config 增 embedded 段（SSOT 形状）
 
-> 任务书：`docs/MVP4-PROMPT.md`。与 ws 段同款（ADR-028 先例）：**形状 SSOT 归 core zod，
+> 任务书：`docs/history/MVP4-PROMPT.md`。与 ws 段同款（ADR-028 先例）：**形状 SSOT 归 core zod，
 > 消费方在 bridge/embedded 引导层**。本包只新增顶层可选段 `embedded` 的形状与解析，
 > 不含任何行为（拉起/守卫/QR 全在 embedded）。
 
