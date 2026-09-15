@@ -6,8 +6,9 @@
 
 ## 当前状态（2026-09-15）
 
-**JE（Paper）主链全部完成**：MVP-1~4 + 两轮债务清偿 + 品牌迁移（KuroBot → KuroBridge）。
-当前可分发形态 = `kurobridge-0.1.0.jar`（**48.5MB**，内嵌 Node 26 + napuketto CLI，开箱
+**JE（Paper）主链全部完成，真机终验已通过**：MVP-1~4 + 两轮债务清偿 + 品牌迁移
+（KuroBot → KuroBridge）+ 真机终验收官（见下节）。当前可分发形态 =
+`kurobridge-0.1.0.jar`（**48.4MB**，内嵌 Node 26 + napuketto CLI 0.1.20，开箱
 控制台扫码），协议 `kurobridge-ws` **0.4.0**（改名后唯一 breaking = 握手子协议字符串，
 帧形状零变化，ADR-030）。
 
@@ -25,31 +26,30 @@
 - **napuketto 外部契约原样**：env 名、文件名、TOML `[accounts.kurobot]` 段名、client
   自报格式均不改（RENAME-NOTES R-03 豁免清单是全仓仅存的 3 处 kurobot 字样）。
 
-## 进行中：真机终验（唯一卡点）
+## 真机终验：通过（2026-09-15 收官）
 
-沙盒侧已通：扫码 → session → 凭据落盘（`sandbox/server/plugins/kurobridge/`，
-napuketto-data 已平移，预期 quick-login 免扫码）。stub 链冒烟全过（子协议协商 + token
-鉴权 + 三子命令 + 无孤儿关停）。
+收官链五步全绿（沙盒 = 真 Paper + 真扫码 + 真群），链路证据：
 
-**卡点已解除（2026-09-15）**：NapukettoQQ 侧已发布 `@napuketto/cli` **0.1.19** /
-`@napuketto/adapter` **0.3.1**（含 kurobridge 接线 + 协议镜像对齐 `kurobridge-ws.v1` /
-0.4.0；`@kuro-bridge/protocol@0.4.0` 已发。注：0.1.18/0.3.0 因发布物泄漏 `workspace:*`
-作废）。发布物已解包实测：运行时常量为 `kurobridge-ws.v1`、依赖为真实版本号。
+- **登录与在线**（napuketto **cli 0.1.20 / loader 0.0.33**，内嵌于 JAR）：QR 扫码 →
+  `登录成功` → **`在线状态已注册（setStatus status=10）`** → `kurobot adapter started`
+  → 握手成功（platform=qq，协议 0.4.0 主版本兼容、子协议 `kurobridge-ws.v1`、token
+  鉴权）→ 25580 ESTABLISHED。
+- **双向消息实测**：`kurobridge send` → 群内收到 `[CONSOLE] 群服互通终验：服务器→群
+  方向测试`（模板渲染正确）；群消息 → **实时**广播进服（`<Oppenheymu> 测试` ×3，1s
+  间隔真推送非历史同步）。配置热重载（绑定表 `bindings_updated` 推送）与
+  `kurobridge reload` 双路径均实证。
+- **发现 H 关闭**：0.1.17 嵌包无 kurobridge 接线（`[accounts.kurobot]` 被静默忽略）→
+  0.1.19/0.1.20 接线实证（`kurobot adapter started` + 握手 + 双向）。
+- **发现 I 关闭**：napuketto 引导链从不调 `setStatus` → NT 会话半在线（可发不可收，
+  腾讯侧不推送）。修复在 NapukettoQQ 仓（`createKernelServices` 补 `setOnlineStatus`，
+  提交 d5c21ca，loader 0.0.33 发布），本仓 pin 0.1.20 重打 JAR 后入站即通。
+- **观察项（不阻塞，已记债务）**：quick-login 恒报「无历史登录账号」（每次重启需重
+  扫，登录历史落盘链待查，NapukettoQQ 侧）；hello `client` 自报裸名（发布安装树取不
+  到自身版本走退化分支，字段可选仅日志辨识）；手机端不显示「电脑」设备类型（setStatus
+  成功且推送工作，疑设备类型展示差异）。
 
-**收官链（下一步）**：
-
-1. 本仓 `bridge/embedded/package.json` pin `@napuketto/cli` 0.1.17 → **0.1.19** →
-   `pnpm build:jar` 重打包。
-2. 重启沙盒（`scripts\paper-stop.cmd` → `paper-start.cmd`）→ 预期 **quick-login 免扫码**
-   （凭据已落盘）；若回 QR 层用 `scripts\paper-qr.cmd` 重扫。
-3. 验握手：hello 自报 `client=napukettoqq/0.3.1`（对端 0.4.0 兼容连入，子协议
-   `kurobridge-ws.v1`）+ 25580 出现 ESTABLISHED。
-4. 群消息双向（用户协作）：config.json `channels` 填真群号、`admins` 加真号 →
-   `scripts\paper-cmd.cmd kurobridge reload` → 群消息进服广播 + `kurobridge send <文本>`
-   进群。
-5. 全过 → 关闭发现 H，本节改写为「终验通过」结论（终验实录口径见
-   [history/MVP4-NOTES.md](history/MVP4-NOTES.md) §6/§7 +
-   [history/RENAME-NOTES.md](history/RENAME-NOTES.md) 协作清单）。
+napuketto 外部契约原样（env 名、文件名、TOML `[accounts.kurobot]` 段名、client 配置值
+原样透传）。对端实现依据 = [`protocol/peer-guide.md`](protocol/peer-guide.md)。
 
 ## 待定事项
 
@@ -66,6 +66,7 @@ napuketto-data 已平移，预期 quick-login 免扫码）。stub 链冒烟全�
 
 | 债务 | 来源册 |
 |---|---|
+| quick-login 登录历史落盘链（恒「无历史登录账号」→ 每次重启需重扫 QR；NapukettoQQ 侧待查，疑与登录记录写回相关） | STATUS 终验节 |
 | 多平台 node 三进制矩阵（linux/macOS）+ SHASUMS 严格模式转默认 | MVP2-NOTES |
 | wine / Linux QQ 宿主（napuketto self-host 目前 Windows-only） | MVP4-NOTES |
 | 多平台构建矩阵（napuketto 嵌包按构建机平台 npm 安装） | MVP4-NOTES |

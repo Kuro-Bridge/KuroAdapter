@@ -5,7 +5,16 @@ packages:
 allowBuilds:
   esbuild: true
   lefthook: true
-# pnpm 11 的 verify-deps-before-run 预检在 monorepo 场景可能触发不必要的 reinstall，
-# 关闭预检，按需手动 pnpm install（开发工作流不受影响）。
-settings:
-  verifyDepsBeforeRun: false
+minimumReleaseAgeExclude:
+  - '@napuketto/adapter@0.3.1'
+  - '@napuketto/cli@0.1.19'
+  - '@napuketto/loader@0.0.32'
+  - '@napuketto/cli@0.1.20'
+  - '@napuketto/loader@0.0.33'
+# pnpm 11.6 实测：以下两项放 settings: 嵌套块不生效，必须顶层。
+# verifyDepsBeforeRun=false：关闭运行脚本前的依赖预检（monorepo 会触发不必要的 reinstall）。
+# trustLockfile=true：跳过对既有 lockfile 的供应链重校验——minimumReleaseAge 11 起默认
+# 1440 分钟，重校验不认 minimumReleaseAgeExclude（pnpm 自动加的白名单也被拦）；而
+# napuketto 发版后本仓总是立刻 pin，锁文件版本是显式决策，重校验只会误伤。
+verifyDepsBeforeRun: false
+trustLockfile: true

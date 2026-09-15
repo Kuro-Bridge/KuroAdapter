@@ -251,8 +251,8 @@ importers:
         specifier: workspace:*
         version: link:../protocol
       '@napuketto/cli':
-        specifier: 0.1.17
-        version: 0.1.17
+        specifier: 0.1.20
+        version: 0.1.20
       ws:
         specifier: ^8.18.0
         version: 8.21.3
@@ -557,18 +557,18 @@ packages:
   '@levimc-lse/types@2.18.7':
     resolution: {integrity: sha512-7+1VLBN6nnNdBudf11O5EabHqLMlKUZohCiphzLBfstkaIYl6WuF3aSbJWp+QnlIsD/146i9VKGyP6K9mG8/kg==}
 
-  '@napuketto/adapter@0.2.1':
-    resolution: {integrity: sha512-4qQBdoGFXJ6jdT7J34hRWnSJWwHRfK8RUT9v7kolbVPppTXlTOWpg7MEIfApr9/ryavjAMD+nirG8uHschB/+A==}
+  '@napuketto/adapter@0.3.1':
+    resolution: {integrity: sha512-NFGH6l4k04IRzNKCK+um4SYWuiOq+sJ89afMSlQrJjtQvZS2UGo1iO368UUU6lADAm4iPb9nTxI5rq4JzBajEw==}
 
-  '@napuketto/cli@0.1.17':
-    resolution: {integrity: sha512-N75LssbgSgmEWhX6y3HvcQduuBXBu1zYD4H6XOdfAXD19HNuri5j8e0CAYt4a5QmjjAW9I0wwQONaJ6+QSqW6g==}
+  '@napuketto/cli@0.1.20':
+    resolution: {integrity: sha512-jdElaJKX7nz/ZyWhJ3fZf7rMUik7Y7YWYVngAfiE4KQuGrPzHKwf163HF6SEHbOtciJYTtyWUnMYVqIyLhT2lA==}
     hasBin: true
 
   '@napuketto/kernel@0.1.1':
     resolution: {integrity: sha512-/rhhuwLpTjZxgQC/w0YnM1t6iZTEi5J0fcuIBNyAct45DqMTiEI7g7SVcMm3kbCQIF2xwt5PELy5xrvdqX2tJw==}
 
-  '@napuketto/loader@0.0.31':
-    resolution: {integrity: sha512-LFb4KoazmddTpVaAjvnqK4tvS0J/kPxYykZr2dh9CtEuraJkv2W0646P2AjYqiFG+F2l4swfuNqq6bvHDmrWOQ==}
+  '@napuketto/loader@0.0.33':
+    resolution: {integrity: sha512-HHCY/pKIFZjOFSEzpskQGra+FSUwitsMmTearolyvSCOuptmrCTP8HZzkpxwCepXJy6IK75VrdWTS4iKUNJVAw==}
 
   '@napuketto/media@0.0.4':
     resolution: {integrity: sha512-eqOKMG2t5DPNSmftdSCCv4UiNSxZhpJJE+4YChdgWk7PLinlSBjzsrcxkDHkDSkXlW+qGLnzfLXXu8JcsgfCsA==}
@@ -1965,22 +1965,23 @@ snapshots:
 
   '@levimc-lse/types@2.18.7': {}
 
-  '@napuketto/adapter@0.2.1':
+  '@napuketto/adapter@0.3.1':
     dependencies:
       '@napuketto/kernel': 0.1.1
       '@napuketto/media': 0.0.4
       '@napuketto/network': 0.0.2
+      ws: 8.21.3
       zod: 4.4.3
     transitivePeerDependencies:
       - bufferutil
       - supports-color
       - utf-8-validate
 
-  '@napuketto/cli@0.1.17':
+  '@napuketto/cli@0.1.20':
     dependencies:
-      '@napuketto/adapter': 0.2.1
+      '@napuketto/adapter': 0.3.1
       '@napuketto/kernel': 0.1.1
-      '@napuketto/loader': 0.0.31
+      '@napuketto/loader': 0.0.33
       '@napuketto/network': 0.0.2
       commander: 15.0.0
       qrcode: 1.5.4
@@ -1995,7 +1996,7 @@ snapshots:
       pino-pretty: 13.1.3
       smol-toml: 1.8.0
 
-  '@napuketto/loader@0.0.31':
+  '@napuketto/loader@0.0.33':
     dependencies:
       zod: 4.4.3
 
