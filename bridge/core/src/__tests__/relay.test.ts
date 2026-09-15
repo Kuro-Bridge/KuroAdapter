@@ -1,11 +1,11 @@
 import { PROTOCOL_VERSION } from "@kuro-bridge/protocol";
 import { describe, expect, it, vi } from "vitest";
 
-import { AdminTable } from "./business/admins.js";
-import { BindingTable } from "./business/bindings.js";
-import { ConfigError, defaultConfig, type KurobridgeConfig } from "./business/config.js";
-import { IpcRequestError, Relay } from "./relay.js";
-import { KurobridgeServer } from "./server.js";
+import { AdminTable } from "../business/admins.ts";
+import { BindingTable } from "../business/bindings.ts";
+import { ConfigError, defaultConfig, type KurobridgeConfig } from "../business/config.ts";
+import { IpcRequestError, Relay } from "../relay.ts";
+import { KurobridgeServer } from "../server.ts";
 import {
     FakeConfigStore,
     FakeIpc,
@@ -15,7 +15,7 @@ import {
     makeContext,
     manualTime,
     sequentialIdFactory,
-} from "./test-fakes.js";
+} from "../test-fakes.ts";
 
 const UUID = "123e4567-e89b-12d3-a456-426614174000";
 /** 夹具默认绑定频道（平台消息放行、游戏事件 fan-out 目标） */

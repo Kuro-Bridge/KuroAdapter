@@ -10,7 +10,7 @@ import { type AddressInfo, createServer } from "node:net";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { WebSocket } from "ws";
 
-import { NodeWsServer, WsBindError } from "./ws-server.js";
+import { NodeWsServer, WsBindError } from "../ws-server.ts";
 
 const SUBPROTOCOL = "kurobridge-ws.v1";
 

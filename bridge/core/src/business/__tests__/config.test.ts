@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { ConfigError, defaultConfig, parseConfig } from "./config.js";
+import { ConfigError, defaultConfig, parseConfig } from "../config.ts";
 
 describe("parseConfig", () => {
     it("合法配置通过并去重保序（channels 与 admins 各自去重）", () => {

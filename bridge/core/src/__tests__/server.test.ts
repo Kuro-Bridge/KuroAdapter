@@ -1,14 +1,14 @@
 import { PROTOCOL_VERSION } from "@kuro-bridge/protocol";
 import { describe, expect, it } from "vitest";
 
-import { KurobridgeServer, type ServerTimeouts } from "./server.js";
+import { KurobridgeServer, type ServerTimeouts } from "../server.ts";
 import {
     FakeLogger,
     FakeWsConnection,
     FakeWsServer,
     makeContext,
     manualTime,
-} from "./test-fakes.js";
+} from "../test-fakes.ts";
 
 const UUID = "123e4567-e89b-12d3-a456-426614174000";
 const CHANNELS = ["10001", "10002"];

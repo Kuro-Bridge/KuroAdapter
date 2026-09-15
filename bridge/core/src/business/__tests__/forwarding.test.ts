@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { gameEventChannels, platformChatTarget } from "./forwarding.js";
+import { gameEventChannels, platformChatTarget } from "../forwarding.ts";
 
 describe("platformChatTarget（平台 → 游戏过滤）", () => {
     it("绑定频道 → 原样放行", () => {

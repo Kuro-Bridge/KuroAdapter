@@ -5,7 +5,7 @@ import { join } from "node:path";
 import type { Logger } from "@kuro-bridge/bridge-core";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { startQrWatcher } from "./qr-watcher.js";
+import { startQrWatcher } from "../qr-watcher.ts";
 
 const dirs: string[] = [];
 const logs: Array<{ level: string; message: string }> = [];

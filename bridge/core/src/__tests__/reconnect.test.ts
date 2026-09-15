@@ -1,10 +1,10 @@
 import { PROTOCOL_VERSION } from "@kuro-bridge/protocol";
 import { describe, expect, it } from "vitest";
-import { AdminTable } from "./business/admins.js";
-import { BindingTable } from "./business/bindings.js";
-import { defaultConfig, type KurobridgeConfig } from "./business/config.js";
-import { Relay } from "./relay.js";
-import { KurobridgeServer } from "./server.js";
+import { AdminTable } from "../business/admins.ts";
+import { BindingTable } from "../business/bindings.ts";
+import { defaultConfig, type KurobridgeConfig } from "../business/config.ts";
+import { Relay } from "../relay.ts";
+import { KurobridgeServer } from "../server.ts";
 import {
     FakeConfigStore,
     FakeIpc,
@@ -14,7 +14,7 @@ import {
     makeContext,
     manualTime,
     sequentialIdFactory,
-} from "./test-fakes.js";
+} from "../test-fakes.ts";
 
 /**
  * 断连清理与重连一致性（DEBT-2）：对端断开 → 资源清理 → 重连 → 重新握手 → 双向恢复。

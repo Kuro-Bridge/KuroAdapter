@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { BindingTable } from "./bindings.js";
+import { BindingTable } from "../bindings.ts";
 
 describe("BindingTable", () => {
     it("构造去重保序；channels 返回副本（外部修改不影响内部）", () => {

@@ -11,7 +11,7 @@ import {
     type NapukettoDeps,
     spawnNapuketto,
     type UnexpectedExit,
-} from "./napuketto.js";
+} from "../napuketto.ts";
 
 interface RecordedSpawn {
     command: string;

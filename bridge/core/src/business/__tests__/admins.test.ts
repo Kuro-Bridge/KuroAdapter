@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { AdminTable } from "./admins.js";
-import type { AdminMapping } from "./config.js";
+import { AdminTable } from "../admins.ts";
+import type { AdminMapping } from "../config.ts";
 
 const MAPPING: AdminMapping[] = [
     { channel: "10001", users: ["alice", "bob"] },
