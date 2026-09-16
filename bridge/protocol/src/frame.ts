@@ -1,6 +1,6 @@
 /**
- * 帧格式：线格式 `{ header: { type, id? }, body }`（draft 见 docs/history/draft-v0.1.md §1，
- * 逐帧字段表见 docs/protocol/peer-guide.md §2）。
+ * 帧格式：线格式 `{ header: { type, id? }, body }`（draft 见主仓 KuroAdapter docs/history/draft-v0.1.md §1，
+ * 逐帧字段表见 docs/peer-guide.md §2）。
  *
  * WS 与 IPC 复用同一帧结构（决策 D-04）。解析后 transform 为**扁平消息**
  * `{ type, id?, body }`（决策 D-11）：TS 无法对嵌套判别（obj.header.type）收窄，
