@@ -272,3 +272,34 @@
   对端自报 `client = "napukettoqq/..."`；`@napuketto/*` 包名与 pin（0.1.17，版本变化归联动册）。
 - **版本策略**：protocol 包 workspace 版本 0.0.0 机制不动；对外版本 SSOT = `meta.ts`
   PROTOCOL_VERSION（0.4.0 待用户在 npm org 建立后发布，协作清单）。
+
+## ADR-031 协议 SSOT 移交 KuroProtocol：仓内副本冻结为只读镜像（2026-09-16）
+
+> 完整决策档案（问题全景、方案对比、事故记录、阶段 2 命令清单）在姊妹仓
+> **KuroProtocol** `docs/DECISIONS.md` ADR-001；本条记录主仓侧的决策与执行。
+
+- **背景**：2026-09-15 拆仓后本仓文档仍自称 `bridge/protocol` 为协议 SSOT（本文件 ADR-008/030
+  的历史口径），与根 README、KuroProtocol、KuroAdapter-Pure 的指认冲突；且 npm
+  `@kuro-bridge/protocol@0.1.0`（2026-09-15）实际从本仓副本发布，包版本轴与内嵌协议版本
+  （0.4.0）错位、exports 缺 require（对端被迫 alwaysBundle 绕行）——「唯一来源」名存实亡。
+- **选项**：立删副本改 npm 依赖（被发布条件阻塞）／立删改 `link:` 跨仓路径（耦合放大）／
+  **冻结副本为只读镜像 + 一致性门禁**／只改文档（无效）。论证见 KuroProtocol ADR-001。
+- **结论**：
+  1. **协议 SSOT = 姊妹仓 KuroProtocol**（`src/` zod schema；版本 SSOT = 其 `src/meta.ts`）。
+     本仓 `bridge/protocol/` 冻结为**只读镜像**：镜像范围 = src/ 下 8 个 TS 文件，须与
+     KuroProtocol/src 字节级一致，由 `pnpm check:protocol`（lefthook pre-commit）强制。
+     协议演进的唯一合法路径 = KuroProtocol 四件套同改（schema + peer-guide + fixtures +
+     changelog）→ 同步本仓镜像 → 门禁绿。本仓 ADR-008/030 中「SSOT 在本仓」的历史口径
+     以本条为准（历史条目不改写）。
+  2. 悬案处置：工作区遗留的未提交 bump（0.0.0 → 0.1.0，npm 0.1.0 发布产物）回滚 **0.0.0**
+     并加 `private: true`——镜像包版本退出所有版本轴，发布通道封死（发布只能从 KuroProtocol 出）。
+  3. `docs/protocol/peer-guide.md` 退位为迁移指针（权威 = KuroProtocol/docs/peer-guide.md），
+     正文不再于本仓维护（原正文停留 0.3.1 时点且版本行漂移）。
+  4. 阶段 2（待办）：KuroProtocol 发布 0.4.0 + deprecate npm 0.1.0 后，删除本仓镜像与门禁，
+     `bridge/core` / `bridge/embedded` / `platforms/be/lse` 三消费方由 `workspace:*` 切
+     `^0.4.0`（命令清单见 KuroProtocol ADR-001；ADR-018 的「依赖发布版本」原则由此补全）。
+- **理由**：单点权威唯一可编辑来源需要机械强制而非口头声明；镜像冻结保留构建链零改动
+  （workspace 解析、esbuild/tsdown 顺序全不动），门禁把「在主仓改协议」从惯例违规变成
+  pre-commit 红灯。
+- **回退条件**：阶段 2 完成前若 KuroProtocol 工作区形态解除（如 CI 需要单仓自包含），
+  可回退本 ADR（revert 对应提交，恢复副本为权威）；阶段 2 完成后回退无意义。
