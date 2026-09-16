@@ -1,7 +1,8 @@
 {
     "name": "@kuro-bridge/protocol",
     "version": "0.0.0",
-    "description": "kurobridge-ws 协议 zod schema SSOT（唯一消息类型来源）",
+    "private": true,
+    "description": "KuroProtocol 仓 src/ 的只读镜像（协议 SSOT 在姊妹仓 KuroProtocol；禁止从本仓发布，见 ADR-031）",
     "type": "module",
     "files": [
         "dist"
