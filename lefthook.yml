@@ -11,3 +11,7 @@ pre-commit:
             run: pnpm check
         test:
             run: pnpm test
+        # 协议镜像一致性（ADR-031）：bridge/protocol/src 必须与姊妹仓 KuroProtocol/src 字节级一致；
+        # 协议演进只能改 KuroProtocol（四件套同改）再同步镜像，直接改本仓一侧在此拦下。
+        check-protocol:
+            run: pnpm check:protocol

@@ -18,6 +18,7 @@
         "lint": "biome lint .",
         "format": "biome format --write .",
         "check": "biome check . && tsc --noEmit",
+        "check:protocol": "node scripts/check-protocol-mirror.mjs",
         "fix": "biome check --write . && tsc --noEmit",
         "test": "vitest run",
         "test:watch": "vitest",
