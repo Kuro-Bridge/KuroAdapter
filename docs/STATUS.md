@@ -9,15 +9,17 @@
 **JE（Paper）主链全部完成，真机终验已通过**：MVP-1~4 + 两轮债务清偿 + 品牌迁移
 （KuroBot → KuroBridge）+ 真机终验收官（见下节）。当前可分发形态 =
 `kurobridge-0.1.0.jar`（**48.4MB**，内嵌 Node 26 + napuketto CLI 0.1.20，开箱
-控制台扫码），协议 `kurobridge-ws` **0.4.0**（改名后唯一 breaking = 握手子协议字符串，
-帧形状零变化，ADR-030）。
+控制台扫码），协议 `kurobridge-ws`（版本 SSOT = 姊妹仓 KuroProtocol 的 `src/meta.ts`；
+改名后唯一 breaking = 握手子协议字符串，帧形状零变化，ADR-030；本仓协议副本已冻结为
+只读镜像，ADR-031）。
 
 - **embedded 形态**（MVP-4，ADR-029）：进程树 `Java → node → napuketto CLI(supervisor) →
   boot → self-host`（最深四层）全链实证；QR 文件交接 + `kurobridge qr` 子命令；崩溃看护
   （1s/5s/15s 退避重启、10 分钟窗 3 次失败放弃）；config 顶层 `embedded` / `ws` 段
   （形状 SSOT 归 core zod，ADR-028）。
 - **external 形态**（MVP-3）：固定端口 + 绑定地址 + token 鉴权（close 1008）+ 主版本
-  兼容区间协商 + 未知帧容忍；外部协议端实现依据 = [`protocol/peer-guide.md`](protocol/peer-guide.md)。
+  兼容区间协商 + 未知帧容忍；外部协议端实现依据 = KuroProtocol 仓的 peer-guide
+  （[`protocol/peer-guide.md`](protocol/peer-guide.md) 为迁移指针，ADR-031）。
 - **业务面**（DEBT-1）：绑定表 / 转发规则（按频道 fan-out）/ 群管理员映射 / WS command
   透传执行 / query 本地作答 / death / 配置热重载（`kurobridge reload`）/ 白名单 SSOT =
   MC 原生 whitelist。
@@ -49,12 +51,16 @@
   成功且推送工作，疑设备类型展示差异）。
 
 napuketto 外部契约原样（env 名、文件名、TOML `[accounts.kurobot]` 段名、client 配置值
-原样透传）。对端实现依据 = [`protocol/peer-guide.md`](protocol/peer-guide.md)。
+原样透传）。对端实现依据 = KuroProtocol 仓 peer-guide（本仓 `protocol/peer-guide.md` 为迁移指针）。
 
 ## 待定事项
 
+- **协议依赖切换（阶段 2，ADR-031）**：KuroProtocol 发布 `@kuro-bridge/protocol@0.4.0` +
+  deprecate npm 0.1.0（误发旧线，2026-09-15）后，删除本仓 `bridge/protocol` 镜像与门禁，
+  三消费方（core / embedded / lse）`workspace:*` → `^0.4.0`。命令清单见
+  KuroProtocol `docs/DECISIONS.md` ADR-001（需账号操作，用户执行）。
 - koishi-plugin-kurobridge 独立仓库（ADR-018）：官方参考对端 + 平台渲染唯一归属，
-  JE 闭环后启动（Koishi v4 基线）。
+  JE 闭环后启动（Koishi v4 基线）；其协议依赖 `^0.1.0` 亦待切 `^0.4.0`（上游协作）。
 - `platforms/be` 家族骨架已建：`lse/`（TS，复用 bridge/core，QuickJS 可跑是硬约束）、
   `endstone/`（C++ 薄壳预留），实现排期在 JE 闭环后。
 - `platforms/je` 的 fabric/neoforge/velocity 为预留骨架，接入对应服务端 API 后启用

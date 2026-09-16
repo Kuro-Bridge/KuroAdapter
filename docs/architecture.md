@@ -61,7 +61,7 @@ flowchart LR
 ## 4. 分层与依赖方向
 
 ```
-bridge/protocol（@kurobridge/protocol）   zod schema SSOT，零框架依赖
+bridge/protocol（@kuro-bridge/protocol）   zod schema，KuroProtocol 的只读镜像（ADR-031），零框架依赖
    ↑
 bridge/core     业务核心 + 协议服务端；零 Node API、零框架（平台无关）
    ↑                    ↑
@@ -120,7 +120,7 @@ kurobridge/
 │           ├── CMakeLists.txt
 │           └── src/main.cpp # 占位入口
 ├── bridge/
-│   ├── protocol/            # @kurobridge/protocol：zod schema SSOT
+│   ├── protocol/            # @kuro-bridge/protocol：zod schema（KuroProtocol 只读镜像，ADR-031）
 │   ├── core/                # @kurobridge/bridge-core（平台无关）
 │   └── embedded/            # 嵌入式瘦身对端（esbuild 单文件，打进 JAR）
 ├── scripts/                 # 构建/工具脚本：embed.ts（嵌入式打包）/ build-jar.mjs（跨壳全链路）/
@@ -136,7 +136,7 @@ kurobridge/
 
 | 模块 | 语言 | 关键依赖 | 构建 | 测试 |
 |---|---|---|---|---|
-| `bridge/protocol` | TS | zod（SSOT） | tsdown | vitest |
+| `bridge/protocol` | TS | zod（KuroProtocol 的只读镜像） | tsdown | vitest |
 | `bridge/core` | TS | zod；零框架零 Node API | tsdown | vitest（+ fast-check，二期） |
 | `bridge/embedded` | TS | 无框架 | esbuild 单文件 | 集成测试（起真 WS server） |
 | `platforms/je` | Java 21 字节码（工具链 25，target 21） | Paper API（compileOnly）+ Jackson | Gradle shadowJar | JUnit 5（IPC 编解码 + 进程生命周期） |
@@ -147,7 +147,7 @@ kurobridge/
 **苛刻度（对齐 NapukettoQQ）**：
 - **TS 侧**：直接沿用 Napuketto 的 biome.json + tsconfig（`erasableSyntaxOnly`、`exactOptionalPropertyTypes`、`noUncheckedIndexedAccess`、`noFloatingPromises`、`noExcessiveCognitiveComplexity(15)`、`useNamingConvention`、`useErrorMessage`、organizeImports 全保留）。一份 biome 配置管 bridge/ + platforms/be/。
 - **Java 侧（第一版）**：`-Xlint:all -Werror` + Spotless(Palantir) + JUnit 5 + JaCoCo 存在性门禁（行 ≥60%）。**Error Prone / NullAway 第一版不上**（ADR-011），薄壳定型后再评估。
-- **协议防漂移门禁**：消息类型只能 import `@kurobridge/protocol`（lint 规则强制）；改 schema 不更新消费方 → `pnpm check` 红。
+- **协议防漂移门禁**：消息类型只能 import `@kuro-bridge/protocol`（lint 规则强制）；改 schema 不更新消费方 → `pnpm check` 红。**镜像一致性门禁**（ADR-031）：`pnpm check:protocol`（pre-commit 同款）校验 `bridge/protocol/src` 与姊妹仓 KuroProtocol/src 字节级一致——协议演进只能在 KuroProtocol 四件套同改再同步镜像。
 
 ## 9. 嵌入式打包要点（沿用 Napuketto 许可证方案，MVP-4 实况）
 
@@ -166,9 +166,11 @@ kurobridge/
 
 ## 10. 协议
 
-现行协议（`kurobridge-ws` **0.4.0**）的语义与逐帧字段表 SSOT：
-[`docs/protocol/peer-guide.md`](protocol/peer-guide.md)（对端实现依据，对照 zod 现源）；
-schema 本体在 `bridge/protocol/src/`。最早设想见 [history/draft-v0.1.md](history/draft-v0.1.md)（停在 v0.2，仅供考古）。
+协议契约（`kurobridge-ws`）的权威来源在**姊妹仓 KuroProtocol**（ADR-031）：语义与逐帧字段表 SSOT =
+其 `docs/peer-guide.md`（跨仓库契约）；schema 本体与版本 SSOT = 其 `src/`（当前版本以
+`KuroProtocol/src/meta.ts` 的 `PROTOCOL_VERSION` 为准，版本演进见其 `docs/changelog.md`）。
+本仓 `bridge/protocol/src/` 为只读镜像（`pnpm check:protocol` 门禁校验一致），
+`docs/protocol/peer-guide.md` 已退位为迁移指针。最早设想见 [history/draft-v0.1.md](history/draft-v0.1.md)（停在 v0.2，仅供考古）。
 
 要点：WS 子协议 `Sec-WebSocket-Protocol: kurobridge-ws.v1`（大版本，握手期拒绝不兼容对端）
 + `hello.protocolVersion` 主版本兼容区间协商（0.2.x 可连 0.3.x/0.4.0 服务端，1.x 拒绝，

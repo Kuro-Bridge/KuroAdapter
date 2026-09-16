@@ -11,13 +11,18 @@ KuroBridge：MC 服务器 ↔ 社交平台群服互通插件。Paper JAR + 内�
 1. **许可证 MIT，全自研**。参考 HuHoBot 只借鉴思路（业务在机器人侧、自定义 WS 协议、UUID 请求-响应），**不复制其代码**（GPL-3.0 与 MIT 不兼容）。闭源件（`wrapper.node`）运行期发现拷贝，不进 JAR。
 2. **业务核心在 Node（TS）侧**：绑定/白名单/权限/转发规则等业务逻辑属于 `bridge/core`，**Java 薄壳不做业务**，只做 Bukkit 桥接（事件/命令/权限/广播/executeCommand/进程管理）。
 3. **`bridge/core` 平台无关**：禁止使用任何 Node API（含 `ws`、`process`、`fs`、`pino`），传输层抽象为可注入接口（`WsServer/WsClient`、`Logger`），target ES2020，保证 QuickJS（LSE）也能跑。logger 通过依赖注入提供，不直接依赖具体实现。
-4. **协议 SSOT 唯一**：`bridge/protocol` 的 zod schema（`@kurobridge/protocol`）是消息类型的唯一来源，**任何文件禁止手写消息类型**，必须 `import { ... } from "@kurobridge/protocol"`。`docs/protocol/` 只放说明文档。
+4. **协议 SSOT 在姊妹仓 KuroProtocol**（ADR-031）：zod schema 的唯一可编辑来源是
+   `KuroProtocol/src/`（发布名 `@kuro-bridge/protocol`，版本 SSOT = 其 `src/meta.ts`）。
+   本仓 `bridge/protocol/` 是其**只读镜像**（`pnpm check:protocol` 字节级校验，挂 pre-commit）——
+   协议演进只能在 KuroProtocol 四件套同改（schema + peer-guide + fixtures + changelog）再同步镜像。
+   任何文件禁止手写消息类型，必须 `import { ... } from "@kuro-bridge/protocol"`。
+   `docs/protocol/` 只放说明文档（peer-guide 已退位为迁移指针）。
 5. **kurobridge 永远是 WS 服务端角色**：对端主动连入；只认 `kurobridge-ws` 协议，不关心对端是谁。embedded / external 只是打包差异，不是架构差异。
 6. **不采用 OneBot 11**：方向不匹配（OneBot 是「机器人→QQ」，群服互通是「服务器↔群」）。
 7. **依赖方向**（只允许向下依赖）：
 
    ```
-   bridge/protocol（@kurobridge/protocol）   zod 纯 schema，零框架依赖
+   bridge/protocol（@kuro-bridge/protocol）   zod schema，KuroProtocol 的只读镜像，零框架依赖
    bridge/core    依赖 protocol；零 Node API、零框架
    bridge/embedded  依赖 core + protocol；esbuild 单文件
    platforms/je   Gradle 多模块：:core（IPC/进程管理，零 Bukkit API）+ :paper（Paper 适配，compileOnly）；不含协议逻辑
@@ -34,6 +39,7 @@ KuroBridge：MC 服务器 ↔ 社交平台群服互通插件。Paper JAR + 内�
 ```bash
 pnpm install            # 安装依赖
 pnpm check              # biome check + tsc --noEmit（提交前必跑）
+pnpm check:protocol     # 协议镜像门禁：bridge/protocol/src ≡ KuroProtocol/src（ADR-031，pre-commit 同款）
 pnpm fix                # biome 自动修复 + tsc
 pnpm test               # vitest run（TS 侧）
 pnpm -r build           # TS 全量构建（tsdown / esbuild）
@@ -58,7 +64,7 @@ pnpm build:jar          # 全链路：TS 构建 → gradle :paper:shadowJar（�
 
 - **一个模块一个模块实现**：开工前先读 `docs/STATUS.md` 与 `docs/architecture.md`、对应包的 `docs/design.md`，按其中的「实现顺序」推进，不跨模块跳跃；每完成一个模块跑一次 `pnpm check`。
 - **core 无全局单例**：logger / connection / state 等都是实例化对象，由 `CoreContext` 持有——多连接多进程场景每份独立，避免状态污染。
-- **新增协议端**（如外部独立协议端）→ 在 `bridge/` 内新增包，复用 core 框架（握手/心跳/请求-响应），**不改 Java、不改 protocol**。
+- **新增协议端**（如外部独立协议端）→ 在 `bridge/` 内新增包，复用 core 框架（握手/心跳/请求-响应），**不改 Java、不改 protocol 镜像**（协议演进的唯一路径是 KuroProtocol 仓四件套同改，ADR-031）。
 - **新增平台适配**（Koishi adapter）→ 在独立仓库 koishi-plugin-kurobridge 内扩展；平台渲染（富文本/颜色码/长度收敛）只出现在那个仓库，本仓库不涉及。
 - **写代码前先更新对应包的 `docs/design.md`**，设计先行。
 - **文档归档**：阶段册（`*-PROMPT.md` / `*-NOTES.md`）收尾后移入 `docs/history/`（正文不改写，在 `history/README.md` 索引表加一行）；`docs/` 根只放活文档（STATUS / architecture / DECISIONS / config-schema / protocol/）。

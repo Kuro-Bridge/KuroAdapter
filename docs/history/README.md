@@ -30,6 +30,8 @@
 [kurobridge-ws 协议草案](draft-v0.1.md)不是阶段册，是最早的协议设计说明（v0.1 设想 +
 原型 §5 + v0.2 §6 增量，**停在 2026-09-13，未随 0.3.x/0.4.0 演进**）。仅供考古：
 
-- 现行协议语义与逐帧字段表 SSOT → [`../protocol/peer-guide.md`](../protocol/peer-guide.md)（对端视角，对照 zod 现源）。
-- 协议 schema 与版本史 → `bridge/protocol/src/`（zod SSOT，`meta.ts` 含 0.4.0 版本史注释）。
+- 现行协议语义与逐帧字段表 SSOT → 姊妹仓 KuroProtocol 的 `docs/peer-guide.md`
+  （本仓 [`../protocol/peer-guide.md`](../protocol/peer-guide.md) 已退位为迁移指针，ADR-031）。
+- 协议 schema 与版本史 → KuroProtocol 仓 `src/`（zod SSOT；版本演进见其 `docs/changelog.md`；
+  本仓 `bridge/protocol/src/` 为只读镜像）。
 - ADR-023/025 引用的「§5.1 单程握手」等语义条目仍以本草案 §5 为准（历史文本）。
