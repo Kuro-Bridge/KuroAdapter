@@ -2,7 +2,7 @@
 
 > 开始任何工作前先读本文 → `architecture.md`（架构书）→ 对应包 `docs/design.md`。
 > 本文只讲「现在」；阶段史（原型 → MVP-1~4 → DEBT-1/2 → 改名）的任务书/实录全在
-> [`history/`](history/README.md)，拍板依据在 [`DECISIONS.md`](DECISIONS.md)（ADR-001~030）。
+> [`history/`](history/README.md)，拍板依据在 [`DECISIONS.md`](DECISIONS.md)（ADR-001~031）。
 
 ## 当前状态（2026-09-15）
 
@@ -79,7 +79,7 @@ napuketto 外部契约原样（env 名、文件名、TOML `[accounts.kurobot]` �
 | msgContinue/msgEnd 流式回报 | DEBT1-NOTES |
 | status 周期上报（当前事件驱动：join/quit 时机推送） | MVP1-NOTES M-04 |
 | serverId 多实例互联 | DEBT1-NOTES |
-| TLS/wss 直连（当前官方建议 = 隧道部署，见 peer-guide §8） | MVP3-NOTES |
+| TLS/wss 直连（当前官方建议 = 隧道部署，见 KuroProtocol peer-guide §8） | MVP3-NOTES |
 | 看护器窗口参数可配置化（现写死 10 分钟窗/3 次） | DEBT2-NOTES |
 | JAR 体积优化（LZMA/分层下载）、运行期升级提示 | MVP2-NOTES |
 | vanilla 命令输出捕获窗口语义（log4j 主线程窗口，并发混行理论风险） | DEBT1-NOTES 小债 |

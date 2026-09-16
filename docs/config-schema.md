@@ -47,7 +47,8 @@ Node 子进程异常退出后是否由 Java 看护器自动重启（1s/5s/15s �
 ### `ws: object`（可选，MVP-3 引入）
 
 WS 监听段：external 协议端（如独立部署的 napukettoqq）的连入点。**整段缺省 = 动态端口 +
-监听全部接口**（内嵌形态现状不变）；对端接入实现依据见 `docs/protocol/peer-guide.md`。
+监听全部接口**（内嵌形态现状不变）；对端接入实现依据见 KuroProtocol 仓 peer-guide
+（本仓 `docs/protocol/peer-guide.md` 为迁移指针，ADR-031）。
 
 - `port: number`（可选，1-65535 整数）：固定监听端口。external 部署**必须配置**（否则
   动态端口无从连入）；建议避开 25565（MC）与 25575（RCON）。

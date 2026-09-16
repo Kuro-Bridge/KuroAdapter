@@ -12,7 +12,8 @@ import java.util.UUID;
 
 /**
  * IPC 帧编解码器：线格式 {@code {"header":{"type":"...","id":"...?"},"body":{...}}}，
- * 与 bridge/protocol 的 zod schema 逐字段一致（帧格式 SSOT 的 Java 侧镜像，一个字节不改）。
+ * 与协议 zod schema（SSOT 在姊妹仓 KuroProtocol，本仓 bridge/protocol 为只读镜像，ADR-031）
+ * 逐字段一致（Java 侧镜像，一个字节不改）。
  *
  * <ul>
  *   <li>出帧（Java→Node）：game_chat / player_join / player_quit / player_death / status /

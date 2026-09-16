@@ -101,7 +101,7 @@ kurobridge/
 ├── biome.json / tsconfig.json / vitest.config.ts / .editorconfig   # 对齐 NapukettoQQ
 ├── docs/
 │   ├── architecture.md（本文）/ DECISIONS.md / STATUS.md / config-schema.md
-│   ├── protocol/            # 协议说明文档（对端实现依据 peer-guide.md）
+│   ├── protocol/            # 协议说明文档（peer-guide.md 已退位为迁移指针，权威在 KuroProtocol，ADR-031）
 │   └── history/             # 已完成阶段的任务书/实录归档（正文不改写，索引见其 README.md）
 ├── platforms/
 │   ├── je/                  # Java 交付物根（Gradle 多模块：一个服务端 = 一个模块，ADR-019）

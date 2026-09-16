@@ -1,10 +1,16 @@
-# bridge/protocol 设计（@kurobridge/protocol）
+# bridge/protocol 设计（@kuro-bridge/protocol）
 
 > 本文件是包级设计文档（AGENTS.md：写代码前先更新对应包的 `docs/design.md`，设计先行）。
+>
+> **镜像声明（ADR-031，2026-09-16）**：本包已冻结为姊妹仓 **KuroProtocol** `src/` 的只读镜像
+> （`pnpm check:protocol` 字节级校验）。协议设计文档与演进记录的权威 = KuroProtocol 的
+> `docs/design.md` 与 `docs/changelog.md`；本文是平移时点的历史快照（正文保留不改写），仅供
+> 本仓考古参考，不再随协议演进更新。
 
 ## 职责
 
-`kurobridge-ws` 协议消息类型的 **zod schema SSOT**（ADR-008）。全项目唯一的消息类型来源，任何文件禁止手写消息类型。
+`kurobridge-ws` 协议消息类型的 zod schema（**KuroProtocol `src/` 的唯一可编辑来源在本仓的只读镜像**，
+ADR-031；历史口径见 ADR-008）。任何文件禁止手写消息类型，必须 `import { ... } from "@kuro-bridge/protocol"`。
 
 ## 约束
 

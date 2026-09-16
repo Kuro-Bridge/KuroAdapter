@@ -40,7 +40,7 @@ src/
 
 ## 依赖
 
-- `@kurobridge/protocol`（workspace:*）——消息 schema SSOT。
+- `@kuro-bridge/protocol`（workspace:*）——协议 schema（KuroProtocol 的只读镜像，ADR-031）。
 
 ## 原型阶段（spike，2026-09-12）
 
