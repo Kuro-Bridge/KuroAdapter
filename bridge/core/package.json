@@ -3,6 +3,7 @@
     "version": "0.0.0",
     "description": "kurobridge 业务核心 + kurobridge-ws 协议服务端（平台无关，零 Node API）",
     "type": "module",
+    "private": true,
     "files": [
         "dist"
     ],

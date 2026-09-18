@@ -1,8 +1,9 @@
 {
     "name": "@kuro-bridge/bridge-embedded",
-    "version": "0.0.0",
+    "version": "0.1.0",
     "description": "嵌入式瘦身对端：内嵌 napukettoqq 协议端，esbuild 单文件打进 JAR",
     "type": "module",
+    "private": true,
     "files": [
         "dist"
     ],
