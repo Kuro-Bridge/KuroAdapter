@@ -1,8 +1,9 @@
 # KuroBridge CI（ADR-032：恢复 CI，TS + Java 双 job）
 #
-# 结构与本地开发链的同构关系：
-# - ts job   = 本地 pre-commit 同构链（pnpm check / test / -r build / check:protocol，
-#              check 链含 lse 独立 typecheck 与 docs 门禁，见根 package.json）；
+# 结构与本地开发链的同构关系（ADR-035）：
+# - ts job   = 本地 pre-commit 同构链（pnpm check / test）；check 链自含 build 前置
+#              （pnpm -r build 为首环，后续全部静态校验在构建发布面 exports.types →
+#              dist d.ts 上进行，fresh clone 直接 pnpm check 自足全绿，见根 package.json）；
 # - java job = Java 侧回归（platforms/je 的 ./gradlew build：:core 全部 JUnit 用例、
 #              Spotless、-Xlint:all -Werror）。此前 Java 回归不在任何自动化链，CI 起补位。
 #
@@ -60,8 +61,8 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       # 与本地 pre-commit（lefthook）完全同构的一条命令链，无第二权威（ADR-032）
-      - name: 门禁链（check → test → build → check:protocol）
-        run: pnpm check && pnpm test && pnpm -r build && pnpm check:protocol
+      - name: 门禁链（check 链自含 build 前置 → test，ADR-035）
+        run: pnpm check && pnpm test
 
   java:
     name: Java（platforms/je gradle build 回归）

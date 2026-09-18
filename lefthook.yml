@@ -5,9 +5,12 @@
 # 直接跑根脚本，本规模全量检查开销可忽略（~1s），可靠性优先。
 # check 链（pnpm check）已含 lse 独立 typecheck 与 docs 门禁（口径 + 死链，check:docs），
 # 因此本文件无需单列条目——新门禁经 check 单一入口自动进入 pre-commit（ADR-032）。
+# 串行（parallel: false，ADR-035）：check 首环 pnpm -r build 会清空重建 **/dist，
+# 与 test 并行时 vitest 解析 exports → dist 会撞上清空窗口（Failed to resolve entry），
+# 串行后链序 = check（自含 build）→ test → check-protocol，与 CI ts job 门禁同序。
 
 pre-commit:
-    parallel: true
+    parallel: false
     commands:
         check:
             run: pnpm check
