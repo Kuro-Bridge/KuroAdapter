@@ -303,3 +303,86 @@
   pre-commit 红灯。
 - **回退条件**：阶段 2 完成前若 KuroProtocol 工作区形态解除（如 CI 需要单仓自包含），
   可回退本 ADR（revert 对应提交，恢复副本为权威）；阶段 2 完成后回退无意义。
+
+## ADR-032 恢复 CI：TS + Java 双 job（2026-09-18）
+
+- **背景**：ADR-017 剔除 CI 的前提（单人单机、本地命令与 CI 内容一致）已不成立：全部
+  门禁只存在于开发者本机的 lefthook pre-commit——换机、漏装 hook 或 `--no-verify` 即
+  裸奔；`gradlew build`（Java 侧回归）不在任何自动化链，TS 门禁对 Java 回归不可见；
+  `platforms/be/lse` 有独立 tsconfig 但没有任何脚本对它跑 typecheck。姊妹仓
+  KuroProtocol 已立同构 CI（2026-09-17），满足 ADR-017 的回退条件（需要干净机器构建
+  验证 / 并行长程开发）。
+- **结论**：新增 `.github/workflows/ci.yml`，双 job：
+  1. **ts job**：检出本仓 + **姊妹仓 KuroProtocol 为兄弟目录**（`check-protocol-mirror.mjs`
+     以 `../KuroProtocol` 定位 SSOT；两仓均 public，免 token）→ `pnpm install
+     --frozen-lockfile` → `pnpm check && pnpm test && pnpm -r build && pnpm check:protocol`
+     （与本地 pre-commit 同构；check 链含 lse typecheck 与 docs 门禁）。
+  2. **java job**：检出本仓 → mise（root `mise.toml`：java 25 / node 26）→ `platforms/je`
+     下 `./gradlew build`（含 `:core` 全部 JUnit 用例、Spotless、`-Xlint:all -Werror`）。
+     Java 回归从此对全仓门禁可见。
+- **语义注记**：CI 对 KuroProtocol 取其默认分支 HEAD——上游协议演进而镜像未同步时 CI
+  变红**属预期**（与本地 pre-commit 同语义：红 = 提醒按 KuroProtocol
+  `docs/MIRROR-RESYNC.md` 同步镜像），不是误报。
+- **理由**：门禁的价值在不可绕过；pre-commit 是约定级，CI 是机器级。本仓门禁口径
+  （ADR-031 起）是「一条命令 + 处处同构」，CI 复用同一命令链而非另立脚本，无第二权威。
+- **回退条件**：删 workflow 文件即回到 ADR-017 状态。
+
+## ADR-033 封死 bridge/core 与 bridge/embedded 的 npm 发布通道（2026-09-18）
+
+- **背景**：ADR-031 的悬案处置只封了 protocol 包（版本回滚 0.0.0 + `private: true`）。
+  `bridge/core` / `bridge/embedded` 的 package.json **无 `private`**——`npm publish` 通道
+  敞开，且两包版本轴停留在无维护语义的 0.0.0。本仓对外分发面唯一 = Paper JAR（embed
+  打包）+ 协议 npm（只从 KuroProtocol 出）；core/embedded 若被误发，将复刻 0.1.0 误发
+  事故（ADR-031 背景）并制造第二分发面。
+- **选项**：加 `private: true` 封死 / 维持现状作为未来消费伏笔 / 正式发布维护。
+- **结论**：两包 package.json 加 `"private": true`（对齐根包与 `platforms/be/lse` 根包
+  的既有做法，ADR-030）。
+- **理由**：敞开的发布通道是事故面不是能力——决策可逆（新 ADR 推翻本条再摘除），误发
+  不可逆。若未来需要以 npm 包消费 `bridge-core`（如 KuroAdapter-Pure 线），正确路径是
+  先立发布决策（版本轴、exports、types 全套）再开通道，而不是留一个无人维护版本轴的
+  敞口。
+- **回退条件**：出现明确的 npm 消费方时，新 ADR 推翻本条。
+
+## ADR-034 可观测性收敛：行格式契约、级别映射单一解析点、server.id / 版本单点（2026-09-18）
+
+- **背景**：可观测性口径散乱——(1) Node 侧 stderr 有两份字节级相同的 writer
+  （`bridge/embedded/src/index.ts` 的 `log()` 与 `src/logger.ts`）；(2) Java 中继两路
+  降级：`KuroBridgePlugin.relayIpcLog` 只识别 3 个前缀，`NodeRequestHandler.onStderrLine`
+  更把 Node 子进程全部 stderr（含 `[KuroBridge][node][error]`）无条件按 INFO 中继——
+  WS 绑定失败、napuketto 意外退出等 error 级日志在服务器控制台全部显示为 INFO；
+  (3) `SERVER_ID = "kurobridge-spike"`（原型残留）与 `VERSION = "0.1.0"` 硬编码在
+  index.ts，经 hello_ack 上报对端；"0.1.0" 另有 root package.json / paper-plugin.yml /
+  gradle（两处）共四处手写，无机械对齐。
+- **结论**：
+  1. **Node 侧行格式契约（唯一家族）**：`[KuroBridge][node][LEVEL] message`，
+     `LEVEL ∈ {debug, info, warn, error}`（小写）。唯一 writer =
+     `bridge/embedded/src/logger.ts`（`index.ts` 的本地 `log()` 废除收编）。napuketto
+     原始行以 `[napuketto] <原样>` 作为 message 体包进该家族（现状保持），级别字样
+     正则补 `FATAL → error`。**例外登记**：stub 假对端的 `[KuroBridge][stub]`（无
+     LEVEL 段）保持原样——开发期 `KUROBRIDGE_STUB_PEER` 工件，不属运行期契约面。
+  2. **Java 侧级别映射（单一解析点）**：`:core` 新增平台无关工具类
+     `IpcLogLevels.parse(String) -> java.util.logging.Level`，`relayIpcLog` 与
+     `onStderrLine` 一律走它。映射表：`[KuroBridge][node][error]` → SEVERE、
+     `[warn]` → WARNING、`[info]` → INFO、`[debug]` → FINE；`[NodeIpc]`/`[NodeSupervisor]`
+     的 `[WARN]` → WARNING、`[SEVERE]` → SEVERE；未识别前缀 → INFO（保守默认，不丢行）。
+  3. **server.id（消除 spike 残留）**：config 顶层可选段 `server: { id?: string }`
+     （形状 SSOT 归 core zod，先例 ADR-028/029），缺省 `"kurobridge"`；embedded 引导层
+     注入 `CoreContext.serverId`（hello_ack 上报）。`SERVER_ID` 常量删除。
+     「serverId 多实例互联」全案仍是债务（STATUS 索引），本条只清残留。
+  4. **版本单点 + 机械对齐**：`bridge/embedded/src/version.ts` 导出
+     `BRIDGE_VERSION = "0.1.0"`——hello_ack version 的唯一上报源（`VERSION` 常量
+     删除；bridge/embedded package.json 版本轴 0.0.0 → 0.1.0 对齐）。新增零依赖门禁
+     `scripts/check-versions.mjs`（挂 check 链）断言两族一致：六点 "0.1.0"
+     （root package.json / bridge/embedded package.json / src/version.ts /
+     paper-plugin.yml / platforms/je/build.gradle.kts 两处）＋ 协议两份
+     （`bridge/protocol/src/meta.ts` ≡ `KurobridgeVersions.java` 的 PROTOCOL_VERSION）。
+  5. **status 周期上报（债务设计草图，不实施）**：事件驱动（join/quit 即时推送）保留，
+     叠加周期兜底——Java 侧定时器（默认 30s，`runtime` 段可调）经 IPC 事件帧推 status
+     快照（在线数 / TPS），core 广播给已绑定对端；协议增量走 KuroProtocol 四件套
+     （新事件帧 + peer-guide + fixtures + changelog）。排期随 MVP-2 评估。
+- **理由**：行格式先立契约再收编，Java 侧不再各自猜前缀（一处解析、一处测试，`:core`
+  平台无关可测）；版本与身份的「单点常量 + 机械对齐」优于运行期读 package.json
+  （esbuild 单文件 bundle + JAR 嵌入布局不含 package.json，读取脆弱）与构建期注入
+  （生成文件引入新漂移面）——对齐失败在 check 链红灯，而非运行期缺省。
+- **回退条件**：行格式如需演进（加时间戳/结构化字段），修订本条契约表并同步
+  `IpcLogLevels` 与 logger.ts（两侧同改 + 测试），不允许局部漂移。
