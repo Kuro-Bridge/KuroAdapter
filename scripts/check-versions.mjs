@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 // 版本对齐门禁（ADR-034 版本单点 + 机械对齐）。断言两族版本一致，任何一点不符列出 期望/实际
-// 并 exit 1。零依赖，风格对齐 scripts/check-protocol-mirror.mjs（由根 package.json 的 check
-// 链挂载，本脚本不自挂）。
+// 并 exit 1。零依赖（由根 package.json 的 check 链挂载，本脚本不自挂）。
 //
 // 1) bridge 版本族（六点，期望值 = 根 package.json 的 version——发版只改这一处，
 //    其余五点漂移即红灯提醒同步）：
@@ -10,8 +9,12 @@
 //    - bridge/embedded/src/version.ts 的 BRIDGE_VERSION（hello_ack 上报唯一来源）
 //    - platforms/je/paper/src/main/resources/paper-plugin.yml 的 version:
 //    - platforms/je/build.gradle.kts 的全部 `version = "..."`（根级 + subprojects，须 ≥2 处逐一相符）
-// 2) 协议版本族（两份）：bridge/protocol/src/meta.ts 的 PROTOCOL_VERSION（SSOT 镜像，ADR-031）
-//    ≡ platforms/je/core/.../KurobridgeVersions.java 的 PROTOCOL_VERSION（Java 硬编码副本）。
+// 2) 协议版本族（两份）：已安装 npm 包清单 version
+//    （bridge/core/node_modules/@kuro-bridge/protocol/package.json，期望来源）≡
+//    platforms/je/core/.../KurobridgeVersions.java 的 PROTOCOL_VERSION（Java 硬编码副本）。
+//    等价性依据：KuroProtocol 发布侧 scripts/assert-version.mjs 机械断言
+//    「包 version ≡ src/meta.ts PROTOCOL_VERSION」（0.4.0 实证对齐），故 npm 清单 version
+//    即协议 SSOT（ADR-035 结论 3：锚点换源，先于镜像目录删除落库）。
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -88,12 +91,17 @@ if (expectedBridge === undefined) {
 
 // ---- 协议版本族（两份） ----
 
-const expectedProtocol = firstMatch(
-    "bridge/protocol/src/meta.ts",
-    /PROTOCOL_VERSION = "([^"]+)" as const/,
-);
+let expectedProtocol;
+try {
+    expectedProtocol = jsonVersion("bridge/core/node_modules/@kuro-bridge/protocol/package.json");
+} catch {
+    // 锚文件缺失（协议依赖未安装）与无合法 version 同归一条根因文案
+    expectedProtocol = undefined;
+}
 if (expectedProtocol === undefined) {
-    failures.push('bridge/protocol/src/meta.ts 缺少 PROTOCOL_VERSION = "..." as const');
+    failures.push(
+        "bridge/core/node_modules/@kuro-bridge/protocol/package.json 缺失或无合法 version——协议依赖未安装或消费方未声明（先 pnpm install；ADR-035 结论 3）",
+    );
 } else {
     check(
         "KurobridgeVersions.java PROTOCOL_VERSION",
