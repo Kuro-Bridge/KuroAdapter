@@ -13,5 +13,5 @@
 > | 版本 SSOT | KuroProtocol `src/meta.ts` 的 `PROTOCOL_VERSION`（演进记录见其 `docs/changelog.md`） |
 > | 金样本夹具（物理契约） | KuroProtocol `fixtures/v<版本>/`（格式见其 `docs/fixtures.md`） |
 >
-> 工作区内的相对路径：`../../KuroProtocol/docs/peer-guide.md`。本仓 `bridge/protocol/src/`
-> 是该 schema 的只读镜像（`pnpm check:protocol` 门禁校验字节级一致）。
+> 本仓不维护协议副本：schema 经 npm 依赖 `@kuro-bridge/protocol@^0.4.0` 消费
+> （协议镜像与其门禁已于 2026-09-18 退役，ADR-031 阶段 2 / ADR-035）。

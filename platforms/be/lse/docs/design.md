@@ -41,5 +41,5 @@ PocketMine-MP（PHP）工具链不匹配，明确不做。
 ## 依赖
 
 - `@kuro-bridge/bridge-core`（workspace:*）——业务核心（平台无关）。
-- `@kuro-bridge/protocol`（workspace:*）——消息 schema。
+- `@kuro-bridge/protocol`（^0.4.0，npm 包，发布自姊妹仓 KuroProtocol，ADR-035）——消息 schema。
 - `@levimc-lse/types`（devDep）——LSE 全局对象类型。

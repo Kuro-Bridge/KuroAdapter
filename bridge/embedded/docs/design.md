@@ -40,7 +40,7 @@ src/
 ## 依赖
 
 - `@kuro-bridge/bridge-core`（workspace:*）。
-- `@kuro-bridge/protocol`（workspace:*）。
+- `@kuro-bridge/protocol`（^0.4.0，npm 包，发布自姊妹仓 KuroProtocol，ADR-035）。
 - esbuild（devDep，单文件打包）。
 
 ## 原型阶段（spike，2026-09-12）

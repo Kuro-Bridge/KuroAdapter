@@ -5,7 +5,8 @@ import java.util.List;
 /**
  * Java 侧收帧（Node→Java 及 Java 请求的响应）的解析结果。
  *
- * <p>与 bridge/protocol {@code ipcJavaInboundFrame} 的成员一一对应，另加 Java 主动请求
+ * <p>与 {@code @kuro-bridge/protocol}（npm 包，SSOT 在姊妹仓 KuroProtocol）
+ * {@code ipcJavaInboundFrame} 的成员一一对应，另加 Java 主动请求
  * （broadcast / execute_command）的响应帧——双向请求复用同一帧格式。
  */
 sealed interface InboundFrame {

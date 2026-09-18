@@ -61,7 +61,7 @@ flowchart LR
 ## 4. 分层与依赖方向
 
 ```
-bridge/protocol（@kuro-bridge/protocol）   zod schema，KuroProtocol 的只读镜像（ADR-031），零框架依赖
+@kuro-bridge/protocol（npm ^0.4.0）  zod schema，姊妹仓 KuroProtocol 发布，零框架依赖（无仓内副本）
    ↑
 bridge/core     业务核心 + 协议服务端；零 Node API、零框架（平台无关）
    ↑                    ↑
@@ -120,12 +120,11 @@ kurobridge/
 │           ├── CMakeLists.txt
 │           └── src/main.cpp # 占位入口
 ├── bridge/
-│   ├── protocol/            # @kuro-bridge/protocol：zod schema（KuroProtocol 只读镜像，ADR-031）
 │   ├── core/                # @kuro-bridge/bridge-core（平台无关）
 │   └── embedded/            # 嵌入式瘦身对端（esbuild 单文件，打进 JAR）
 ├── scripts/                 # 构建/工具脚本：embed.ts（嵌入式打包）/ build-jar.mjs（跨壳全链路）/
 │   │                          paper-start|stop（沙盒启停）/ paper-cmd|qr（.cmd/.ps1 快捷脚本）/
-│   │                          门禁脚本：check-protocol-mirror / check-docs-{scope,links} / check-versions
+│   │                          门禁脚本：check-docs-{scope,links} / check-versions
 └── sandbox/                 # 运行产物全 gitignore（Paper 服务端等；fake-player.mjs 离线假人）
 ```
 
@@ -137,8 +136,7 @@ kurobridge/
 
 | 模块 | 语言 | 关键依赖 | 构建 | 测试 |
 |---|---|---|---|---|
-| `bridge/protocol` | TS | zod（KuroProtocol 的只读镜像） | tsdown | vitest |
-| `bridge/core` | TS | zod；零框架零 Node API | tsdown | vitest（+ fast-check，二期） |
+| `bridge/core` | TS | zod、`@kuro-bridge/protocol`（npm ^0.4.0，姊妹仓 KuroProtocol 发布）；零框架零 Node API | tsdown | vitest（+ fast-check，二期） |
 | `bridge/embedded` | TS | 无框架 | esbuild 单文件 | 集成测试（起真 WS server） |
 | `platforms/je` | Java 21 字节码（工具链 25，target 21） | Paper API（compileOnly）+ Jackson | Gradle shadowJar | JUnit 5（IPC 编解码 + 进程生命周期） |
 | `platforms/be/lse` | TS → JS | `@levimc-lse/types` + `@kuro-bridge/bridge-core` | esbuild 单文件（IIFE，target es2020） | vitest |
@@ -149,14 +147,21 @@ kurobridge/
 - **TS 侧**：直接沿用 Napuketto 的 biome.json + tsconfig（`erasableSyntaxOnly`、`exactOptionalPropertyTypes`、`noUncheckedIndexedAccess`、`noFloatingPromises`、`noExcessiveCognitiveComplexity(15)`、`useNamingConvention`、`useErrorMessage`、organizeImports 全保留）。一份 biome 配置管 bridge/ + platforms/be/ + scripts/。
 - **Java 侧（第一版）**：`-Xlint:all -Werror` + Spotless(Palantir) + JUnit 5（2026-09-18 求真裁决：JaCoCo 覆盖率门禁暂不实装——先让 CI 的 `gradlew build` 成为机器级门禁，覆盖率阈值化待 `:paper` 单测补强后再评估；原文「JaCoCo ≥60% 门禁」无配置支撑，就此清零）。**Error Prone / NullAway 第一版不上**（ADR-011），薄壳定型后再评估。
 - **协议防漂移门禁**：消息类型只能 import `@kuro-bridge/protocol`（**导入口径机械强制**：biome
-  `style.noRestrictedImports` 禁止绕过包名入口的深路径导入 `bridge/protocol/{src,dist}`——2026-09-18
-  求真裁决落地，原文「lint 规则强制」彼时无配置支撑；「不手写消息类型」为约定 + review 把关，
-  该语义无法用 import 规则全量机械化）；改 schema 不更新消费方 → `pnpm check` 红。**镜像一致性门禁**（ADR-031）：`pnpm check:protocol`（pre-commit 同款）校验 `bridge/protocol/src` 与姊妹仓 KuroProtocol/src 字节级一致——协议演进只能在 KuroProtocol 四件套同改再同步镜像。
-- **全仓门禁（一条入口）**：本地 `pnpm check` = biome + 根 tsc（bridge/*）+ lse typecheck
-  （`tsc -p platforms/be/lse`）+ docs 门禁（docs/history 外禁无连字符旧 scope 口径 + md 相对
-  链接死链）+ 版本对齐（`check-versions`：bridge 六点 "0.1.0" + 协议两份 "0.4.0"，ADR-034）；
-  与 `pnpm test` / `pnpm check:protocol` 同挂 lefthook pre-commit，CI（ADR-032）机器级复跑
-  同一命令链 + Java `gradlew build`。
+  `style.noRestrictedImports` 禁止绕过包名入口的深路径导入，patterns 维持
+  `**/protocol/src/**` + `**/protocol/dist/**`——镜像退役后自然落在 node_modules 产物深路径上；
+  2026-09-18 求真裁决落地，原文「lint 规则强制」彼时无配置支撑；「不手写消息类型」为约定 +
+  review 把关，该语义无法用 import 规则全量机械化）；改 schema 不更新消费方 → `pnpm check` 红。
+  **协议依赖纪律**（ADR-031 阶段 2 / ADR-035）：本仓无协议副本，经 npm 依赖
+  `@kuro-bridge/protocol@^0.4.0` 消费；协议演进只能在 KuroProtocol 四件套同改 + 发版，
+  本仓升依赖版本号。
+- **全仓门禁（一条入口）**：本地 `pnpm check` = `pnpm -r build` 首环（ADR-035：先构建发布物，
+  再在发布面 exports.types → dist d.ts 上做全部静态校验）+ biome + 根 tsc（bridge/*）+ lse
+  typecheck（`tsc -p platforms/be/lse`）+ docs 门禁（docs/history 外禁无连字符旧 scope 口径 +
+  md 相对链接死链）+ 版本对齐（`check-versions`：bridge 六点 "0.1.0" + 协议两份——锚 = 已安装
+  npm 包 `@kuro-bridge/protocol` 清单 version ≡ `KurobridgeVersions.java`，ADR-034/035）；
+  lefthook pre-commit 串行（`parallel: false`，防 build 清空 dist 与 test 的竞态，ADR-035）
+  跑 `pnpm check` → `pnpm test`，CI（ADR-032，结构经 ADR-035 结论 4 简化：无姊妹仓检出）
+  机器级复跑同一命令链 + Java `gradlew build`。
 
 ## 9. 嵌入式打包要点（沿用 Napuketto 许可证方案，MVP-4 实况）
 
@@ -164,7 +169,7 @@ kurobridge/
   JAR**（红线，构建期扫描断言：`scripts/embed.ts` 打包前断言嵌包树不含 wrapper.node / QQ 安装包 /
   QQNT 二进制，`scripts/embed.test.ts` 用例覆盖）；napuketto 嵌包仅自研件（其 stub `QQNT.dll` 为 napuketto 自研）。
 - 嵌入式打包：`scripts/embed.ts` 下载/校验 node 官方 dist（win-x64，sha256 对
-  SHASUMS256.txt，镜像/缓存可换）+ 收集 napuketto 嵌包（npm 真实文件树 → 零依赖 zip
+  SHASUMS256.txt，下载源/缓存可换）+ 收集 napuketto 嵌包（npm 真实文件树 → 零依赖 zip
   writer）→ `embedded/{node.exe, index.mjs, NODE_LICENSE, manifest.json}` + 单一
   `napuketto.zip`（7.6MB）+ `NAPUKETTO_LICENSES` 进 `:paper` resources；napuketto 版本
   SSOT = bridge/embedded package.json 精确 pin。多平台矩阵记债务。
@@ -179,7 +184,9 @@ kurobridge/
 协议契约（`kurobridge-ws`）的权威来源在**姊妹仓 KuroProtocol**（ADR-031）：语义与逐帧字段表 SSOT =
 其 `docs/peer-guide.md`（跨仓库契约）；schema 本体与版本 SSOT = 其 `src/`（当前版本以
 `KuroProtocol/src/meta.ts` 的 `PROTOCOL_VERSION` 为准，版本演进见其 `docs/changelog.md`）。
-本仓 `bridge/protocol/src/` 为只读镜像（`pnpm check:protocol` 门禁校验一致），
+本仓无协议副本：schema 经 npm 依赖 `@kuro-bridge/protocol@^0.4.0` 消费，协议版本锚 =
+已安装 npm 包清单 version ≡ `KurobridgeVersions.java`（`check-versions` 机械对齐，
+等价性依据 = KuroProtocol 发布侧 `assert-version.mjs`，ADR-035），
 `docs/protocol/peer-guide.md` 已退位为迁移指针。最早设想见 [history/draft-v0.1.md](history/draft-v0.1.md)（停在 v0.2，仅供考古）。
 
 要点：WS 子协议 `Sec-WebSocket-Protocol: kurobridge-ws.v1`（大版本，握手期拒绝不兼容对端）

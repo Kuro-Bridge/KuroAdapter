@@ -11,7 +11,7 @@ import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
-/** 帧编解码测试：线格式与 bridge/protocol 的 zod schema 逐字段一致。 */
+/** 帧编解码测试：线格式与 {@code @kuro-bridge/protocol} 的 zod schema 逐字段一致。 */
 class IpcFrameCodecTest {
 
     private final ObjectMapper mapper = new ObjectMapper();
@@ -326,7 +326,7 @@ class IpcFrameCodecTest {
         assertTrue(
                 withoutOutput.get() instanceof InboundFrame.Result result && result.ok() && result.output() == null,
                 "无 output 应为 null");
-        // output 形状非法：整帧拒绝（镜像 zod 按帧型校验的失败路径）
+        // output 形状非法：整帧拒绝（对齐 zod 按帧型校验的失败路径）
         assertTrue(
                 IpcFrameCodec.decode("{\"header\":{\"type\":\"execute_command_result\",\"id\":\"" + id
                                 + "\"},\"body\":{\"ok\":true,\"output\":\"lines\"}}")

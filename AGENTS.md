@@ -11,10 +11,11 @@ KuroBridge：MC 服务器 ↔ 社交平台群服互通插件。Paper JAR + 内�
 1. **许可证 MIT，全自研**。参考 HuHoBot 只借鉴思路（业务在机器人侧、自定义 WS 协议、UUID 请求-响应），**不复制其代码**（GPL-3.0 与 MIT 不兼容）。闭源件（`wrapper.node`）运行期发现拷贝，不进 JAR。
 2. **业务核心在 Node（TS）侧**：绑定/白名单/权限/转发规则等业务逻辑属于 `bridge/core`，**Java 薄壳不做业务**，只做 Bukkit 桥接（事件/命令/权限/广播/executeCommand/进程管理）。
 3. **`bridge/core` 平台无关**：禁止使用任何 Node API（含 `ws`、`process`、`fs`、`pino`），传输层抽象为可注入接口（`WsServer/WsClient`、`Logger`），target ES2020，保证 QuickJS（LSE）也能跑。logger 通过依赖注入提供，不直接依赖具体实现。
-4. **协议 SSOT 在姊妹仓 KuroProtocol**（ADR-031）：zod schema 的唯一可编辑来源是
+4. **协议 SSOT 在姊妹仓 KuroProtocol**（ADR-031，ADR-035 起经 npm 消费）：zod schema 的唯一可编辑来源是
    `KuroProtocol/src/`（发布名 `@kuro-bridge/protocol`，版本 SSOT = 其 `src/meta.ts`）。
-   本仓 `bridge/protocol/` 是其**只读镜像**（`pnpm check:protocol` 字节级校验，挂 pre-commit）——
-   协议演进只能在 KuroProtocol 四件套同改（schema + peer-guide + fixtures + changelog）再同步镜像。
+   本仓**无协议副本**，经 npm 依赖 `@kuro-bridge/protocol@^0.4.0` 消费——
+   协议演进唯一路径 = KuroProtocol 四件套同改（schema + peer-guide + fixtures + changelog）
+   + 发版，本仓只升依赖版本号。
    任何文件禁止手写消息类型，必须 `import { ... } from "@kuro-bridge/protocol"`。
    `docs/protocol/` 只放说明文档（peer-guide 已退位为迁移指针）。
 5. **kurobridge 永远是 WS 服务端角色**：对端主动连入；只认 `kurobridge-ws` 协议，不关心对端是谁。embedded / external 只是打包差异，不是架构差异。
@@ -22,7 +23,7 @@ KuroBridge：MC 服务器 ↔ 社交平台群服互通插件。Paper JAR + 内�
 7. **依赖方向**（只允许向下依赖）：
 
    ```
-   bridge/protocol（@kuro-bridge/protocol）   zod schema，KuroProtocol 的只读镜像，零框架依赖
+   @kuro-bridge/protocol（npm ^0.4.0）  zod schema，姊妹仓 KuroProtocol 发布，零框架依赖（无仓内副本）
    bridge/core    依赖 protocol；零 Node API、零框架
    bridge/embedded  依赖 core + protocol；esbuild 单文件
    platforms/je   Gradle 多模块：:core（IPC/进程管理，零 Bukkit API）+ :paper（Paper 适配，compileOnly）；不含协议逻辑
@@ -38,11 +39,12 @@ KuroBridge：MC 服务器 ↔ 社交平台群服互通插件。Paper JAR + 内�
 
 ```bash
 pnpm install            # 安装依赖
-pnpm check              # 一条入口（pre-commit 同款）：biome + 根 tsc（bridge/*）+ lse typecheck
-                        #   + docs 门禁（旧 scope 口径清零 + md 死链）+ 版本对齐门禁
-pnpm check:protocol     # 协议镜像门禁：bridge/protocol/src ≡ KuroProtocol/src（ADR-031，pre-commit 同款）
+pnpm check              # 一条入口（pre-commit 同款）：pnpm -r build 首环（ADR-035）+ biome
+                        #   + 根 tsc（bridge/*）+ lse typecheck + docs 门禁（旧 scope 口径清零
+                        #   + md 死链）+ 版本对齐门禁
 pnpm check:docs         # docs 两道门禁单跑（已含在 pnpm check，列出便于定位）
-pnpm check:versions     # 版本对齐门禁：bridge 六点 0.1.0 + 协议两份 0.4.0（ADR-034，已含在 pnpm check）
+pnpm check:versions     # 版本对齐门禁：bridge 六点 0.1.0 + 协议两份（锚 = 已安装 npm 包
+                        #   @kuro-bridge/protocol 清单 version，ADR-034/035，已含在 pnpm check）
 pnpm fix                # biome 自动修复 + tsc
 pnpm test               # vitest run（TS 侧）
 pnpm -r build           # TS 全量构建（tsdown / esbuild）
@@ -52,7 +54,7 @@ pnpm build:jar          # 全链路：TS 构建 → 嵌入式打包 → gradle :
 
 **构建顺序（硬约束）**：`pnpm -r build`（bridge/embedded 产物）→ `scripts/embed.ts` 嵌入式打包（node 官方 dist 下载校验 + napuketto 嵌包，产出进 `platforms/je/paper/src/main/resources/embedded/`）→ `gradle :paper:shadowJar`。本地 `pnpm build:jar` 经 `scripts/build-jar.mjs` 链式执行三步。
 
-**CI（ADR-032）**：`.github/workflows/ci.yml` 双 job——ts job 检出本仓 + 姊妹仓 KuroProtocol 为兄弟目录，跑 `pnpm check && pnpm test && pnpm -r build && pnpm check:protocol`（与本地同构）；java job 经 mise 提供 JDK 25 跑 `gradlew build`。push master / PR 触发；上游协议演进未同步镜像时 ts job 变红**属预期**（提醒按 KuroProtocol `docs/MIRROR-RESYNC.md` 同步镜像）。
+**CI（ADR-032，结构经 ADR-035 结论 4 简化）**：`.github/workflows/ci.yml` 双 job——ts job 只检出本仓，跑 `pnpm check && pnpm test`（check 链自含 build 首环，与本地 pre-commit 同构；lefthook 串行 check → test，ADR-035）；java job 经 mise 提供 JDK 25 跑 `gradlew build`。push master / PR 触发。
 
 **多版本策略（ADR-021）**：`:core` 版本无关（零 MC API）；Paper 单 jar 通吃；Fabric/NeoForge 按版本矩阵构建（每 MC 版本一个 jar）；Velocity 单 jar。改版本只重编适配层，不动 `:core` 与 `bridge/core`。
 
@@ -69,7 +71,7 @@ pnpm build:jar          # 全链路：TS 构建 → 嵌入式打包 → gradle :
 
 - **一个模块一个模块实现**：开工前先读 `docs/STATUS.md` 与 `docs/architecture.md`、对应包的 `docs/design.md`，按其中的「实现顺序」推进，不跨模块跳跃；每完成一个模块跑一次 `pnpm check`。
 - **core 无全局单例**：logger / connection / state 等都是实例化对象，由 `CoreContext` 持有——多连接多进程场景每份独立，避免状态污染。
-- **新增协议端**（如外部独立协议端）→ 在 `bridge/` 内新增包，复用 core 框架（握手/心跳/请求-响应），**不改 Java、不改 protocol 镜像**（协议演进的唯一路径是 KuroProtocol 仓四件套同改，ADR-031）。
+- **新增协议端**（如外部独立协议端）→ 在 `bridge/` 内新增包，复用 core 框架（握手/心跳/请求-响应），**不改 Java、不改协议**（协议演进的唯一路径是 KuroProtocol 仓四件套同改 + 发版，本仓只升依赖版本号，ADR-031/035）。
 - **新增平台适配**（Koishi adapter）→ 在独立仓库 koishi-plugin-kurobridge 内扩展；平台渲染（富文本/颜色码/长度收敛）只出现在那个仓库，本仓库不涉及。
 - **写代码前先更新对应包的 `docs/design.md`**，设计先行。
 - **文档归档**：阶段册（`*-PROMPT.md` / `*-NOTES.md`）收尾后移入 `docs/history/`（正文不改写，在 `history/README.md` 索引表加一行）；`docs/` 根只放活文档（STATUS / architecture / DECISIONS / config-schema / protocol/）。

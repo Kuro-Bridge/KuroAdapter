@@ -6,7 +6,8 @@
 ## 模块
 
 - `:core`（零 Bukkit API）：`NodeIpc`（子进程管理 + stdin/stdout JSON-lines 客户端）、
-  `IpcFrameCodec`（帧编解码，与 bridge/protocol 的 zod schema 逐字段镜像，ADR-008 允许的
+  `IpcFrameCodec`（帧编解码，与 npm 包 `@kuro-bridge/protocol` 的 zod schema 逐字段对齐，
+  ADR-008 允许的
   Java 手写 DTO 唯一例外）、`ProcessFactory`（进程启动抽象，测试可注入）、`IpcResult`/
   `NodeIpcListener`（回调契约）。JUnit 5：FakeProcess 替身（30+ 用例）+ 真 node/bundle/stub
   的管道集成测试。
@@ -43,7 +44,7 @@
 `scripts/embed.ts`（Node 脚本，只用内置依赖；Node ≥23.6 原生 TS 剥离直接跑，无需编译）：
 
 - 下载 node-v26.7.0-win-x64.zip（nodejs.org 官方 dist）+ SHASUMS256.txt sha256 校验；
-  本地缓存 `.cache/node-dist/`（gitignored）。镜像/缓存可经环境变量覆盖：
+  本地缓存 `.cache/node-dist/`（gitignored）。下载源/缓存可经环境变量覆盖：
   `KUROBRIDGE_NODE_DIST_BASE`（默认 `https://nodejs.org/dist`）、`KUROBRIDGE_NODE_CACHE_DIR`。
 - 只取 zip 内 `node.exe` + `LICENSE`（手写最小 zip 读取器：EOCD→中央目录→本地头，
   stored/deflate 两法 + crc32 校验；不支持 zip64——产物 <4GB），连同
@@ -135,7 +136,7 @@
 - 协议版本 0.2.0 → **0.2.1**（patch 顺延；DEBT-1 未执行，按实际基线）。
 - `ready` body 加**可选**字段 `autoRestart: boolean`（缺省 true）：schema 与默认值都在
   Node 侧（业务配置 SSOT），Java 只消费宿主参数——与 wsPort 同性质，不违反「Java 不做业务」。
-- Java 侧 `InboundFrame.Ready` 加 `Boolean autoRestart()`（Jackson 镜像，缺省 null →
+- Java 侧 `InboundFrame.Ready` 加 `Boolean autoRestart()`（Jackson 对应类型，缺省 null →
   消费方按 true 处理）；:paper 据此设看护器开关。
 - 旧 Node（不发该字段）在新 Java 下行为不变（null → true），前向兼容。
 
@@ -187,7 +188,7 @@ NodeIpcTest 扩展），:paper 仍靠沙盒验收兜底。
   可为 null，空串兜底）与 `sendConfigReload()`（空 body 事件帧，语义对齐 shutdown 的
   单向通知——不做 Java→Node 请求-响应机制）。
 - `execute_command_result` 增可选 `output: string[]`：`InboundFrame.Result` 增 `output`
-  字段（仅 execute_command_result 解析，broadcast_result 不解析——镜像 Node 侧 zod 的
+  字段（仅 execute_command_result 解析，broadcast_result 不解析——对齐 Node 侧 zod 的
   按帧型校验）；`NodeIpc.executeCommand` 返回类型升级 `CompletableFuture<Void>` →
   `CompletableFuture<List<String>>`（ok → 输出行，null 归一空列表；!ok → IpcException，
   语义对齐 broadcast）。

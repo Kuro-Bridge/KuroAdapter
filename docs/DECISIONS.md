@@ -305,6 +305,9 @@
   可回退本 ADR（revert 对应提交，恢复副本为权威）；阶段 2 完成后回退无意义。
 
 > 注（2026-09-18）：镜像文件数随 KuroProtocol bb9f936 同步增至 9 个（新增 `fixtures.ts`），门禁语义不变。
+> 注（2026-09-18）：结论 4 的阶段 2 已于本日执行完成（三消费方依赖切 `^0.4.0`、镜像目录
+> `bridge/protocol/` 与 `check:protocol` 门禁删除、`check-versions` 协议族锚点换源为已安装
+> npm 包清单 version），实施裁决与提交链见 ADR-035。
 
 ## ADR-032 恢复 CI：TS + Java 双 job（2026-09-18）
 
@@ -328,6 +331,9 @@
 - **理由**：门禁的价值在不可绕过；pre-commit 是约定级，CI 是机器级。本仓门禁口径
   （ADR-031 起）是「一条命令 + 处处同构」，CI 复用同一命令链而非另立脚本，无第二权威。
 - **回退条件**：删 workflow 文件即回到 ADR-017 状态。
+
+> 注（2026-09-18）：CI 结构其后经 ADR-035 结论 4 简化——去姊妹仓兄弟检出与镜像门禁
+> （上文 CI 描述为历史口径），ts job 链 = `pnpm check && pnpm test`（check 自含 build 首环）。
 
 ## ADR-033 封死 bridge/core 与 bridge/embedded 的 npm 发布通道（2026-09-18）
 
@@ -409,6 +415,9 @@
      `pnpm check && pnpm test`。check 语义升级为「先构建发布物，再在发布面
      （exports.types → dist d.ts）上做全部静态校验」——单一权威：fresh clone 直接
      `pnpm check` 自足全绿，CI / lefthook / 本地全继承，链序不在三处各写一遍。
+     **实施注**：lefthook 因 build 入 check 首环而与并行 test 钩子产生 dist 清空竞态
+     （实锤：vitest 在 tsdown clean 窗口报 `Failed to resolve entry`），同提交将
+     pre-commit `parallel: true` → `false` 串行化，链序 = check（自含 build）→ test。
   2. **协议导入纪律：biome `noRestrictedImports` 改写保留，不删**。patterns 维持
      `**/protocol/src/**` + `**/protocol/dist/**`（镜像死后自然落在
      `node_modules/@kuro-bridge/protocol/` 深路径上），message 改写为 npm 语义。
@@ -423,6 +432,9 @@
   5. **风险与缺口登记**：① pnpm `minimumReleaseAge`（1440 分钟）可能拦截发布不足
      24h 的新依赖解析——切换时实测，若被拦则在 pnpm-workspace.yaml 加
      `minimumReleaseAgeExclude: ["@kuro-bridge/protocol"]`（自家已审发布，防线不适用）；
+     **实施注**：实施时已在 pnpm-workspace.yaml 顶层预置
+     `minimumReleaseAgeExclude: ["@kuro-bridge/protocol@0.4.0"]`，防将来显式配置
+     minimumReleaseAge 时 strict 闸门拦截；
      ② `bridge/embedded` 的 exports.types 指向不存在的 `dist/index.d.mts`（esbuild
      只产 mjs）为预存缺陷，当前无人导入该包故未爆，登记 STATUS 缺口、本线不修；
      ③ stub `peer.mjs` 的 `PROTOCOL_VERSION = "0.3.1"` 为有意落后一档（兼容区间验证），

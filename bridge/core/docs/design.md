@@ -43,7 +43,7 @@ src/
 
 ## 依赖
 
-- `@kuro-bridge/protocol`（workspace:*）——协议 schema（KuroProtocol 的只读镜像，ADR-031）。
+- `@kuro-bridge/protocol`（^0.4.0，npm 包，发布自姊妹仓 KuroProtocol）——协议 schema（ADR-031/035）。
 
 ## 原型阶段（spike，2026-09-12）
 
@@ -156,7 +156,8 @@ bridge/embedded 引导层（配置 → ready body）。
 ## 债务清偿一（DEBT-1，协议 v0.3.0，2026-09-13）
 
 > 任务书：`docs/history/DEBT1-PROMPT.md`。鉴权、兼容协商、query 本地作答、command 权限与透传、
-> death fan-out、config_reload。协议帧形设计见 `bridge/protocol/docs/design.md` 的 DEBT-1 节。
+> death fan-out、config_reload。协议帧形设计（原 `bridge/protocol/docs/design.md` 的 DEBT-1 节，
+> 该册已随镜像退役移除）现以姊妹仓 KuroProtocol 为权威（其 `docs/peer-guide.md` / `docs/changelog.md`）。
 
 ### 鉴权 token（hello 校验）
 

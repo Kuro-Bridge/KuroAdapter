@@ -2,16 +2,18 @@
 
 > 开始任何工作前先读本文 → `architecture.md`（架构书）→ 对应包 `docs/design.md`。
 > 本文只讲「现在」；阶段史（原型 → MVP-1~4 → DEBT-1/2 → 改名）的任务书/实录全在
-> [`history/`](history/README.md)，拍板依据在 [`DECISIONS.md`](DECISIONS.md)（ADR-001~034）。
+> [`history/`](history/README.md)，拍板依据在 [`DECISIONS.md`](DECISIONS.md)（ADR-001~035）。
 
 ## 当前状态（2026-09-18）
 
 **JE（Paper）主链全部完成，真机终验已通过**：MVP-1~4 + 两轮债务清偿 + 品牌迁移
 （KuroBot → KuroBridge）+ 真机终验收官（见下节）。当前可分发形态 =
 `kurobridge-0.1.0.jar`（**48.4MB**，内嵌 Node 26 + napuketto CLI 0.1.20，开箱
-控制台扫码），协议 `kurobridge-ws`（版本 SSOT = 姊妹仓 KuroProtocol 的 `src/meta.ts`；
-改名后唯一 breaking = 握手子协议字符串，帧形状零变化，ADR-030；本仓协议副本已冻结为
-只读镜像，ADR-031）。
+控制台扫码），协议 `kurobridge-ws`（协议 SSOT 在姊妹仓 KuroProtocol，本仓经 npm 依赖
+`@kuro-bridge/protocol@^0.4.0` 消费、无仓内副本；协议版本锚 = 已安装 npm 包清单 version
+≡ `KurobridgeVersions.java`，机械对齐 = `check-versions`，发布侧等价性 = KuroProtocol
+`assert-version.mjs`，ADR-031/035；改名后唯一 breaking = 握手子协议字符串，帧形状零变化，
+ADR-030）。
 
 - **embedded 形态**（MVP-4，ADR-029）：进程树 `Java → node → napuketto CLI(supervisor) →
   boot → self-host`（最深四层）全链实证；QR 文件交接 + `kurobridge qr` 子命令；崩溃看护
@@ -23,10 +25,11 @@
 - **业务面**（DEBT-1）：绑定表 / 转发规则（按频道 fan-out）/ 群管理员映射 / WS command
   透传执行 / query 本地作答 / death / 配置热重载（`kurobridge reload`）/ 白名单 SSOT =
   MC 原生 whitelist。
-- **门禁基线**（2026-09-18 治理波次后）：`pnpm check`（一条入口：biome + 根 tsc + lse
-  typecheck + docs 门禁 + 版本对齐）/ `pnpm test`（**180 用例**）/ `pnpm -r build` /
-  `pnpm check:protocol` / `gradlew build` + `:core:test --rerun`（**74 用例**）全绿。
-  CI 双 job 已入库（ADR-032），**推送 master 后激活**（见待定事项）。
+- **门禁基线**（2026-09-18 阶段 2 收口后）：`pnpm check`（一条入口：自含 `pnpm -r build`
+  首环 + biome + 根 tsc + lse typecheck + docs 门禁 + 版本对齐，ADR-035）/ `pnpm test`
+  （**142 用例 / 12 文件**——180 → 142 差额 = 随镜像退役删除的 protocol 包用例）/
+  `gradlew build` + `:core:test --rerun`（**74 用例**）全绿。CI 双 job 已入库（ADR-032，
+  其后经 ADR-035 结论 4 简化：无姊妹仓检出），**推送 master 后激活**（见待定事项）。
 - **napuketto 外部契约原样**：env 名、文件名、TOML `[accounts.kurobot]` 段名、client
   自报格式均不改（napuketto 契约点按 RENAME-NOTES R-03 豁免；DECISIONS 历史条目与
   history 册内的旧名按「永不改写」归档约定保留）。
@@ -61,7 +64,8 @@ napuketto 外部契约原样（env 名、文件名、TOML `[accounts.kurobot]` �
 单波次四块，决策依据 ADR-032~034（先文档后代码）：
 
 - **门禁**：CI 双 job 入库（ADR-032：ts job 与本地同构 + 姊妹仓兄弟目录检出跑
-  `check:protocol`；java job mise JDK 25 跑 `gradlew build`——Java 回归从此对门禁可见）；
+  `check:protocol`；java job mise JDK 25 跑 `gradlew build`——Java 回归从此对门禁可见；
+  其后经 ADR-035 结论 4 简化，去兄弟检出与镜像门禁）；
   本地 `check` 链补盲区：lse typecheck 入链、旧 scope（`@kuro-bridge/` 的无连字符写法）
   grep 门禁、md 死链
   门禁、版本对齐门禁（`check-versions`）、biome `noRestrictedImports`（协议导入口径），
@@ -78,15 +82,27 @@ napuketto 外部契约原样（env 名、文件名、TOML `[accounts.kurobot]` �
 - **发布通道**（ADR-033）：`bridge/core` / `bridge/embedded` 加 `private: true`——对齐
   ADR-031 只封 protocol 的缺口，误发通道全封死。
 
+## 2026-09-18 阶段 2 执行波次（协议镜像退役，ADR-031 阶段 2 / ADR-035）
+
+ADR-031 阶段 2 于本日执行完成，协议消费全面转 npm：
+
+- `@kuro-bridge/protocol@^0.4.0` 就位——三消费方（`bridge/core` / `bridge/embedded` /
+  `platforms/be/lse`）由 `workspace:*` 切 npm 依赖；`bridge/protocol/` 镜像目录与
+  `check:protocol` 门禁整体删除；`check-versions` 协议族锚点换源为已安装 npm 包清单
+  version（≡ `KurobridgeVersions.java`）；check 链自含 `pnpm -r build` 首环 +
+  lefthook 串行化（parallel: false）；CI 去姊妹仓兄弟检出。决策依据 ADR-035。
+- 提交链六笔（86a698a…acb0f18）：86a698a（STATUS 前置求真）→ 6237e3e（ADR-035 立档，
+  先文档后代码）→ 0130f2b（build 前置修 CI 首跑红）→ 43b9e63（依赖切换）→
+  6c6e34d（锚点换源）→ acb0f18（镜像删除）。
+- 用例基线 180 → 142（12 文件）：差额 = 随镜像退役删除的 protocol 包用例；协议包测试
+  归 KuroProtocol 仓。
+
 ## 待定事项
 
-- **CI 推送激活**：`.github/workflows/ci.yml` 已入库（ADR-032），本地 master 领先 origin
-  多笔未推——推送后 CI 首跑生效；ts job 依赖姊妹仓 KuroProtocol（public，免 token），
-  上游演进未同步镜像时变红属预期（resync 规程见 KuroProtocol `docs/MIRROR-RESYNC.md`）。
-- **协议依赖切换（阶段 2，ADR-031）——前置条件已满足**：`@kuro-bridge/protocol@0.4.0`
-  已发布（2026-09-18，npm dist-tag latest），误发线 0.1.0 已 deprecate。待办：删除本仓
-  `bridge/protocol` 镜像与门禁，三消费方（core / embedded / lse）`workspace:*` → `^0.4.0`。
-  命令清单见 KuroProtocol `docs/DECISIONS.md` ADR-001（删镜像属跨波次动作，待用户/后续波次执行）。
+- **CI 推送激活**：CI 首跑已在 86a698a 发生（TS job 红，根因与修复见 ADR-035）；本地
+  master 领先 origin 5 笔（阶段 2 执行提交）未推——推送后复跑应转绿。CI 结构经
+  ADR-035 结论 4 简化：无姊妹仓检出，ts job = `pnpm check && pnpm test`（check 链
+  自含 build 首环）。
 - koishi-plugin-kurobridge 独立仓库（ADR-018）：官方参考对端 + 平台渲染唯一归属，
   JE 闭环后启动（Koishi v4 基线）；其协议依赖 `^0.1.0` 亦待切 `^0.4.0`（上游协作）。
 - `platforms/be` 家族骨架已建：`lse/`（TS，复用 bridge/core，QuickJS 可跑是硬约束）、

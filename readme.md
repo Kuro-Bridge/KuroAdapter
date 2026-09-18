@@ -26,7 +26,6 @@ kurobridge（Paper JAR，Java 薄壳）
 ├─ platforms/je/     # Java 服务端适配（Gradle 多模块：core + paper + 预留 fabric/neoforge/velocity）
 ├─ platforms/be/     # BE 服务端家族：lse（LSE TS）+ endstone（C++ 薄壳，预留）
 ├─ bridge/
-│   ├── protocol/     # @kuro-bridge/protocol：协议 zod schema（KuroProtocol 只读镜像，ADR-031）
 │   ├── core/         # 业务核心 + 协议服务端（TS，平台无关）
 │   └── embedded/     # 嵌入式瘦身对端（打进 JAR，无 Koishi）
 ├── docs/             # 架构书 / 决策记录 / 现状 / 协议文档 / 历史册归档（history/）
@@ -38,7 +37,7 @@ kurobridge（Paper JAR，Java 薄壳）
 ## 文档
 
 - [架构书](docs/architecture.md) —— 分层、进程模型、红线、工具链
-- [决策记录](docs/DECISIONS.md) —— 每项拍板的来龙去脉（ADR-001~031）
+- [决策记录](docs/DECISIONS.md) —— 每项拍板的来龙去脉（ADR-001~035）
 - [现状与路线](docs/STATUS.md) —— 当前进度、卡点、债务索引
 - [对端接入指南](docs/protocol/peer-guide.md) —— 已移交姊妹仓 KuroProtocol（本仓该文件为迁移指针，ADR-031）；版本以其 `src/meta.ts` 为 SSOT
 - [历史册归档](docs/history/README.md) —— 已完成阶段的任务书/实录索引
@@ -47,7 +46,7 @@ kurobridge（Paper JAR，Java 薄壳）
 
 - 工程指南见 [AGENTS.md](AGENTS.md)（借鉴 NapukettoQQ 的工程体系）。
 - 技术栈：TS（Biome + tsconfig 严格全家桶）+ Java 21 薄壳（`-Xlint:all -Werror` + Spotless）。
-- 协议 SSOT 为姊妹仓 KuroProtocol 的 zod schema（本仓 `bridge/protocol` 为只读镜像，`pnpm check:protocol` 门禁校验一致，ADR-031）；任何文件禁止手写消息类型。
+- 协议 SSOT 为姊妹仓 KuroProtocol 的 zod schema，本仓经 npm 依赖 `@kuro-bridge/protocol@^0.4.0` 消费（无仓内副本，ADR-031/035）；任何文件禁止手写消息类型。
 
 ## License
 

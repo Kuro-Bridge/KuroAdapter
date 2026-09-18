@@ -12,15 +12,15 @@ import java.util.UUID;
 
 /**
  * IPC 帧编解码器：线格式 {@code {"header":{"type":"...","id":"...?"},"body":{...}}}，
- * 与协议 zod schema（SSOT 在姊妹仓 KuroProtocol，本仓 bridge/protocol 为只读镜像，ADR-031）
- * 逐字段一致（Java 侧镜像，一个字节不改）。
+ * 与协议 zod schema（SSOT 在姊妹仓 KuroProtocol，npm 包 {@code @kuro-bridge/protocol}，
+ * 本仓经 ^0.4.0 依赖消费，ADR-031/035）逐字段一致（Java 侧硬编码副本，一个字节不改）。
  *
  * <ul>
  *   <li>出帧（Java→Node）：game_chat / player_join / player_quit / player_death / status /
  *       shutdown / config_reload 事件（header 仅 type），broadcast / execute_command 请求与
  *       两种 *_result 响应（header 携带 UUID id）。</li>
  *   <li>入帧（Node→Java）：ready 事件、broadcast / execute_command 请求、两种 *_result 响应。
- *       output 仅在 execute_command_result 的 ok 分支解析（镜像 Node 侧按帧型的 zod 校验；
+ *       output 仅在 execute_command_result 的 ok 分支解析（对齐 Node 侧按帧型的 zod 校验；
  *       broadcast_result 即便携带 output 也忽略——zod 非 strict object 对未知键 strip 而非拒帧）。</li>
  *   <li>事件帧严禁携带 id（事件 header 严格校验：仅允许 type 一个键）；请求/响应帧 id
  *       必填且必须可解析为 UUID（对齐 {@code z.uuid()}），header 其余键宽松（对齐非 strict 的
