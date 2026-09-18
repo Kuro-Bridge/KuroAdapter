@@ -5,7 +5,7 @@
  * 任何文件禁止手写消息类型，必须 `import { ... } from "@kuro-bridge/protocol"`。
  *
  * 原型最小集 + v0.2 / v0.3.x / v0.4.0 增量见各子模块与 meta.ts 版本史；
- * 语义说明见 docs/protocol/peer-guide.md（历史草案 docs/history/draft-v0.1.md 仅供考古）。
+ * 语义说明见 docs/peer-guide.md（历史草案见主仓 KuroAdapter 的 docs/history/draft-v0.1.md，仅供考古）。
  */
 
 import type {
@@ -32,6 +32,9 @@ import {
     WS_SUBPROTOCOL,
 } from "./meta.js";
 
+export type { Fixture } from "./fixtures.js";
+// ---- fixtures 契约校验（ADR-002）----
+export { fixtureSchema, validateFixture } from "./fixtures.js";
 export type {
     BroadcastBody,
     BroadcastRequestFrame,
@@ -106,7 +109,6 @@ export type {
     StatusBody,
     StatusFrame,
 } from "./messages/ws.js";
-
 // ---- WS 侧消息 ----
 export {
     bindingsUpdatedFrame,
