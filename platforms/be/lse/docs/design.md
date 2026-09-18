@@ -1,4 +1,4 @@
-# platforms/be 设计（LeviLamina LSE 平台适配）
+# platforms/be/lse 设计（LeviLamina LSE 平台适配）
 
 > 本文件是包级设计文档（AGENTS.md：写代码前先更新对应包的 `docs/design.md`，设计先行）。
 
@@ -22,11 +22,14 @@ src/
 └── bootstrap.ts   # 拉起 core 客户端（对端角色）
 ```
 
-## 与 Nukkit 的关系（重要）
+## 与 platforms/be 家族其它路线的关系（ADR-020）
 
-`platforms/be` **只含 LeviLamina（LSE 脚本）** 一条路线（ADR-012）。
-**Nukkit / PowerNukkitX 是 Java 服务端**（服务 BE 客户端，但插件是 Java），
-归 `platforms/je` 下的 `nukkit/` 模块（共享 `:core`），不在本目录。
+`platforms/be` 是 **BE 服务端家族**，按具体平台分子目录，当前含两条路线：
+
+- `lse/`（本目录）：LeviLamina LSE 脚本路线（TS → 编译 JS，ADR-012）。
+- `endstone/`：Endstone **C++ 薄壳**路线（预留骨架）——与 `platforms/je` 的 Java 薄壳完全同构（事件桥接 + 内嵌 Node 子进程 + JSON-lines IPC），业务仍走 `bridge/core`。
+
+**Nukkit 已剔除**（2026-08-11，ADR-020：Java 服务端、插件生态非主流，`platforms/je` 的 Gradle 模块列表亦无它）；
 PocketMine-MP（PHP）工具链不匹配，明确不做。
 
 ## 实现顺序（STATUS.md 第 6 步细化）
@@ -37,6 +40,6 @@ PocketMine-MP（PHP）工具链不匹配，明确不做。
 
 ## 依赖
 
-- `@kurobridge/bridge-core`（workspace:*）——业务核心（平台无关）。
-- `@kurobridge/protocol`（workspace:*）——消息 schema。
+- `@kuro-bridge/bridge-core`（workspace:*）——业务核心（平台无关）。
+- `@kuro-bridge/protocol`（workspace:*）——消息 schema。
 - `@levimc-lse/types`（devDep）——LSE 全局对象类型。

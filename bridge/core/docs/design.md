@@ -1,4 +1,4 @@
-# bridge/core 设计（@kurobridge/bridge-core）
+# bridge/core 设计（@kuro-bridge/bridge-core）
 
 > 本文件是包级设计文档（AGENTS.md：写代码前先更新对应包的 `docs/design.md`，设计先行）。
 
@@ -18,16 +18,19 @@ kurobridge 的业务核心 + `kurobridge-ws` 协议服务端（ADR-005：业务�
 - `erasableSyntaxOnly`：产物无 tslib/装饰器依赖。
 - core 无全局单例（对齐 Napuketto ADR-015 推论）：logger/connection/state 均为实例化对象，由 `CoreContext` 持有。
 
-## 目录规划
+## 目录结构
 
 ```
 src/
-├── context.ts        # CoreContext：注入的 logger/传输层/配置持有者
-├── server.ts         # KurobridgeServer：WS 服务端（握手/心跳/连接生命周期）
-├── ipc/              # 与 Java 薄壳的 JSON-lines IPC（inbound/outbound）
-├── handlers/         # 消息处理：chat/command/query/…
-├── business/         # 绑定列表 / 白名单 / 权限 / 转发规则（纯逻辑）
-└── index.ts          # 聚合导出
+├── __tests__/         # vitest 单测（server / relay / reconnect 等）
+├── business/          # 绑定列表 / 白名单 / 权限 / 转发规则（纯逻辑：bindings / admins / config / forwarding）
+├── clock.ts           # Clock / TimerScheduler 注入接口 + 测试用 ManualClock / ManualScheduler
+├── context.ts         # CoreContext：注入的 logger/传输层/配置持有者
+├── index.ts           # 聚合导出
+├── relay.ts           # 转发：IPC ↔ WS 帧路由（game_chat → chat、chat → broadcast 等）
+├── server.ts          # KurobridgeServer：WS 服务端（握手/心跳/连接生命周期）
+├── test-fakes.ts      # 测试假件（传输层 / IPC 的内存实现）
+└── transport.ts       # WsServer / WsConnection / IpcChannel / Logger 可注入接口
 ```
 
 ## 实现顺序（STATUS.md 第 2 步细化）
@@ -138,7 +141,7 @@ chat/broadcast 携带 channel、hello_ack 携带 channelBindings（`ServerOption
 ### ready.autoRestart 上报（协议 0.2.1）
 
 `config.ts` 的 `parseConfig` 扩展：`runtime: { autoRestart: boolean }` 可选字段（缺省 true，
-多余字段剥离语义不变）。本包只做 schema 与默认值；ready 帧扩展在 `@kurobridge/protocol`
+多余字段剥离语义不变）。本包只做 schema 与默认值；ready 帧扩展在 `@kuro-bridge/protocol`
 （`readyBodySchema` 加 `autoRestart` 可选字段，版本 0.2.0 → 0.2.1 patch 顺延），上报在
 bridge/embedded 引导层（配置 → ready body）。
 

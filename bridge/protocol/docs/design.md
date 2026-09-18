@@ -9,7 +9,7 @@
 
 ## 职责
 
-`kurobridge-ws` 协议消息类型的 zod schema（**KuroProtocol `src/` 的唯一可编辑来源在本仓的只读镜像**，
+`kurobridge-ws` 协议消息类型的 zod schema（**本仓 `bridge/protocol/` 是 KuroProtocol `src/`（唯一可编辑来源）的只读镜像**，
 ADR-031；历史口径见 ADR-008）。任何文件禁止手写消息类型，必须 `import { ... } from "@kuro-bridge/protocol"`。
 
 ## 约束

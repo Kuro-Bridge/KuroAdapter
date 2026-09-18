@@ -1,4 +1,4 @@
-# 还没写好是个空壳
+# KuroBridge
 
 
 MC 服务器 ↔ 社交平台群服互通插件。丢进 `plugins/` 的 Paper JAR，通过 WebSocket 与机器人框架通信，实现「游戏 ↔ 社交平台」双向互通（QQ / Telegram / Discord / WhatsApp…）。
@@ -13,11 +13,11 @@ kurobridge（Paper JAR，Java 薄壳）
 ├─ Java 薄壳：Bukkit 事件/命令/权限桥接 + 内嵌 Node 子进程管理（几百行模板代码）
 │
 └─ 内嵌 Node 子进程 → bridge/core（TypeScript 业务核心 + WS 服务端）
-      ├─ embedded（默认）：附带协议端 napukettoqq，开箱即用，控制台扫码
+      ├─ embedded：打包内置 napuketto（开箱可扫码），运行默认不开——config `embedded.napuketto.enabled: true` 开启
       └─ external：不附带协议端，由 koishi-plugin-kurobridge 等对端连入
 ```
 
-- **两种模式不是架构差异，只是打包差异**（`config` 一个开关）；两种模式都运行同一套 Node 业务核心。
+- **两种模式不是架构差异，只是打包差异**（config `embedded.napuketto.enabled` + `ws.port` 固定端口两条件）；两种模式都运行同一套 Node 业务核心。
 - **kurobridge 永远是 WS 服务端角色**，对端（协议端）主动连它；只认一套自研协议 `kurobridge-ws`，不关心对端是谁。
 
 ## 仓库结构

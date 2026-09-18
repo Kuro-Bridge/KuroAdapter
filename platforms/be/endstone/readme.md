@@ -36,4 +36,4 @@ src/
 ## 依赖
 
 - Endstone C++ API（CMake FetchContent / 系统安装）。
-- `@kurobridge/bridge-core` 产物（内嵌 Node 运行，非 C++ 直接调用）。
+- `@kuro-bridge/bridge-core` 产物（内嵌 Node 运行，非 C++ 直接调用）。

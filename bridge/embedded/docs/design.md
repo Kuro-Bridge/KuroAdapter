@@ -1,14 +1,14 @@
-# bridge/embedded 设计（@kurobridge/bridge-embedded）
+# bridge/embedded 设计（@kuro-bridge/bridge-embedded）
 
 > 本文件是包级设计文档（AGENTS.md：写代码前先更新对应包的 `docs/design.md`，设计先行）。
 
 ## 职责
 
-嵌入式瘦身对端（`mode=embedded` 默认形态）：
+嵌入式瘦身对端（config `embedded` 段开启，默认不开；无顶层 `mode` 开关）：
 
 - 复用 `bridge/core` 框架，作为对端连接 kurobridge 的 WS 服务端。
 - 内嵌 **napukettoqq** 协议端（QQ 连接，控制台扫码）。
-- **无 Koishi**：esbuild 单文件产物，随 JAR 分发（嵌入式打包工具打包，待重建）。
+- **无 Koishi**：esbuild 单文件产物，随 JAR 分发（`scripts/embed.ts` 嵌入式打包）。
 
 ## 与架构的关系（ADR-005 / ADR-006）
 
@@ -16,12 +16,19 @@
   external 形态由独立仓库 koishi-plugin-kurobridge 承担（ADR-018），两者复用同一 core。
 - `wrapper.node`（腾讯闭源）不进 JAR，运行期从 QQ 安装目录发现拷贝（ADR-014）。
 
-## 目录规划
+## 目录结构
 
 ```
 src/
-├── index.ts       # 入口：拉起 core 客户端 + napukettoqq（嵌入引导）
-└── bootstrap.ts   # 子进程引导（stdin EOF 自杀 / Watchdog / 崩溃兜底）
+├── __tests__/        # vitest 单测（ws-server / napuketto / qr-watcher）
+├── config-store.ts   # core ConfigStore 的 Node 实现（读 plugins/kurobridge/config.json + 轮询监听）
+├── index.ts          # 入口（引导层）：IPC 端点 + WS 服务端 + napuketto/stub 孙进程拉起
+├── ipc-stdio.ts      # stdin/stdout 实现 core 的 IpcChannel 接口
+├── logger.ts         # stderr logger（[KuroBridge][node][LEVEL] 行格式唯一 writer，ADR-034）
+├── napuketto.ts      # napuketto spawner（拉起 / stdio 捕获 / taskkill 树杀，MVP-4）
+├── node-platform.ts  # core Clock / TimerScheduler 的 Node 实现
+├── qr-watcher.ts     # QR 状态文件轮询（qrcode.png → plugins/kurobridge/qr.png + qr.json）
+└── ws-server.ts      # ws 库实现 core 的 WsServer 接口
 ```
 
 ## 实现顺序（STATUS.md 第 4 步细化）
@@ -32,8 +39,8 @@ src/
 
 ## 依赖
 
-- `@kurobridge/bridge-core`（workspace:*）。
-- `@kurobridge/protocol`（workspace:*）。
+- `@kuro-bridge/bridge-core`（workspace:*）。
+- `@kuro-bridge/protocol`（workspace:*）。
 - esbuild（devDep，单文件打包）。
 
 ## 原型阶段（spike，2026-09-12）
@@ -42,7 +49,7 @@ src/
 
 本阶段本包退化为 **Node 引导层（bootstrap）**，不含 napukettoqq：
 
-- `src/index.ts`：入口——stdin/stdout IPC 端点（JSON-lines，帧走 `@kurobridge/protocol`）+ 以子进程拉起 stub 协议端（孙进程，端口经 argv，决策 D-05）。
+- `src/index.ts`：入口——stdin/stdout IPC 端点（JSON-lines，帧走 `@kuro-bridge/protocol`）+ 以子进程拉起 stub 协议端（孙进程，端口经 argv，决策 D-05）。
 - `src/ws-server.ts`：`ws` 库实现 core 的 `WsServer` 接口（`listen(0)` 动态端口 + 子协议 `kurobridge-ws.v1` 校验），唯一的 Node API 落点。
 - `src/ipc-stdio.ts`：stdin/stdout 实现 core 的 `IpcChannel` 接口。
 - stub 协议端：`stub/peer.mjs`（零依赖，Node 内置全局 WebSocket，决策 D-06）。
@@ -91,7 +98,7 @@ src/
 
 - `main()` 发 ready 帧时带 `autoRestart`：取自配置 `runtime.autoRestart`（core 的
   `parseConfig` 已扩展、缺省 true）。配置加载失败降级路径（空绑定）同样带缺省 true。
-- 版本号顺延随 `@kurobridge/protocol` 0.2.0 → 0.2.1；bootstrap 日志里的协议版本随之更新。
+- 版本号顺延随 `@kuro-bridge/protocol` 0.2.0 → 0.2.1；bootstrap 日志里的协议版本随之更新。
 
 ### stub 重连上限：10 次连续失败自杀（孤儿治理）
 

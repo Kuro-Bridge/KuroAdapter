@@ -1,4 +1,4 @@
-# KuroBot 决策记录（DECISIONS）
+# KuroBridge 决策记录（DECISIONS）
 
 > 借鉴 NapukettoQQ 的 `DECISIONS.md` 形态。每项决策记录背景 → 选项 → 结论 → 理由。编号按时间序，永不改写历史。
 >
@@ -303,6 +303,8 @@
   pre-commit 红灯。
 - **回退条件**：阶段 2 完成前若 KuroProtocol 工作区形态解除（如 CI 需要单仓自包含），
   可回退本 ADR（revert 对应提交，恢复副本为权威）；阶段 2 完成后回退无意义。
+
+> 注（2026-09-18）：镜像文件数随 KuroProtocol bb9f936 同步增至 9 个（新增 `fixtures.ts`），门禁语义不变。
 
 ## ADR-032 恢复 CI：TS + Java 双 job（2026-09-18）
 

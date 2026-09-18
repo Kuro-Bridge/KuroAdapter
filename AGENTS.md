@@ -29,7 +29,7 @@ KuroBridge：MC 服务器 ↔ 社交平台群服互通插件。Paper JAR + 内�
    platforms/be   LSE TS（编译为 JS），复用 bridge/core（QuickJS 可跑）
    ```
 
-   > **koishi-plugin-kurobridge 是独立仓库**（ADR-018）：作为 `kurobridge-ws` 的官方参考对端，依赖 `@kurobridge/protocol` 发布版本，不在本仓库内开发。
+   > **koishi-plugin-kurobridge 是独立仓库**（ADR-018）：作为 `kurobridge-ws` 的官方参考对端，依赖 `@kuro-bridge/protocol` 发布版本，不在本仓库内开发。
 
 8. **IPC 唯一通道**：Java 薄壳 ↔ Node 子进程走 **stdin/stdout JSON-lines**，零端口零配置。Node 对外 WS 用动态端口（`listen(0)`），Java 侧不碰任何端口。
 9. **不做的事**：自研通用消息语义层（平台渲染交给独立仓库 koishi-plugin-kurobridge）、嵌入式 QQ 协议端（napukettoqq 只做协议端）、无理由的 `any`、Java 侧业务逻辑。
@@ -38,16 +38,21 @@ KuroBridge：MC 服务器 ↔ 社交平台群服互通插件。Paper JAR + 内�
 
 ```bash
 pnpm install            # 安装依赖
-pnpm check              # biome check + tsc --noEmit（提交前必跑）
+pnpm check              # 一条入口（pre-commit 同款）：biome + 根 tsc（bridge/*）+ lse typecheck
+                        #   + docs 门禁（旧 scope 口径清零 + md 死链）+ 版本对齐门禁
 pnpm check:protocol     # 协议镜像门禁：bridge/protocol/src ≡ KuroProtocol/src（ADR-031，pre-commit 同款）
+pnpm check:docs         # docs 两道门禁单跑（已含在 pnpm check，列出便于定位）
+pnpm check:versions     # 版本对齐门禁：bridge 六点 0.1.0 + 协议两份 0.4.0（ADR-034，已含在 pnpm check）
 pnpm fix                # biome 自动修复 + tsc
 pnpm test               # vitest run（TS 侧）
 pnpm -r build           # TS 全量构建（tsdown / esbuild）
 ./gradlew build         # Java 薄壳（platforms/je）
-pnpm build:jar          # 全链路：TS 构建 → gradle :paper:shadowJar（嵌入式打包待重建）
+pnpm build:jar          # 全链路：TS 构建 → 嵌入式打包 → gradle :paper:shadowJar（scripts/build-jar.mjs 链式）
 ```
 
-**构建顺序（硬约束）**：`pnpm -r build`（bridge/embedded 产物）→ 嵌入式打包工具（tools/embed，已删除待重建）拷入 `platforms/je/src/main/resources/embedded/` → `gradle :paper:shadowJar`。本地 `pnpm build:jar` 链式执行（当前 embed 步骤暂缺）。
+**构建顺序（硬约束）**：`pnpm -r build`（bridge/embedded 产物）→ `scripts/embed.ts` 嵌入式打包（node 官方 dist 下载校验 + napuketto 嵌包，产出进 `platforms/je/paper/src/main/resources/embedded/`）→ `gradle :paper:shadowJar`。本地 `pnpm build:jar` 经 `scripts/build-jar.mjs` 链式执行三步。
+
+**CI（ADR-032）**：`.github/workflows/ci.yml` 双 job——ts job 检出本仓 + 姊妹仓 KuroProtocol 为兄弟目录，跑 `pnpm check && pnpm test && pnpm -r build && pnpm check:protocol`（与本地同构）；java job 经 mise 提供 JDK 25 跑 `gradlew build`。push master / PR 触发；上游协议演进未同步镜像时 ts job 变红**属预期**（提醒按 KuroProtocol `docs/MIRROR-RESYNC.md` 同步镜像）。
 
 **多版本策略（ADR-021）**：`:core` 版本无关（零 MC API）；Paper 单 jar 通吃；Fabric/NeoForge 按版本矩阵构建（每 MC 版本一个 jar）；Velocity 单 jar。改版本只重编适配层，不动 `:core` 与 `bridge/core`。
 
@@ -71,6 +76,6 @@ pnpm build:jar          # 全链路：TS 构建 → gradle :paper:shadowJar（�
 
 ## 环境
 
-- Node.js 26（ESM，`"type": "module"`）；TypeScript `NodeNext` 解析；包名统一 `@kurobridge/*`。
+- Node.js 26（ESM，`"type": "module"`）；TypeScript `NodeNext` 解析；包名统一 `@kuro-bridge/*`（`platforms/be/lse` 根包 `kurobridge` 无 scope）。
 - Java 25 工具链 + Gradle 9.7（`platforms/je`，mise 统一版本；**gradlew.bat 日常构建**，mise 的 gradle 仅一次性生成 wrapper）；**字节码 target 21**（兼容 Paper 服务端运行时，见 ADR-015）。
 - LSE（`platforms/be`）使用官方 TS 声明 `@levimc-lse/types` + `@levimc-lse/scaffold`，编译为 JS 后由 LeviLamina 加载。
