@@ -267,19 +267,6 @@ importers:
         specifier: ^7.0.2
         version: 7.0.2
 
-  bridge/protocol:
-    dependencies:
-      zod:
-        specifier: ^4.0.0
-        version: 4.4.3
-    devDependencies:
-      tsdown:
-        specifier: ^0.22.14
-        version: 0.22.14(typescript@7.0.2)
-      vitest:
-        specifier: ^4.1.10
-        version: 4.1.10(@types/node@26.2.0)(@vitest/coverage-v8@4.1.10)(vite@8.2.1(@types/node@26.2.0))
-
   platforms/be/lse:
     dependencies:
       '@kuro-bridge/bridge-core':

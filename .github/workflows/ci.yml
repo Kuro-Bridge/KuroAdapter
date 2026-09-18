@@ -6,14 +6,6 @@
 #              dist d.ts 上进行，fresh clone 直接 pnpm check 自足全绿，见根 package.json）；
 # - java job = Java 侧回归（platforms/je 的 ./gradlew build：:core 全部 JUnit 用例、
 #              Spotless、-Xlint:all -Werror）。此前 Java 回归不在任何自动化链，CI 起补位。
-#
-# ts job 检出姊妹仓 KuroProtocol 的原因：scripts/check-protocol-mirror.mjs（ADR-031 协议
-# 镜像门禁）以 join(repoRoot, "..", "KuroProtocol") 定位协议 SSOT——KuroProtocol 必须与本仓
-# 检出目录平级（兄弟目录）。两仓均 public，无需额外 token。
-#
-# 语义注记（ADR-032）：CI 对 KuroProtocol 取其默认分支 HEAD——上游协议演进而本仓镜像未同步时
-# ts job 变红【属预期】（与本地 pre-commit 同语义：红 = 提醒按 KuroProtocol
-# docs/MIRROR-RESYNC.md 同步镜像），不是误报。
 
 name: CI
 
@@ -24,7 +16,7 @@ on:
 
 jobs:
   ts:
-    name: TS（check / test / build / 协议镜像门禁）
+    name: TS（check / test）
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -34,13 +26,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           path: KuroAdapter
-
-      # 见顶部注释：check-protocol-mirror.mjs 要求 SSOT 仓位于 ../KuroProtocol（兄弟目录）
-      - name: 检出协议 SSOT 仓 KuroProtocol（到 KuroProtocol/ 兄弟目录）
-        uses: actions/checkout@v4
-        with:
-          repository: Oppenheymu/KuroProtocol
-          path: KuroProtocol
 
       # 不用 `corepack enable`：Node 25 起发行版不再捆绑 corepack（TSC 2025-03 决议），
       # 且本仓根 package.json 无 packageManager 字段（只有 devEngines，corepack 不读），

@@ -2,9 +2,7 @@
 // 文档口径门禁（ADR-030 品牌迁移的机械执行机构）：
 // 旧 npm scope 口径（见下方 LEGACY_SCOPE_PATTERN，正确写法 `@kuro-bridge/`）在 docs/history/
 // 归档之外全仓禁用。docs/history/ 是冻结归档（正文不改写约定），历史条目里的旧口径以
-// ADR-030 映射表为准，不门禁；bridge/protocol/src/ 是 KuroProtocol 的字节级只读镜像
-// （ADR-031），本仓无权修改（演进只能改 SSOT 再同步镜像），门禁它没有可执行的意义——
-// 只门禁本仓可自行修复的内容。
+// ADR-030 映射表为准，不门禁——只门禁本仓可自行修复的内容。
 // 注意：本文件自身不得出现旧口径字面量（否则门禁打自己），展示串从正则 source 派生。
 import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -37,8 +35,8 @@ const TEXT_EXTENSIONS = new Set([
 // 以点开头的目录（.git/.gradle/.cache 等）全是工具产物，一并跳过。
 const SKIP_DIR_NAMES = new Set(["node_modules", "dist", "build", "sandbox"]);
 
-// 相对仓根的整棵跳过路径（冻结归档 / 只读镜像，见文件头注释）
-const SKIP_REL_DIRS = ["docs/history", "bridge/protocol/src"];
+// 相对仓根的整棵跳过路径（冻结归档，见文件头注释）
+const SKIP_REL_DIRS = ["docs/history"];
 
 // 旧口径：见 pattern（本文件不写字面量，展示串从 source 派生）。正确写法 @kuro-bridge/（ADR-030 映射表）
 const LEGACY_SCOPE_PATTERN = /@kurobridge\//;
@@ -97,9 +95,7 @@ if (failures.length > 0) {
     for (const f of failures) {
         console.error(`  - ${f}`);
     }
-    console.error(
-        "[check-docs-scope] docs/history/ 与 bridge/protocol/src/ 已豁免（冻结归档 / 只读镜像）。",
-    );
+    console.error("[check-docs-scope] docs/history/ 已豁免（冻结归档）。");
     process.exit(1);
 }
 

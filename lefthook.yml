@@ -7,7 +7,7 @@
 # 因此本文件无需单列条目——新门禁经 check 单一入口自动进入 pre-commit（ADR-032）。
 # 串行（parallel: false，ADR-035）：check 首环 pnpm -r build 会清空重建 **/dist，
 # 与 test 并行时 vitest 解析 exports → dist 会撞上清空窗口（Failed to resolve entry），
-# 串行后链序 = check（自含 build）→ test → check-protocol，与 CI ts job 门禁同序。
+# 串行后链序 = check（自含 build）→ test，与 CI ts job 门禁同序。
 
 pre-commit:
     parallel: false
@@ -16,7 +16,3 @@ pre-commit:
             run: pnpm check
         test:
             run: pnpm test
-        # 协议镜像一致性（ADR-031）：bridge/protocol/src 必须与姊妹仓 KuroProtocol/src 字节级一致；
-        # 协议演进只能改 KuroProtocol（四件套同改）再同步镜像，直接改本仓一侧在此拦下。
-        check-protocol:
-            run: pnpm check:protocol
