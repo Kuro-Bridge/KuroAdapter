@@ -151,6 +151,30 @@ describe("parseConfig", () => {
         ).toThrow(ConfigError);
     });
 
+    it("server 段：合法 id 保留 / 整段缺省无键（ADR-034）", () => {
+        const base = { channels: ["10001"], token: "", admins: [], runtime: { autoRestart: true } };
+        expect(parseConfig({ channels: ["10001"], server: { id: "survival-1" } })).toEqual({
+            ...base,
+            server: { id: "survival-1" },
+        });
+        // 整段缺省 = 无 server 键（"kurobridge" 兜底在 embedded 引导层，不是 config 默认值）
+        expect(parseConfig({ channels: ["10001"] })).not.toHaveProperty("server");
+        // 段存在但 id 省略 = 合法（等价缺省，由引导层兜底）
+        expect(parseConfig({ channels: [], server: {} })).toEqual({
+            channels: [],
+            token: "",
+            admins: [],
+            runtime: { autoRestart: true },
+            server: {},
+        });
+    });
+
+    it("server 段非法值 → ConfigError（ADR-034：id 非空串）", () => {
+        expect(() => parseConfig({ channels: [], server: { id: "" } })).toThrow(ConfigError);
+        expect(() => parseConfig({ channels: [], server: { id: 42 } })).toThrow(ConfigError);
+        expect(() => parseConfig({ channels: [], server: "kurobridge" })).toThrow(ConfigError);
+    });
+
     it("defaultConfig 为空绑定 + 不鉴权 + 无管理员 + autoRestart true，且不含 ws 段", () => {
         expect(defaultConfig()).toEqual({
             channels: [],

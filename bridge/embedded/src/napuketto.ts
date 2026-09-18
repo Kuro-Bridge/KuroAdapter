@@ -200,8 +200,9 @@ export function spawnNapuketto(spec: NapukettoSpawnSpec, deps: NapukettoDeps): N
     };
 }
 
-/** CLI 逐行输出里的 pino-pretty 级别字样（大写、词边界，防正文误伤） */
+/** CLI 逐行输出里的 pino-pretty 级别字样（大写、词边界，防正文误伤）；FATAL 并入 error 分流（ADR-034，pino 有 fatal 级） */
 const LOG_LEVEL_ERROR = /\bERROR\b/;
+const LOG_LEVEL_FATAL = /\bFATAL\b/;
 const LOG_LEVEL_WARN = /\bWARN\b/;
 /** QR URL 日志（napuketto kernel 固定文案，全角括号；URL 解析 best-effort——格式变更即失效，PNG 路径为主） */
 const QR_URL_LOG = /请扫描二维码登录（保存:\s*.+?\s*\|\s*URL:\s*(\S+?)）/;
@@ -238,7 +239,7 @@ const QR_ART_FOLD_CAP = 200;
 /** 按级别字样分流转发一行（复杂度拆分：热路径主循环只管折叠状态机） */
 function logNapukettoLine(logger: Logger, line: string): void {
     const text = `[napuketto] ${line}`;
-    if (LOG_LEVEL_ERROR.test(line)) {
+    if (LOG_LEVEL_ERROR.test(line) || LOG_LEVEL_FATAL.test(line)) {
         logger.error(text);
     } else if (LOG_LEVEL_WARN.test(line)) {
         logger.warn(text);

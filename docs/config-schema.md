@@ -101,6 +101,19 @@ WS 监听段：external 协议端（如独立部署的 napukettoqq）的连入�
   游戏内 `/kurobridge qr` 查看图片路径与登录链接。
 - `configPath`/`dataDir` 变更需重启生效（napuketto 在 Node 启动时拉起，运行期不重读）。
 
+### `server: object`（可选，ADR-034 引入）
+
+服务器标识段：本服务器在对端视角下的身份，经 hello_ack 上报（`serverId` 字段）。
+消除原型期 `kurobridge-spike` 硬编码残留；形状 SSOT 归 core zod（与 `ws` 段同款，
+ADR-028 先例），消费方在 Node 引导层（注入 `CoreContext.serverId`）。
+
+- `id: string`（可选，非空串）：服务器标识。**缺省 `"kurobridge"`**（引导层兜底——
+  `defaultConfig()` 生成的默认配置不含 `server` 段）。
+- **多实例互联仍是债务**（STATUS 索引）：当前 id 仅影响 hello_ack 上报值，对端不按它
+  做路由/去重；同机多实例请各自配不同 id 以便日志辨识。
+- 与 `token` 同理：id 在 Node 进程启动时注入（CoreContext 构造），运行期改本段需重启
+  服务器（或重启插件）生效。
+
 ## 完整示例
 
 ```json
@@ -124,6 +137,9 @@ WS 监听段：external 协议端（如独立部署的 napukettoqq）的连入�
         "napuketto": {
             "enabled": true
         }
+    },
+    "server": {
+        "id": "kurobridge"
     }
 }
 ```

@@ -52,6 +52,14 @@ export interface KurobridgeConfig {
             readonly dataDir?: string | undefined;
         };
     };
+    /**
+     * 服务器标识段（ADR-034，可选）：id 缺省 "kurobridge"（消费方 embedded 引导层兜底，
+     * 非 config 默认值），经 hello_ack 上报给对端——消除原型期 "kurobridge-spike" 硬编码
+     * 残留。形状 SSOT 在此（先例 ADR-028）；「serverId 多实例互联」全案仍是债务（STATUS 索引）。
+     */
+    readonly server?: {
+        readonly id?: string | undefined;
+    };
 }
 
 /** 配置读写抽象（宿主注入；watch 返回取消订阅函数） */
@@ -99,6 +107,11 @@ const napukettoSchema = z.object({
     dataDir: z.string().min(1).optional(),
 });
 
+const serverSchema = z.object({
+    /** 服务器标识（hello_ack 上报给对端）；缺省 "kurobridge"（embedded 引导层兜底，ADR-034） */
+    id: z.string().min(1).optional(),
+});
+
 const configSchema = z.object({
     channels: z.array(z.string().min(1)),
     /** WS 鉴权 token（v0.3.0）；缺省 "" = 不鉴权 */
@@ -115,6 +128,8 @@ const configSchema = z.object({
             napuketto: napukettoSchema,
         })
         .optional(),
+    /** 服务器标识段（ADR-034）；整段缺省 = 引导层兜底 "kurobridge" */
+    server: serverSchema.optional(),
 });
 
 /** 去重保序 */
@@ -149,7 +164,7 @@ export function parseConfig(raw: unknown): KurobridgeConfig {
         parsed = configSchema.parse(raw);
     } catch (error: unknown) {
         throw new ConfigError(
-            "配置不合法（期望 { channels: string[], token?: string, admins?: {channel, users}[], runtime?: { autoRestart?: boolean }, ws?: { host?: string, port?: number }, embedded?: { napuketto: { enabled: boolean, configPath?: string, dataDir?: string } } }）",
+            "配置不合法（期望 { channels: string[], token?: string, admins?: {channel, users}[], runtime?: { autoRestart?: boolean }, ws?: { host?: string, port?: number }, embedded?: { napuketto: { enabled: boolean, configPath?: string, dataDir?: string } }, server?: { id?: string } }）",
             error,
         );
     }
@@ -162,6 +177,7 @@ export function parseConfig(raw: unknown): KurobridgeConfig {
     // 可选段条件展开（exactOptionalPropertyTypes：段缺省时不产生对应 undefined 键）
     const ws = parsed.ws;
     const embedded = parsed.embedded;
+    const server = parsed.server;
     return {
         channels,
         token: parsed.token,
@@ -169,6 +185,7 @@ export function parseConfig(raw: unknown): KurobridgeConfig {
         runtime: { autoRestart: parsed.runtime.autoRestart },
         ...(ws === undefined ? {} : { ws }),
         ...(embedded === undefined ? {} : { embedded }),
+        ...(server === undefined ? {} : { server }),
     };
 }
 

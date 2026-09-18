@@ -14,6 +14,7 @@ import { crc32, deflateRawSync } from "node:zlib";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
+    assertNoTencentClosedSource,
     buildZip,
     collectLicenses,
     collectZipEntries,
@@ -208,6 +209,43 @@ describe("buildZip / collectZipEntries / collectLicenses（MVP-4）", () => {
         } finally {
             await rm(root, { recursive: true, force: true });
         }
+    });
+});
+
+describe("assertNoTencentClosedSource（腾讯闭源件红线门禁，ADR-034）", () => {
+    it("干净列表（npm 发布物）通过：含 loader 自研 stub 与 7zip 资产", () => {
+        expect(() =>
+            assertNoTencentClosedSource([
+                "node_modules/@napuketto/cli/dist/index.mjs",
+                "node_modules/@napuketto/loader/assets/7zip/7z.dll",
+                // 自研 stub（ADR-029，原样分发）：裸名 QQNT.dll 无间隔字样，不命中 QQNT 正则（.+ 要求间隔）
+                "node_modules/@napuketto/loader/assets/stub/QQNT.dll",
+            ]),
+        ).not.toThrow();
+    });
+
+    it("三类违例各被拒：wrapper.node / QQNT 二进制 / QQ 安装包（basename 匹配、大小写不敏感）", () => {
+        const violations = [
+            "node_modules/napuketto/wrapper.node",
+            "node_modules/@napuketto/cli/vendor/QQNTWrap.dll",
+            "node_modules/x/bin/QQNTBootstrap.exe",
+            "node_modules/dl/QQ9.9.9-Installer.exe",
+            "node_modules/dl/QQ_7.1.apk",
+            "node_modules/dl/QQSetup.DMG",
+        ];
+        for (const entry of violations) {
+            expect(() => assertNoTencentClosedSource([entry]), entry).toThrow("腾讯闭源件");
+        }
+    });
+
+    it("文件名精确相等才命中：相似名/路径段含字样不误伤", () => {
+        expect(() =>
+            assertNoTencentClosedSource([
+                "node_modules/docs/wrapper.node.md",
+                "node_modules/x/not-wrapper.node.txt",
+                "node_modules/MYQQNTNOTES.txt",
+            ]),
+        ).not.toThrow();
     });
 });
 

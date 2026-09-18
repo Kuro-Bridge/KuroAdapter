@@ -265,6 +265,22 @@ describe("spawnNapuketto", () => {
         await stopped;
     });
 
+    it("FATAL 级别字样分流为 error（ADR-034：pino 有 fatal 级，不再并入 info）", async () => {
+        const h = makeHarness();
+        const handle = spawnNapuketto(SPEC, h.deps);
+        h.child.stderr.write("20:00:00.000 FATAL (kernel/1): unrecoverable\n");
+        await drain();
+        const errors = h.logs.filter((l) => l.level === "error").map((l) => l.message);
+        expect(errors.some((m) => m.includes("FATAL") && m.includes("unrecoverable"))).toBe(true);
+        expect(h.logs.some((l) => l.level === "info" && l.message.includes("unrecoverable"))).toBe(
+            false,
+        );
+        // 收尾：结束句柄等待的 stop（不产生孤儿计时器）
+        const stopped = handle.stop();
+        h.child.emitExit(0);
+        await stopped;
+    });
+
     it("终端 ASCII 二维码按突发折叠为一行提示；URL 提取与后续日志不受影响", async () => {
         const h = makeHarness();
         const urls: string[] = [];

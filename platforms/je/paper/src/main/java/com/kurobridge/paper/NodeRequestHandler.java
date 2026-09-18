@@ -1,6 +1,7 @@
 package com.kurobridge.paper;
 
 import com.kurobridge.KuroBridgePlugin;
+import com.kurobridge.core.IpcLogLevels;
 import com.kurobridge.core.IpcResult;
 import com.kurobridge.core.NodeIpcListener;
 import java.util.List;
@@ -101,8 +102,9 @@ public final class NodeRequestHandler implements NodeIpcListener {
 
     @Override
     public void onStderrLine(String line) {
-        // Node 侧日志行自带 [KuroBridge][node][LEVEL] 前缀（bridge/embedded 的 logger），原样中继
-        plugin.getLogger().info(line);
+        // Node 侧日志行自带 [KuroBridge][node][LEVEL] 前缀（bridge/embedded 的 logger，ADR-034
+        // 唯一 writer）；级别经 IpcLogLevels 单一解析点分流后原样中继——error 行不再降级 INFO
+        plugin.getLogger().log(IpcLogLevels.parse(line), line);
     }
 
     @Override

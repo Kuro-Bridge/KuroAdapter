@@ -23,7 +23,7 @@ import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { mkdir, readdir, readFile, rename, stat, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { crc32, deflateRawSync, inflateRawSync } from "node:zlib";
 
@@ -420,6 +420,34 @@ export async function collectZipEntries(nodeModulesDir: string): Promise<ZipInpu
     return entries;
 }
 
+/** 腾讯闭源件红线三类（红线 5 / ADR-014 / architecture.md §9 / ADR-029 嵌包边界）：
+ *  wrapper.node（腾讯闭源 NAPI 模块）、QQNT 系二进制、QQ 安装包——绝不进 JAR 不进仓。 */
+const WRAPPER_NODE_FILE = "wrapper.node";
+const QQNT_BINARY_NAME = /^QQNT.+\.(dll|exe|so|dylib)$/i;
+const QQ_INSTALLER_NAME = /^QQ.+\.(exe|apk|dmg|msi)$/i;
+
+/**
+ * 腾讯闭源件扫描断言（zip 写入前调用，把注释里的虚 claim 变真门禁）：entries 为待打包的
+ * napuketto 嵌包文件路径列表（"/" 分隔的 zip 相对名，collectZipEntries 产物），按 basename
+ * 匹配三类红线件，命中即 throw（napuketto 运行期自取，无需嵌入）。
+ */
+export function assertNoTencentClosedSource(entries: readonly string[]): void {
+    for (const entry of entries) {
+        const name = basename(entry);
+        if (
+            name === WRAPPER_NODE_FILE ||
+            QQNT_BINARY_NAME.test(name) ||
+            QQ_INSTALLER_NAME.test(name)
+        ) {
+            throw new Error(
+                `napuketto 嵌包含腾讯闭源件：${entry}` +
+                    "（红线 5 / ADR-014 / architecture.md §9：wrapper.node、QQNT 二进制与 QQ" +
+                    " 安装包绝不进 JAR 不进仓，napuketto 运行期自取；请检查依赖树里混入的来源）",
+            );
+        }
+    }
+}
+
 const LICENSE_FILE_NAMES = new Set([
     "LICENSE",
     "LICENSE.MD",
@@ -521,6 +549,7 @@ async function ensureNapukettoBundle(deps: {
     if (entries.length === 0) {
         throw new Error(`napuketto 依赖树为空：${nodeModules}`);
     }
+    assertNoTencentClosedSource(entries.map((entry) => entry.name));
     const zip = buildZip(entries);
     const licenses = await collectLicenses(nodeModules);
     await mkdir(targetDir, { recursive: true });

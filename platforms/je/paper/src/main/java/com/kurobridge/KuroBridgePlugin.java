@@ -1,6 +1,7 @@
 package com.kurobridge;
 
 import com.kurobridge.core.EmbeddedRuntime;
+import com.kurobridge.core.IpcLogLevels;
 import com.kurobridge.core.KurobridgeVersions;
 import com.kurobridge.core.NodeIpc;
 import com.kurobridge.core.NodeSupervisor;
@@ -219,15 +220,10 @@ public final class KuroBridgePlugin extends JavaPlugin {
     /** 就绪汇总行的 node 版本（JAR 模式 = manifest 值，开发覆盖 = dev）。 */
     private volatile String nodeVersion = NODE_VERSION_DEV;
 
-    /** :core 日志行中继到插件 logger（行格式 {@code [NodeIpc][LEVEL] 消息}，按前缀分流级别）。 */
+    /** :core 日志行中继到插件 logger（行格式 {@code [NodeIpc][LEVEL] 消息}；级别经
+     * IpcLogLevels 单一解析点分流，ADR-034——中继方不得各自猜前缀）。 */
     private static void relayIpcLog(Logger logger, String line) {
-        if (line.startsWith("[NodeIpc][WARN]") || line.startsWith("[NodeSupervisor][WARN]")) {
-            logger.warning(line);
-        } else if (line.startsWith("[NodeSupervisor][SEVERE]")) {
-            logger.severe(line);
-        } else {
-            logger.info(line);
-        }
+        logger.log(IpcLogLevels.parse(line), line);
     }
 
     private static String envOrDefault(String name, String defaultValue) {
