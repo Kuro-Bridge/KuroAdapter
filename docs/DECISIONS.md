@@ -388,3 +388,60 @@
   （生成文件引入新漂移面）——对齐失败在 check 链红灯，而非运行期缺省。
 - **回退条件**：行格式如需演进（加时间戳/结构化字段），修订本条契约表并同步
   `IpcLogLevels` 与 logger.ts（两侧同改 + 测试），不允许局部漂移。
+
+## ADR-035 门禁链 build 前置 + 协议镜像退役实施裁决（ADR-031 阶段 2）（2026-09-18）
+
+- **背景**：CI 首跑（run 35358367694，commit 86a698a）TS job 红：`pnpm check` 爆
+  34 条错误——TS2307 ×20（`@kuro-bridge/protocol` 8 + `@kuro-bridge/bridge-core` 12）、
+  TS7006 ×14（全部级联）。根因实证：全仓无 tsconfig paths / project references，
+  workspace 包类型解析走 node_modules symlink → 包 exports.types → `dist/index.d.mts`，
+  而 `**/dist/` 全部 gitignored；CI 门禁链 `check → test → build → check:protocol`
+  在 install 后无任何构建步骤。本地复现实锤：隐藏 `bridge/core/dist` 与
+  `bridge/protocol/dist` 后 `pnpm check` 复现同样 34 条、首错逐字一致——check
+  链（与 test：vitest 对两包有运行时值导入，走 exports.import → dist/index.mjs）
+  隐式依赖 gitignored 陈旧构建物。同时 ADR-031 阶段 2 窗口开启：
+  `@kuro-bridge/protocol@0.4.0` 已发布（npm dist-tag latest，2026-09-18T11:17Z）、
+  0.1.0 已 deprecate、tag v0.4.0 已推。本 ADR 裁决修复与退役的全部门禁口径，先文档后代码。
+- **结论**：
+  1. **链序：build 内聚 check 首环**。根 `check` script 改为
+     `pnpm -r build && biome check . && tsc --noEmit && tsc --noEmit -p platforms/be/lse
+     && pnpm check:docs && pnpm check:versions`；CI 门禁链 step 简化为
+     `pnpm check && pnpm test`。check 语义升级为「先构建发布物，再在发布面
+     （exports.types → dist d.ts）上做全部静态校验」——单一权威：fresh clone 直接
+     `pnpm check` 自足全绿，CI / lefthook / 本地全继承，链序不在三处各写一遍。
+  2. **协议导入纪律：biome `noRestrictedImports` 改写保留，不删**。patterns 维持
+     `**/protocol/src/**` + `**/protocol/dist/**`（镜像死后自然落在
+     `node_modules/@kuro-bridge/protocol/` 深路径上），message 改写为 npm 语义。
+  3. **check-versions 协议族新锚**：期望值 = 已安装包清单
+     `bridge/core/node_modules/@kuro-bridge/protocol/package.json` 的 `version`
+     （复用现有 `jsonVersion()` 助手）；比对对象不变（`KurobridgeVersions.java` 的
+     `PROTOCOL_VERSION`）。锚文件缺失时报错文案须指向「协议依赖未安装或消费方未声明」。
+     bridge 六点族（期望值 = 根 package.json version）不动。
+  4. **CI 简化**：删 ts job 的 KuroProtocol 兄弟检出 step 与 ci.yml 顶部镜像语义注记
+     （镜像门禁删除后其唯一消费者即消失）。safe.directory 无需手动配置
+     （actions/checkout 默认 set-safe-directory: true）。
+  5. **风险与缺口登记**：① pnpm `minimumReleaseAge`（1440 分钟）可能拦截发布不足
+     24h 的新依赖解析——切换时实测，若被拦则在 pnpm-workspace.yaml 加
+     `minimumReleaseAgeExclude: ["@kuro-bridge/protocol"]`（自家已审发布，防线不适用）；
+     ② `bridge/embedded` 的 exports.types 指向不存在的 `dist/index.d.mts`（esbuild
+     只产 mjs）为预存缺陷，当前无人导入该包故未爆，登记 STATUS 缺口、本线不修；
+     ③ stub `peer.mjs` 的 `PROTOCOL_VERSION = "0.3.1"` 为有意落后一档（兼容区间验证），
+     非漂移，禁顺手升级。
+- **理由**：否决 tsconfig paths → src 方案的四条：① 镜像删除后协议 src 不在仓内
+  （npm 包只发布 dist d.ts），paths 无法统一覆盖两类依赖，必然形成「本仓包走 src、
+  npm 包走 dist」双轨解析，check 校验语义分裂；② paths 映射 src 绕开包 exports
+  边界——发布面（exports 只暴露 "."）失去类型层校验意义，恰是 noRestrictedImports
+  一直防的「深路径导入」的类型版；③ vitest 运行时值导入不走 tsconfig，paths 只修
+  类型层，test 门禁依旧隐式依赖构建物——问题只修一半；④ paths 表逐包手工维护，
+  每新增 workspace 包都要登记，与机械联动纪律相悖。build 前置让校验对象 = 发布面，
+  与「npm 消费方拿到什么就校验什么」同构；锚点选 package.json version 而非 dist
+  d.ts 正则，因产物文本格式随构建器波动，而包清单 version 由 KuroProtocol 发布侧
+  `scripts/assert-version.mjs` 机械断言等价于协议版本（0.4.0 实证对齐）；biome
+  窄规则保留作解析器无关的第二道闸（lse 走 bundler 解析，工具链演进不保证 exports
+  机械强制），纵深防御零运行成本。代价：每次 check 一次全量构建（本仓 4 个 TS 包，
+  秒级），可接受。
+- **回退条件**：镜像与门禁整体复活 = `git revert` 本 ADR 的实施提交序列（依赖切换 /
+  镜像删除 / 门禁重接，Conventional 一一对应）；单点复活
+  `git restore --source=<镜像删除提交>^ -- bridge/protocol scripts/check-protocol-mirror.mjs`
+  后按 ADR-031 时代挂点恢复 package.json / lefthook.yml / ci.yml。若 KuroProtocol
+  发布纪律变化（包内不再随附 d.ts，或 assert-version 断言废除），第 3 条锚点选择须重审。
