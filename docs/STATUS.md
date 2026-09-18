@@ -83,10 +83,10 @@ napuketto 外部契约原样（env 名、文件名、TOML `[accounts.kurobot]` �
 - **CI 推送激活**：`.github/workflows/ci.yml` 已入库（ADR-032），本地 master 领先 origin
   多笔未推——推送后 CI 首跑生效；ts job 依赖姊妹仓 KuroProtocol（public，免 token），
   上游演进未同步镜像时变红属预期（resync 规程见 KuroProtocol `docs/MIRROR-RESYNC.md`）。
-- **协议依赖切换（阶段 2，ADR-031）**：KuroProtocol 发布 `@kuro-bridge/protocol@0.4.0` +
-  deprecate npm 0.1.0（误发旧线，2026-09-15）后，删除本仓 `bridge/protocol` 镜像与门禁，
-  三消费方（core / embedded / lse）`workspace:*` → `^0.4.0`。命令清单见
-  KuroProtocol `docs/DECISIONS.md` ADR-001（需账号操作，用户执行）。
+- **协议依赖切换（阶段 2，ADR-031）——前置条件已满足**：`@kuro-bridge/protocol@0.4.0`
+  已发布（2026-09-18，npm dist-tag latest），误发线 0.1.0 已 deprecate。待办：删除本仓
+  `bridge/protocol` 镜像与门禁，三消费方（core / embedded / lse）`workspace:*` → `^0.4.0`。
+  命令清单见 KuroProtocol `docs/DECISIONS.md` ADR-001（删镜像属跨波次动作，待用户/后续波次执行）。
 - koishi-plugin-kurobridge 独立仓库（ADR-018）：官方参考对端 + 平台渲染唯一归属，
   JE 闭环后启动（Koishi v4 基线）；其协议依赖 `^0.1.0` 亦待切 `^0.4.0`（上游协作）。
 - `platforms/be` 家族骨架已建：`lse/`（TS，复用 bridge/core，QuickJS 可跑是硬约束）、
