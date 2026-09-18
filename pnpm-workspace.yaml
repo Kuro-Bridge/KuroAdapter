@@ -11,6 +11,7 @@ minimumReleaseAgeExclude:
   - '@napuketto/loader@0.0.32'
   - '@napuketto/cli@0.1.20'
   - '@napuketto/loader@0.0.33'
+  - '@kuro-bridge/protocol@0.4.0'
 # pnpm 11.6 实测：以下两项放 settings: 嵌套块不生效，必须顶层。
 # verifyDepsBeforeRun=false：关闭运行脚本前的依赖预检（monorepo 会触发不必要的 reinstall）。
 # trustLockfile=true：跳过对既有 lockfile 的供应链重校验——minimumReleaseAge 11 起默认

@@ -20,7 +20,7 @@
     },
     "dependencies": {
         "@kuro-bridge/bridge-core": "workspace:*",
-        "@kuro-bridge/protocol": "workspace:*",
+        "@kuro-bridge/protocol": "^0.4.0",
         "@napuketto/cli": "0.1.20",
         "ws": "^8.18.0"
     },

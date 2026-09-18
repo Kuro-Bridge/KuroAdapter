@@ -20,7 +20,7 @@
         "build": "tsdown"
     },
     "dependencies": {
-        "@kuro-bridge/protocol": "workspace:*",
+        "@kuro-bridge/protocol": "^0.4.0",
         "zod": "^4.0.0"
     },
     "devDependencies": {
