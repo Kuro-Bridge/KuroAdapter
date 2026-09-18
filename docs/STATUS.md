@@ -2,9 +2,9 @@
 
 > 开始任何工作前先读本文 → `architecture.md`（架构书）→ 对应包 `docs/design.md`。
 > 本文只讲「现在」；阶段史（原型 → MVP-1~4 → DEBT-1/2 → 改名）的任务书/实录全在
-> [`history/`](history/README.md)，拍板依据在 [`DECISIONS.md`](DECISIONS.md)（ADR-001~031）。
+> [`history/`](history/README.md)，拍板依据在 [`DECISIONS.md`](DECISIONS.md)（ADR-001~034）。
 
-## 当前状态（2026-09-15）
+## 当前状态（2026-09-18）
 
 **JE（Paper）主链全部完成，真机终验已通过**：MVP-1~4 + 两轮债务清偿 + 品牌迁移
 （KuroBot → KuroBridge）+ 真机终验收官（见下节）。当前可分发形态 =
@@ -23,10 +23,13 @@
 - **业务面**（DEBT-1）：绑定表 / 转发规则（按频道 fan-out）/ 群管理员映射 / WS command
   透传执行 / query 本地作答 / death / 配置热重载（`kurobridge reload`）/ 白名单 SSOT =
   MC 原生 whitelist。
-- **门禁基线**（改名收尾时点）：`pnpm check` / `pnpm test`（171 用例）/ `pnpm -r build` /
-  `gradlew build` + `:core:test --rerun` 全绿。
+- **门禁基线**（2026-09-18 治理波次后）：`pnpm check`（一条入口：biome + 根 tsc + lse
+  typecheck + docs 门禁 + 版本对齐）/ `pnpm test`（**180 用例**）/ `pnpm -r build` /
+  `pnpm check:protocol` / `gradlew build` + `:core:test --rerun`（**74 用例**）全绿。
+  CI 双 job 已入库（ADR-032），**推送 master 后激活**（见待定事项）。
 - **napuketto 外部契约原样**：env 名、文件名、TOML `[accounts.kurobot]` 段名、client
-  自报格式均不改（RENAME-NOTES R-03 豁免清单是全仓仅存的 3 处 kurobot 字样）。
+  自报格式均不改（napuketto 契约点按 RENAME-NOTES R-03 豁免；DECISIONS 历史条目与
+  history 册内的旧名按「永不改写」归档约定保留）。
 
 ## 真机终验：通过（2026-09-15 收官）
 
@@ -53,8 +56,33 @@
 napuketto 外部契约原样（env 名、文件名、TOML `[accounts.kurobot]` 段名、client 配置值
 原样透传）。对端实现依据 = KuroProtocol 仓 peer-guide（本仓 `protocol/peer-guide.md` 为迁移指针）。
 
+## 2026-09-18 治理波次（长程线 2：门禁统一 / 文档求真 / 可观测性收敛）
+
+单波次四块，决策依据 ADR-032~034（先文档后代码）：
+
+- **门禁**：CI 双 job 入库（ADR-032：ts job 与本地同构 + 姊妹仓兄弟目录检出跑
+  `check:protocol`；java job mise JDK 25 跑 `gradlew build`——Java 回归从此对门禁可见）；
+  本地 `check` 链补盲区：lse typecheck 入链、旧 scope（`@kuro-bridge/` 的无连字符写法）
+  grep 门禁、md 死链
+  门禁、版本对齐门禁（`check-versions`）、biome `noRestrictedImports`（协议导入口径），
+  全部经 `pnpm check` 单一入口挂 lefthook。
+- **文档求真**：旧 scope 残留清零（无连字符写法 17 处，history 档案豁免）；「嵌入式打包待重建」
+  五连过时口径改现状；三项虚 claim 处置——JaCoCo ≥60% 门禁改事实（未实装，裁决理由见
+  architecture §8）、「lint 规则强制」落地为真实 `noRestrictedImports` 窄规则 + 精确措辞、
+  wrapper.node「构建期 grep 门禁」落地为 `embed.ts` 扫描断言（含单测）；readme 空壳标题、
+  embedded 双语义、各 design.md 目录/家族描述对齐实况。
+- **可观测性**（ADR-034）：`[KuroBridge][node][LEVEL]` 行格式契约立档；`:core IpcLogLevels`
+  单一解析点——修复 Node error 行在服务器控制台降级 INFO 的事故（`onStderrLine` 此前
+  无条件 info）；logger.ts 收编唯一 stderr writer；`SERVER_ID="kurobridge-spike"` 残留消除
+  （config `server.id`，缺省 `kurobridge`）；`BRIDGE_VERSION` 单点 + 六点机械对齐。
+- **发布通道**（ADR-033）：`bridge/core` / `bridge/embedded` 加 `private: true`——对齐
+  ADR-031 只封 protocol 的缺口，误发通道全封死。
+
 ## 待定事项
 
+- **CI 推送激活**：`.github/workflows/ci.yml` 已入库（ADR-032），本地 master 领先 origin
+  多笔未推——推送后 CI 首跑生效；ts job 依赖姊妹仓 KuroProtocol（public，免 token），
+  上游演进未同步镜像时变红属预期（resync 规程见 KuroProtocol `docs/MIRROR-RESYNC.md`）。
 - **协议依赖切换（阶段 2，ADR-031）**：KuroProtocol 发布 `@kuro-bridge/protocol@0.4.0` +
   deprecate npm 0.1.0（误发旧线，2026-09-15）后，删除本仓 `bridge/protocol` 镜像与门禁，
   三消费方（core / embedded / lse）`workspace:*` → `^0.4.0`。命令清单见
@@ -77,8 +105,8 @@ napuketto 外部契约原样（env 名、文件名、TOML `[accounts.kurobot]` �
 | wine / Linux QQ 宿主（napuketto self-host 目前 Windows-only） | MVP4-NOTES |
 | 多平台构建矩阵（napuketto 嵌包按构建机平台 npm 安装） | MVP4-NOTES |
 | msgContinue/msgEnd 流式回报 | DEBT1-NOTES |
-| status 周期上报（当前事件驱动：join/quit 时机推送） | MVP1-NOTES M-04 |
-| serverId 多实例互联 | DEBT1-NOTES |
+| status 周期上报（当前事件驱动：join/quit 时机推送；设计草图见 ADR-034 结论 5，随 MVP-2 评估） | MVP1-NOTES M-04 |
+| serverId 多实例互联（config `server.id` 已落地清 spike 残留，ADR-034；互联全案待做） | DEBT1-NOTES |
 | TLS/wss 直连（当前官方建议 = 隧道部署，见 KuroProtocol peer-guide §8） | MVP3-NOTES |
 | 看护器窗口参数可配置化（现写死 10 分钟窗/3 次） | DEBT2-NOTES |
 | JAR 体积优化（LZMA/分层下载）、运行期升级提示 | MVP2-NOTES |
