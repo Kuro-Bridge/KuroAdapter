@@ -10,6 +10,9 @@ export default defineConfig({
     test: {
         include: [
             "bridge/*/src/**/*.test.ts",
+            // lse 侧测试纳入收集（当前 lse 暂无测试文件，此条是护栏：
+            // 保证未来新增 platforms/be/*/src 的测试不会被默认 include 静默忽略）
+            "platforms/be/*/src/**/*.test.ts",
             // 工具链脚本也纳入单测
             "scripts/**/*.test.ts",
         ],

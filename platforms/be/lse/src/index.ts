@@ -8,12 +8,13 @@
  * 由 LeviLamina 的 LSE（QuickJS）加载，入口在 plugin.json 的 modules[].entry。
  */
 
-// LSE 全局对象（类型来自 @levimc-lse/types）：ll.registerPlugin 注册插件
+// LSE 全局对象（类型来自 @levimc-lse/types）：ll.registerPlugin 注册插件。
+// 第 4 参按类型契约是 Record<string, string>（附加信息，如作者/许可证），不能传裸字符串。
 const registered = ll.registerPlugin(
     "kurobridge",
     "KuroBridge LeviLamina 平台适配（群服互通）",
     [0, 1, 0],
-    "KuroBridge",
+    { author: "KuroBridge" },
 );
 
 // 占位导出（避免 TS noUnusedLocals 报错；业务接入见 design.md）

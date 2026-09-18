@@ -3,6 +3,8 @@
 #
 # 注意：不用 {staged_files} 展开（Windows + pnpm 转义有坑，曾导致 hook 卡死）；
 # 直接跑根脚本，本规模全量检查开销可忽略（~1s），可靠性优先。
+# check 链（pnpm check）已含 lse 独立 typecheck 与 docs 门禁（口径 + 死链，check:docs），
+# 因此本文件无需单列条目——新门禁经 check 单一入口自动进入 pre-commit（ADR-032）。
 
 pre-commit:
     parallel: true

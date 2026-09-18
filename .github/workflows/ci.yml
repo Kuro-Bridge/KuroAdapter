@@ -1,0 +1,88 @@
+# KuroBridge CI（ADR-032：恢复 CI，TS + Java 双 job）
+#
+# 结构与本地开发链的同构关系：
+# - ts job   = 本地 pre-commit 同构链（pnpm check / test / -r build / check:protocol，
+#              check 链含 lse 独立 typecheck 与 docs 门禁，见根 package.json）；
+# - java job = Java 侧回归（platforms/je 的 ./gradlew build：:core 全部 JUnit 用例、
+#              Spotless、-Xlint:all -Werror）。此前 Java 回归不在任何自动化链，CI 起补位。
+#
+# ts job 检出姊妹仓 KuroProtocol 的原因：scripts/check-protocol-mirror.mjs（ADR-031 协议
+# 镜像门禁）以 join(repoRoot, "..", "KuroProtocol") 定位协议 SSOT——KuroProtocol 必须与本仓
+# 检出目录平级（兄弟目录）。两仓均 public，无需额外 token。
+#
+# 语义注记（ADR-032）：CI 对 KuroProtocol 取其默认分支 HEAD——上游协议演进而本仓镜像未同步时
+# ts job 变红【属预期】（与本地 pre-commit 同语义：红 = 提醒按 KuroProtocol
+# docs/MIRROR-RESYNC.md 同步镜像），不是误报。
+
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  ts:
+    name: TS（check / test / build / 协议镜像门禁）
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: KuroAdapter
+    steps:
+      - name: 检出本仓（到 KuroAdapter/ 子目录）
+        uses: actions/checkout@v4
+        with:
+          path: KuroAdapter
+
+      # 见顶部注释：check-protocol-mirror.mjs 要求 SSOT 仓位于 ../KuroProtocol（兄弟目录）
+      - name: 检出协议 SSOT 仓 KuroProtocol（到 KuroProtocol/ 兄弟目录）
+        uses: actions/checkout@v4
+        with:
+          repository: Oppenheymu/KuroProtocol
+          path: KuroProtocol
+
+      # 不用 `corepack enable`：Node 25 起发行版不再捆绑 corepack（TSC 2025-03 决议），
+      # 且本仓根 package.json 无 packageManager 字段（只有 devEngines，corepack 不读），
+      # corepack 拿不到钉版会回落到内置默认 pnpm——故用官方 action 按 devEngines 版本装 pnpm。
+      - name: 安装 pnpm 11.6.0（版本 = 根 package.json devEngines 钉版）
+        uses: pnpm/action-setup@v6
+        with:
+          version: 11.6.0
+
+      - name: 安装 Node 26（启用 pnpm store 缓存）
+        uses: actions/setup-node@v4
+        with:
+          node-version: 26
+          cache: pnpm
+          cache-dependency-path: KuroAdapter/pnpm-lock.yaml
+
+      - name: 安装依赖（frozen lockfile）
+        run: pnpm install --frozen-lockfile
+
+      # 与本地 pre-commit（lefthook）完全同构的一条命令链，无第二权威（ADR-032）
+      - name: 门禁链（check → test → build → check:protocol）
+        run: pnpm check && pnpm test && pnpm -r build && pnpm check:protocol
+
+  java:
+    name: Java（platforms/je gradle build 回归）
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出本仓（到 KuroAdapter/ 子目录）
+        uses: actions/checkout@v4
+        with:
+          path: KuroAdapter
+
+      # 只装 mise 本体（install: false），工具安装交给下一步 mise x：
+      # mise 从工作目录向上发现 KuroAdapter/mise.toml（java 25 / node 26），
+      # 未装的工具先装再带环境执行——对「仓检出到子目录」的布局最不依赖 action 内部行为。
+      # （mise 配置发现：cwd 起逐级向上；mise x 语义：缺工具先安装再执行）
+      - name: 安装 mise（不预装工具）
+        uses: jdx/mise-action@v4
+        with:
+          install: false
+
+      # gradlew 在 git 里是 100644（无执行位），ubuntu 下直接 ./gradlew 会 Permission denied，
+      # 用 sh 显式解释执行（与本地验证命令一致）。
+      - name: Gradle build（mise x 携带 java 25 / node 26 环境）
+        run: mise x -- sh ./gradlew build
+        working-directory: KuroAdapter/platforms/je

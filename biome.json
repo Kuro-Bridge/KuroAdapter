@@ -66,6 +66,17 @@
                     }
                 },
                 "useImportType": "error",
+                "noRestrictedImports": {
+                    "level": "error",
+                    "options": {
+                        "patterns": [
+                            {
+                                "group": ["**/protocol/src/**", "**/protocol/dist/**"],
+                                "message": "协议消息类型只允许经包名入口 @kuro-bridge/protocol 导入（ADR-008/031；深路径直入镜像会在阶段 2 切 npm 依赖时断裂）"
+                            }
+                        ]
+                    }
+                },
                 "useDefaultParameterLast": "error",
                 "useConsistentArrayType": "error",
                 "useArrayLiterals": "error",
