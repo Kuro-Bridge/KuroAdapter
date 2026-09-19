@@ -7,7 +7,9 @@
 kurobridge 的业务核心 + `kurobridge-ws` 协议服务端（ADR-005：业务在 Node 侧）。
 
 - 绑定/白名单/指令权限/转发规则等业务逻辑。
-- WS 服务端：握手、鉴权、心跳、UUID 请求-响应、`msgContinue` 流式回报、指数退避重连。
+- WS 服务端：握手、鉴权、心跳、UUID 请求-响应。`msgContinue` 流式回报**未实装**（债务，
+  见 `docs/STATUS.md` 债务索引）；重连由对端自担（服务端是被动连接方，自身不重连），
+  服务端保证断连清理一致性（`reconnect.test.ts` 背书）。
 - 与 Java 薄壳的 stdin/stdout JSON-lines IPC（ADR-010）。
 
 ## 硬性约束（AGENTS.md 硬约束 #3，ADR-007）

@@ -6,7 +6,7 @@
 
 嵌入式瘦身对端（config `embedded` 段开启，默认不开；无顶层 `mode` 开关）：
 
-- 复用 `bridge/core` 框架，作为对端连接 kurobridge 的 WS 服务端。
+- 复用 `bridge/core` 框架，**宿主 kurobridge 的 WS 服务端**（napuketto/stub 孙进程以 WS 客户端连入，ADR-022 孙进程定案；core 导出面无客户端类，ADR-005 服务端角色不变）。
 - 内嵌 **napukettoqq** 协议端（QQ 连接，控制台扫码）。
 - **无 Koishi**：esbuild 单文件产物，随 JAR 分发（`toolings/packaging/embed.ts` 嵌入式打包）。
 
@@ -31,10 +31,12 @@ src/
 └── ws-server.ts      # ws 库实现 core 的 WsServer 接口
 ```
 
-## 实现顺序（STATUS.md 第 4 步细化）
+## 实现顺序（STATUS.md 第 4 步细化；ADR-022 孙进程定案后的实况口径）
 
-1. core 客户端接入（对端角色：连接/握手/心跳/重连）。
-2. napukettoqq 嵌入引导。
+1. core 服务端装配（本包引导层宿主 `KurobridgeServer`：IPC 端点 + WS 服务端；
+   napuketto/stub 以 WS 客户端连入并 `hello` 握手——「core 客户端接入」为 ADR-022 前
+   旧口径，已废）。
+2. napukettoqq 嵌入引导（孙进程拉起，ADR-022/029）。
 3. 子进程生命周期（stdin EOF 自杀 + PID + Watchdog）。
 
 ## 依赖
