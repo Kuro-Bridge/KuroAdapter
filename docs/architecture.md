@@ -121,7 +121,7 @@ kurobridge/
 │           ├── CMakeLists.txt / CMakePresets.json   # core/windows-clang-cl 双轨（dll 待 clang-cl 解锁）
 │           ├── src/         # 薄壳（main 插件入口 / events 四事件桥接 / bridge 请求处理）
 │           ├── src/core/    # portable 层（JSON/帧编解码/进程拉起/IPC/看护器，零 endstone 依赖可独立测试）
-│           └── tests/       # ctest 五目标（含真实 node.exe 集成，fixtures/stub_node.mjs 桩）
+│           └── tests/       # ctest 五目标（含真实 node.exe 集成，fixtures/stub-node.mjs 桩）
 ├── bridge/
 │   ├── core/                # @kuro-bridge/bridge-core（平台无关）
 │   └── embedded/            # 嵌入式瘦身对端（esbuild 单文件，打进 JAR）
