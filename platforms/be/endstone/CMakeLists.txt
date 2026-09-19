@@ -56,3 +56,25 @@ if(KUROBRIDGE_BUILD_DLL)
   target_link_libraries(kurobridge PRIVATE kurobridge_core)
   target_include_directories(kurobridge PRIVATE src)
 endif()
+
+# ---- 追加（portable 半边·块 C 2026-09-19）：Node 子进程拉起 / IPC 通道 / 看护器 / 运行时组装 ----
+# 库源以 target_sources 并入 kurobridge_core（不动上方既有 add_library 结构）；Win32 细节
+# 全部收敛在 .cpp（头文件面保持 portable），链接面仅依赖默认 kernel32。
+target_sources(kurobridge_core PRIVATE
+    src/core/process_factory.cpp
+    src/core/node_ipc.cpp
+    src/core/node_supervisor.cpp
+    src/core/node_runtime.cpp
+)
+
+# 新测试目标：test_supervisor（看护器状态机，全同步假件）/ test_node_ipc（真实 node.exe
+# 集成，PATH 无 node 则面内跳过）/ test_node_runtime（路径解析 + 全链冒烟）。
+# 集成面含真实子进程操作，统一给 TIMEOUT 60（正常总时长 <20s）。
+foreach(test_name IN ITEMS test_supervisor test_node_ipc test_node_runtime)
+    add_executable(${test_name} tests/${test_name}.cpp)
+    target_link_libraries(${test_name} PRIVATE kurobridge_core)
+    target_compile_definitions(${test_name} PRIVATE
+        KUROBRIDGE_TEST_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures")
+    add_test(NAME ${test_name} COMMAND ${test_name})
+    set_tests_properties(${test_name} PROPERTIES TIMEOUT 60)
+endforeach()
