@@ -270,7 +270,7 @@ node 子进程宿主 kurobridge 服务端 + `bin/` 部署契约），宿主↔no
 | fabric chat relay 权限门缺失（`kurobridge.relay` 等价；接管 = fabric-permission-api；`/kurobridge` 的 op 级别粒度近似 `kurobridge.admin` 同根因） | STATUS 2026-09-19 fabric 块 / fabric design.md §3 |
 | fabric 多 MC 版本矩阵（首版 1.21.4 单版本基线；接管点 = 版本坐标组 / depends 收放 / CI matrix） | STATUS 2026-09-19 fabric 块 / fabric design.md §1 |
 | fabric SERVER_STOPPING 时点早于玩家断开（paper onDisable 在断开后；关停语义有界等待+强杀不变） | STATUS 2026-09-19 fabric 块真机清单 7 |
-| ws 子协议握手门禁不真正拒绝（ws 8.21 `handleProtocols` 返 false 仅省略响应头，握手照常完成；bridge/embedded 与 platforms/be/lse 的 ws-server 同款，「子协议不匹配拒连」语义落空） | STATUS 2026-09-19 lse 块 / lse 裁决册 |
+| ws 子协议握手门禁不真正拒绝（ws 8.21 `handleProtocols` 返 false 仅省略响应头，握手照常完成；bridge/embedded 与 platforms/be/lse 的 ws-server 同款，「子协议不匹配拒连」语义落空） | STATUS 2026-09-19 lse 块 / ADR-037 |
 
 ## 阶段史
 

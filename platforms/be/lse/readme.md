@@ -97,7 +97,7 @@ LeviLamina 与 LSE 本身的安装见官方文档（[docs.levimc.org](https://do
 1. `newProcess` 参数串解析/quoting、子进程工作目录与环境继承（shim 已用 `--server-root` 显式传参消解 cwd 依赖）。
 2. `WSClient` 回环连接目标串格式与 `listen` 回调线程语义（影响 `mc.runcmd` 安全性）。
 3. `runcmdEx` 输出串的编码/合流/截断；`mc.runcmd("say …")` 的实际呈现。
-4. `ll.getCurrentPluginInfo().filePath` 实际取值与 `data.randomGuid` 格式。
+4. `ll.getCurrentPluginInfo().filePath` 实际取值与 `system.randomGuid` 格式。
 5. BDS 硬杀时通道断开触发 shim 自杀的及时性（TCP RST 时序）；LeviLamina 是否替子进程兜底 reap。
 6. 长驻 node 进程在 `newProcess` 下是否被 LSE/BDS 干扰。
 7. `ready` 前退出的 `output` 内容可读性（引导失败的 stderr 是否并入）。
