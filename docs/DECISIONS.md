@@ -3,6 +3,63 @@
 > 借鉴 NapukettoQQ 的 `DECISIONS.md` 形态。每项决策记录背景 → 选项 → 结论 → 理由。编号按时间序，永不改写历史。
 >
 > 2026-09-15 归档注：条目中引用的 `docs/*-PROMPT.md` / `*-NOTES.md` / `docs/protocol/draft-v0.1.md` 已移入 `docs/history/`（路径口径见其 README.md）；条目正文未改。
+>
+> **ADR 编号空间说明（2026-09-19 追注）**：
+>
+> 1. 本册单一编号序列 ADR-001~037 分两段：**ADR-001~030 = 协议历史决策**（2026-08-10~09-14，
+>    拆仓前单仓时代，含 ADR-003 协议命名、ADR-030 改名）；**ADR-031~037 = 本仓（主仓）自身
+>    决策**（2026-09-16 起，平台与适配）。
+> 2. 姊妹仓 **KuroProtocol 的 `docs/DECISIONS.md` 另有独立编号序列 ADR-001~003**（2026-09-16
+>    起，协议仓自身决策），与本册编号**无对应关系——同名编号指不同决策**（如「ADR-001」在
+>    本册 = 单仓 monorepo，在协议仓 = 协议 SSOT 收口）。
+> 3. 判读规则：**协议演进语境**（changelog 版本简史、design 演进节、peer-guide 沿革表、
+>    ADR-004 及以上编号）一律指本册；**KuroProtocol 仓内文档引用 ADR-001~003**（其
+>    fixtures.md、RELEASE.md）指协议仓三策，引用处应带「本仓」限定。
+> 4. 既往豁免登记：本册 ADR-009/013/017（2026-08-11 拆除同日）与 ADR-034/036（2026-09-19
+>    toolings 改名同日）存在同日事实纠偏式正文微调（git 可溯，结论均未被改）；自 ADR-031 起
+>    历史条目一律以「> 注（日期）：…」追注承载，不再改正文。
+
+## ADR 索引（37 条）
+
+| 编号 | 标题 | 日期 |
+|---|---|---|
+| ADR-001 | 单仓 monorepo | 2026-08-10 |
+| ADR-002 | Java 版本 21 | 2026-08-10 |
+| ADR-003 | 协议命名与双层版本 | 2026-08-10 |
+| ADR-004 | 绑定频道列表随 hello 上报 + bindingsUpdated | 2026-08-10 |
+| ADR-005 | 业务核心移入 Node，Java 薄壳化（架构关键变更） | 2026-08-10 |
+| ADR-006 | external 模式也拉 Node | 2026-08-10 |
+| ADR-007 | bridge/core 平台无关化 | 2026-08-10 |
+| ADR-008 | 协议 SSOT 用 zod（TypeBox → zod） | 2026-08-10 |
+| ADR-009 | 多语言单仓不引入 nx/turbo | 2026-08-10 |
+| ADR-010 | Java↔Node IPC 用 stdin/stdout JSON-lines | 2026-08-10 |
+| ADR-011 | Java 第一版不上 Error Prone / NullAway | 2026-08-10 |
+| ADR-012 | LSE TS 化 | 2026-08-10 |
+| ADR-013 | 测试栈 | 2026-08-10 |
+| ADR-014 | 嵌入式打包沿用 Napuketto 许可证方案 | 2026-08-10 |
+| ADR-015 | 工具链升级：Node 26 + Java 25 | 2026-08-11 |
+| ADR-016 | 运行时不用 Bun | 2026-08-11 |
+| ADR-017 | 剔除 CI/CD | 2026-08-11 |
+| ADR-018 | koishi 插件独立仓库 | 2026-08-11 |
+| ADR-019 | platforms/je 多模块化 | 2026-08-11 |
+| ADR-020 | BE 服务端家族：LSE + Endstone C++ 薄壳，剔除 Nukkit | 2026-08-11 |
+| ADR-021 | JE 多版本兼容策略 | 2026-08-11 |
+| ADR-022 | 内嵌协议端以孙进程形态由 Node 引导层拉起 | 2026-09-13 |
+| ADR-023 | 握手收敛为单程 hello + hello_ack | 2026-09-13 |
+| ADR-024 | 协议包常驻「解析层」：线格式 → 扁平消息 transform | 2026-09-13 |
+| ADR-025 | WS 与 IPC 统一帧格式与 id 规则，`*_result` 显式响应帧型 | 2026-09-13 |
+| ADR-026 | 协议版本协商改「主版本兼容区间」+ WS 未知帧容忍 | 2026-09-13 |
+| ADR-027 | 白名单 SSOT 归 MC 原生 whitelist | 2026-09-13 |
+| ADR-028 | external 接入基座：config.ws 监听段 + 绑定失败收敛于看护器 + 空 token WARN | 2026-09-13 |
+| ADR-029 | embedded 形态内嵌 napuketto CLI：嵌包边界 + 固定端口强制 + 文件式 QR 交接 + taskkill 树杀 | 2026-09-14 |
+| ADR-030 | 品牌迁移 KuroBot → KuroBridge：标识映射 + 协议 0.4.0 + one-name-only 零迁移 | 2026-09-14 |
+| ADR-031 | 协议 SSOT 移交 KuroProtocol：仓内副本冻结为只读镜像 | 2026-09-16 |
+| ADR-032 | 恢复 CI：TS + Java 双 job | 2026-09-18 |
+| ADR-033 | 封死 bridge/core 与 bridge/embedded 的 npm 发布通道 | 2026-09-18 |
+| ADR-034 | 可观测性收敛：行格式契约、级别映射单一解析点、server.id / 版本单点 | 2026-09-18 |
+| ADR-035 | 门禁链 build 前置 + 协议镜像退役实施裁决（ADR-031 阶段 2） | 2026-09-18 |
+| ADR-036 | 主仓金样本 fixture-driven 机器检查（双层）与 embedded exports 悬空指针闭环 | 2026-09-19 |
+| ADR-037 | lse 平台角色裁决：R2′「WS 回环薄壳」——QuickJS 壳 + 本包 Node shim 宿主 kurobridge 服务端 | 2026-09-19 |
 
 ---
 
