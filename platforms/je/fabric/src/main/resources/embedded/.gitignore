@@ -1,0 +1,4 @@
+# 嵌入式打包产物（toolings/packaging/embed.ts 构建期生成：node.exe / index.mjs /
+# manifest.json 等）——不入库（对齐 paper 的根 .gitignore 先例，本目录自含不触共享文件）
+*
+!.gitignore

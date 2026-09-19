@@ -1,0 +1,20 @@
+{
+    "schemaVersion": 1,
+    "id": "kurobridge",
+    "version": "${version}",
+    "name": "KuroBridge",
+    "description": "KuroBridge Fabric 服务端薄壳：桥接 MC 服务器与 Node 子进程（IPC 逻辑在 :core，业务在 Node 侧）",
+    "license": "MIT",
+    "environment": "*",
+    "entrypoints": {
+        "main": [
+            "com.kurobridge.fabric.KuroBridgeMod"
+        ]
+    },
+    "depends": {
+        "fabricloader": ">=0.16.0",
+        "minecraft": "~1.21.4",
+        "java": ">=21",
+        "fabric-api": "*"
+    }
+}
