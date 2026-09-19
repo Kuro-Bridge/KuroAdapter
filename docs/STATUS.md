@@ -2,9 +2,9 @@
 
 > 开始任何工作前先读本文 → `architecture.md`（架构书）→ 对应包 `docs/design.md`。
 > 本文只讲「现在」；阶段史（原型 → MVP-1~4 → DEBT-1/2 → 改名）的任务书/实录全在
-> [`history/`](history/README.md)，拍板依据在 [`DECISIONS.md`](DECISIONS.md)（ADR-001~035）。
+> [`history/`](history/README.md)，拍板依据在 [`DECISIONS.md`](DECISIONS.md)（ADR-001~036）。
 
-## 当前状态（2026-09-18）
+## 当前状态（2026-09-19）
 
 **JE（Paper）主链全部完成，真机终验已通过**：MVP-1~4 + 两轮债务清偿 + 品牌迁移
 （KuroBot → KuroBridge）+ 真机终验收官（见下节）。当前可分发形态 =
@@ -25,11 +25,13 @@ ADR-030）。
 - **业务面**（DEBT-1）：绑定表 / 转发规则（按频道 fan-out）/ 群管理员映射 / WS command
   透传执行 / query 本地作答 / death / 配置热重载（`kurobridge reload`）/ 白名单 SSOT =
   MC 原生 whitelist。
-- **门禁基线**（2026-09-18 阶段 2 收口后）：`pnpm check`（一条入口：自含 `pnpm -r build`
+- **门禁基线**（2026-09-19 ADR-036 后）：`pnpm check`（一条入口：自含 `pnpm -r build`
   首环 + biome + 根 tsc + lse typecheck + docs 门禁 + 版本对齐，ADR-035）/ `pnpm test`
-  （**142 用例 / 12 文件**——180 → 142 差额 = 随镜像退役删除的 protocol 包用例）/
-  `gradlew build` + `:core:test --rerun`（**74 用例**）全绿。CI 双 job 已入库（ADR-032，
-  其后经 ADR-035 结论 4 简化：无姊妹仓检出），**推送 master 后激活**（见待定事项）。
+  （**153 用例 / 13 文件**——142 基线上新增金样本 fixture-driven 检查 11 例
+  （`bridge/core/src/__tests__/golden.fixtures.test.ts`，ADR-036）；180 → 142 差额 =
+  随镜像退役删除的 protocol 包用例）/ `gradlew build` + `:core:test --rerun`
+  （**74 用例**）全绿。CI 双 job 已入库（ADR-032，其后经 ADR-035 结论 4 简化：无姊妹仓
+  检出），CI 已激活且绿（见待定事项）。
 - **napuketto 外部契约原样**：env 名、文件名、TOML `[accounts.kurobot]` 段名、client
   自报格式均不改（napuketto 契约点按 RENAME-NOTES R-03 豁免；DECISIONS 历史条目与
   history 册内的旧名按「永不改写」归档约定保留）。
@@ -96,6 +98,21 @@ ADR-031 阶段 2 于本日执行完成，协议消费全面转 npm：
   6c6e34d（锚点换源）→ acb0f18（镜像删除）。
 - 用例基线 180 → 142（12 文件）：差额 = 随镜像退役删除的 protocol 包用例；协议包测试
   归 KuroProtocol 仓。
+
+## 2026-09-19 并行线波次（主仓金样本机器检查 + embedded exports 闭环，ADR-036）
+
+三阵营金样本消费矩阵在主仓缺角（协议只以 npm 包形态存在、消费正确性无机器防线），
+本波闭环，决策依据 ADR-036（先文档后代码）：
+
+- **金样本 fixture-driven 机器检查**（ADR-036 结论 1）：`bridge/core/src/__tests__/golden.fixtures.test.ts`
+  双层单文件——契约层 = 16 份全量过包导出 `validateFixture` + SHA256SUMS 双向完整性
+  （逐行实算 + 盘上未登记必空）+ 版本轴锚定（包根 `createRequire` 上溯定位、fixtures
+  根下唯一版本目录 ≡ `PROTOCOL_VERSION` major.minor）；行为层 = 动态发现
+  `expect.behavior` 可观测样本 7 份经 `KurobridgeServer` + test-fakes 回放（reply 帧
+  与金样本 JSON 全等、close code/reason 精确一致，覆盖数下限 7 = Pure 现状地板，对齐
+  KuroAdapter-Pure `FixtureConformanceTest` 深度）。用例基线 142 → 153（13 文件）。
+  有效性按纪律以「篡改即红」实证：篡改 node_modules 内 fixture 副本，SUMS 校验与行为
+  回放两例即红（schema 层不红——内容 pin 层兜住语义合法的内容漂移），验后逐字节还原。
 
 ## 待定事项
 
