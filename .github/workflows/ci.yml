@@ -6,6 +6,8 @@
 #              dist d.ts 上进行，fresh clone 直接 pnpm check 自足全绿，见根 package.json）；
 # - java job = Java 侧回归（platforms/je 的 ./gradlew build：:core 全部 JUnit 用例、
 #              Spotless、-Xlint:all -Werror）。此前 Java 回归不在任何自动化链，CI 起补位。
+# - endstone job = C++ portable 层回归（KP-BE-005；2026-09-19-modernize 批次接线，
+#              本地等价演练冷启 5/5 绿后加入；命令与 readme.md「构建双轨」逐条同款）。
 
 name: CI
 
@@ -78,3 +80,24 @@ jobs:
       - name: Gradle build（mise x 携带 java 25 / node 26 环境）
         run: mise x -- sh ./gradlew build
         working-directory: KuroAdapter/platforms/je
+
+  endstone:
+    name: Endstone（portable 层 ctest 回归）
+    runs-on: windows-latest
+    steps:
+      - name: 检出本仓（到 KuroAdapter/ 子目录）
+        uses: actions/checkout@v7
+        with:
+          path: KuroAdapter
+
+      # portable 层（KUROBRIDGE_BUILD_DLL=OFF，零 endstone 依赖）三连：配置 → 构建 → 测试，
+      # 与 platforms/be/endstone/readme.md「构建双轨」及本地演练逐条等价（2026-09-20 冷启
+      # 实跑 5/5 Passed 3.78s）。工具前提（windows-latest 镜像全预装，无需安装步骤）：
+      # - CMake ≥ 3.29 + Ninja（CMakeLists.txt cmake_minimum_required 3.29 / preset 钉 Ninja）；
+      # - MSVC 工具链（CMake 对 Ninja 自动探测 VS；/utf-8 由 CMakeLists 按前端变体自加）；
+      # - PATH 上的 node（test_node_ipc 集成面用；缺失时该测试面内自跳过返回 0）。
+      # 注：kurobridge_core 含 Win32 进程管理源（process_factory/node_ipc 等，无平台宏
+      # 分支），ubuntu 不可编译——runner 必须是 windows 系。
+      - name: CMake configure + build + ctest（portable 层）
+        run: cmake --preset core && cmake --build --preset core && ctest --preset core
+        working-directory: KuroAdapter/platforms/be/endstone
