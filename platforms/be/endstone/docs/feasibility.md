@@ -112,6 +112,6 @@
 
 - 官方模板：`https://raw.githubusercontent.com/EndstoneMC/cpp-example-plugin/main/CMakeLists.txt` 及其 `.github/workflows/build.yml`
 - endstone 仓 @ v0.11.11：`include/endstone/endstone.hpp`（Debug 断言）、`include/CMakeLists.txt`（INTERFACE + endstone_add_plugin + 编译器检查）、根 `CMakeLists.txt`（v0.11.0 vs v0.11.4 检查对比）、`include/endstone/plugin/plugin.h`（ENDSTONE_PLUGIN/registerEvent）、`include/endstone/event/player/*.h`、`include/endstone/event/actor/player_death_event.h`、`include/endstone/server.h:137`、`include/endstone/command/command_sender_wrapper.h`、`src/endstone/core/plugin/cpp_plugin_loader.cpp`
-- Java 对照物：`platforms/je/core/.../IpcFrameCodec.java`、`NodeIpc.java`、`NodeSupervisor.java`、`ProcessFactory.java`、`IpcFrameCodecTest.java`（19 用例）、`NodeSupervisorTest.java`（6 用例）、`NodeIpcTest.java`（33 用例）；Node 侧 `bridge/embedded/src/ipc-stdio.ts`、`index.ts`、`bridge/core/src/relay.ts`
+- Java 对照物：`platforms/je/core/.../IpcFrameCodec.java`、`NodeIpc.java`、`NodeSupervisor.java`、`ProcessFactory.java`、`IpcFrameCodecTest.java`（21 用例）、`NodeSupervisorTest.java`（6 用例）、`NodeIpcTest.java`（29 用例）；Node 侧 `bridge/embedded/src/ipc-stdio.ts`、`index.ts`、`bridge/core/src/relay.ts`
 - 协议 SSOT：`node_modules/.pnpm/@kuro-bridge+protocol@0.4.0/.../dist/index.mjs`（帧 schema + 12 type 目录 + `encodeFrame`）
 - 本机冒烟：2026-09-19 主对话实录（C++20+Win32+Ninja+ctest，1/1 passed）

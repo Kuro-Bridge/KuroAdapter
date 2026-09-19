@@ -1,5 +1,6 @@
 # KuroBridge
 
+> 仓名 KuroAdapter，产品名 KuroBridge（ADR-030 品牌迁移后统一；本仓文档与代码标识均以产品名行文）。
 
 MC 服务器 ↔ 社交平台群服互通插件。丢进 `plugins/` 的 Paper JAR，通过 WebSocket 与机器人框架通信，实现「游戏 ↔ 社交平台」双向互通（QQ / Telegram / Discord / WhatsApp…）。
 
@@ -24,7 +25,7 @@ kurobridge（Paper JAR，Java 薄壳）
 
 ```
 ├─ platforms/je/     # Java 服务端适配（Gradle 多模块：core + paper + fabric + 预留 neoforge/velocity）
-├─ platforms/be/     # BE 服务端家族：lse（LSE TS，R2′ WS 回环薄壳）+ endstone（C++ 薄壳，预留）
+├─ platforms/be/     # BE 服务端家族：lse（LSE TS，R2′ WS 回环薄壳）+ endstone（C++ 薄壳，行走骨架已落地，dll 待 clang-cl 解锁）
 ├─ bridge/
 │   ├── core/         # 业务核心 + 协议服务端（TS，平台无关）
 │   └── embedded/     # 嵌入式瘦身对端（打进 JAR，无 Koishi）
@@ -32,6 +33,8 @@ kurobridge（Paper JAR，Java 薄壳）
 └── sandbox/          # 运行产物（gitignore）
 
 > koishi-plugin-kurobridge（external 官方对端）在**独立仓库**开发（ADR-018）。
+> 平台家族入口：[platforms/je/readme.md](platforms/je/readme.md)（Java 版）·
+> [platforms/be/readme.md](platforms/be/readme.md)（基岩版）。
 ```
 
 ## 文档
@@ -45,7 +48,7 @@ kurobridge（Paper JAR，Java 薄壳）
 ## 工程约定
 
 - 工程指南见 [AGENTS.md](AGENTS.md)（借鉴 NapukettoQQ 的工程体系）。
-- 技术栈：TS（Biome + tsconfig 严格全家桶）+ Java 21 薄壳（`-Xlint:all -Werror` + Spotless）。
+- 技术栈：TS（Biome + tsconfig 严格全家桶）+ Java 薄壳（工具链 25 / 字节码 target 21，`-Xlint:all -Werror` + Spotless，ADR-015）。
 - 协议 SSOT 为姊妹仓 KuroProtocol 的 zod schema，本仓经 npm 依赖 `@kuro-bridge/protocol@^0.4.0` 消费（无仓内副本，ADR-031/035）；任何文件禁止手写消息类型。
 
 ## License

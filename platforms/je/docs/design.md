@@ -16,7 +16,9 @@
   player_join/player_quit + status 快照）、`KurobridgeCommand`（/kurobridge send）、
   `NodeRequestHandler`（Node 请求 → runTask 回主线程执行 + 回执）。**零业务、零单元测试**
   （依赖沙盒验收兜底，MVP-2 债务）。
-- `fabric` / `neoforge` / `velocity`：预留骨架（ADR-021 版本矩阵策略）。
+- `fabric`：已实现（2026-09-19 平台落地波首版 mod 壳，chat/join/quit/death/status 五事件对齐
+  paper；包级设计见 [`../fabric/docs/design.md`](../fabric/docs/design.md)）。
+- `neoforge` / `velocity`：预留骨架（ADR-021 版本矩阵策略，接入对应服务端 API 后启用）。
 
 ## 线程契约（硬约束：IPC 永不阻塞主线程）
 
