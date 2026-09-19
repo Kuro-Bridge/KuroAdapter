@@ -62,14 +62,16 @@ const HELLO_CLIENT = envClient !== undefined && envClient !== "" ? envClient : "
  */
 const envWsUrl = process.env.KUROBRIDGE_STUB_WS_URL;
 const port = process.argv[2];
-if ((envWsUrl === undefined || envWsUrl === "") && (port === undefined || Number.isNaN(Number(port)))) {
+if (
+    (envWsUrl === undefined || envWsUrl === "") &&
+    (port === undefined || Number.isNaN(Number(port)))
+) {
     process.stderr.write(
         "[KuroBridge][stub] 用法：node peer.mjs <wsPort>（或设 KUROBRIDGE_STUB_WS_URL 指定连接地址）\n",
     );
     process.exit(2);
 }
-const CONNECT_URL =
-    envWsUrl !== undefined && envWsUrl !== "" ? envWsUrl : `ws://127.0.0.1:${port}`;
+const CONNECT_URL = envWsUrl !== undefined && envWsUrl !== "" ? envWsUrl : `ws://127.0.0.1:${port}`;
 
 /** command 帧的来源（channel:userId）；缺省与沙盒配置 admins 对齐 */
 function parseAdminSource(raw) {
@@ -162,7 +164,11 @@ async function runAutoSequence(ws) {
         sendFrame(
             ws,
             isRequest
-                ? { type: "stub_unknown", id: crypto.randomUUID(), body: { note: "tolerance test" } }
+                ? {
+                      type: "stub_unknown",
+                      id: crypto.randomUUID(),
+                      body: { note: "tolerance test" },
+                  }
                 : { type: "stub_unknown_event", body: { note: "tolerance test" } },
         );
         log(`已发送未知${isRequest ? "请求" : "事件"}帧 stub_unknown${isRequest ? "" : "_event"}`);
@@ -208,13 +214,21 @@ function handleLine(ws, line) {
         sendFrame(
             ws,
             kind === "request"
-                ? { type: "stub_unknown", id: crypto.randomUUID(), body: { note: "tolerance test" } }
+                ? {
+                      type: "stub_unknown",
+                      id: crypto.randomUUID(),
+                      body: { note: "tolerance test" },
+                  }
                 : { type: "stub_unknown_event", body: { note: "tolerance test" } },
         );
-        log(`已发送未知${kind === "request" ? "请求" : "事件"}帧 stub_unknown${kind === "request" ? "" : "_event"}`);
+        log(
+            `已发送未知${kind === "request" ? "请求" : "事件"}帧 stub_unknown${kind === "request" ? "" : "_event"}`,
+        );
         return;
     }
-    log(`未知命令：${line}（支持：command <文本...> / query <status|bindings> / unknown <event|request>）`);
+    log(
+        `未知命令：${line}（支持：command <文本...> / query <status|bindings> / unknown <event|request>）`,
+    );
 }
 
 function connect() {
@@ -239,7 +253,11 @@ function connect() {
         }
         sendFrame(ws, { type: "hello", id: crypto.randomUUID(), body: helloBody });
         heartbeatTimer = setInterval(() => {
-            sendFrame(ws, { type: "ping", id: crypto.randomUUID(), body: { timestamp: Date.now() } });
+            sendFrame(ws, {
+                type: "ping",
+                id: crypto.randomUUID(),
+                body: { timestamp: Date.now() },
+            });
         }, HEARTBEAT_INTERVAL_MS);
     });
 
@@ -261,7 +279,11 @@ function connect() {
                 // 沙盒验收：握手后主动发一条平台消息 → 绑定该频道时进游戏 broadcast
                 sendFrame(ws, {
                     type: "chat",
-                    body: { channel: STUB_CHANNEL, sender: "stub-群友", content: "大家好，我是 stub 协议端" },
+                    body: {
+                        channel: STUB_CHANNEL,
+                        sender: "stub-群友",
+                        content: "大家好，我是 stub 协议端",
+                    },
                 });
                 void runAutoSequence(ws).catch((error) => {
                     log(`验收自动化序列异常：${String(error)}`);
@@ -272,11 +294,15 @@ function connect() {
             return;
         }
         if (type === "chat") {
-            log(`收到游戏聊天：[${frame.body.channel}] <${frame.body.playerName}> ${frame.body.content}`);
+            log(
+                `收到游戏聊天：[${frame.body.channel}] <${frame.body.playerName}> ${frame.body.content}`,
+            );
             return;
         }
         if (type === "join" || type === "leave") {
-            log(`收到${type === "join" ? "进服" : "退服"}：[${frame.body.channel}] ${frame.body.playerName}`);
+            log(
+                `收到${type === "join" ? "进服" : "退服"}：[${frame.body.channel}] ${frame.body.playerName}`,
+            );
             return;
         }
         if (type === "death") {
@@ -335,7 +361,9 @@ function connect() {
                 process.exit(1);
                 return;
             }
-            log(`连接断开，${backoffMs}ms 后重连（连续失败 ${consecutiveFailures}/${MAX_CONSECUTIVE_FAILURES}）`);
+            log(
+                `连接断开，${backoffMs}ms 后重连（连续失败 ${consecutiveFailures}/${MAX_CONSECUTIVE_FAILURES}）`,
+            );
             const wait = backoffMs;
             backoffMs = Math.min(backoffMs * 2, 30_000);
             setTimeout(connect, wait);

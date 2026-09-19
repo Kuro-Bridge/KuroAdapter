@@ -18,6 +18,7 @@ const TEXT_EXTENSIONS = new Set([
     "mts",
     "js",
     "json",
+    "jsonc",
     "kts",
     "gradle",
     "yml",

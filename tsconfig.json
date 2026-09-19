@@ -42,8 +42,10 @@
     },
     // 根检查配置（pnpm check 的 tsc --noEmit 用）：显式白名单，只查 TS 包源码。
     // 特殊环境（如 platforms/be/lse 的 QuickJS、未来的 C++ 薄壳）用各自 tsconfig，不进此范围。
+    // vitest.config.ts 为根目录 config ts（与 KuroProtocol 对齐口径，基线 §2.1/§2.4 收编）。
     "include": [
         "bridge/*/src",
-        "toolings/packaging/*"
+        "toolings/packaging/*",
+        "vitest.config.ts"
     ]
 }
