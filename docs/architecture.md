@@ -127,7 +127,8 @@ kurobridge/
 │   └── embedded/            # 嵌入式瘦身对端（esbuild 单文件，打进 JAR）
 ├── toolings/                # 工具链（按职责分目录）：packaging/（build-jar.mjs 跨壳全链路 + embed.ts 嵌包）/
 │   │                          gates/（门禁：check-docs-{scope,links} / check-versions，共用 lib/ 遍历层）/
-│   │                          paper/（沙盒单一入口 paper.cmd：start|stop|cmd|qr，启停走 .sh，cmd|qr 走 .ps1）
+│   │                          build/（平台侧构建入口 platforms.mjs：je|endstone|all，与 CI 各 job 等价）/
+│   │                          lib/（编排脚本共用进程助手）/ paper/（沙盒单一入口 paper.cmd：start|stop|cmd|qr，启停走 .sh，cmd|qr 走 .ps1）
 └── sandbox/                 # 运行产物全 gitignore（Paper 服务端等；fake-player.mjs 离线假人）
 ```
 

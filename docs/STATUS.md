@@ -308,7 +308,7 @@ node 子进程宿主 kurobridge 服务端 + `bin/` 部署契约），宿主↔no
 | 看护器窗口参数可配置化（现写死 10 分钟窗/3 次） | DEBT2-NOTES |
 | JAR 体积优化（LZMA/分层下载）、运行期升级提示 | MVP2-NOTES |
 | vanilla 命令输出捕获窗口语义（log4j 主线程窗口，并发混行理论风险） | DEBT1-NOTES 小债 |
-| fake-player.mjs play 态 keepalive 未实现（限 30s 验收窗） | DEBT1/MVP3-NOTES |
+| fake-player.mjs（toolings/paper/，2026-09-20 起）play 态 keepalive 未实现（限 30s 验收窗） | DEBT1/MVP3-NOTES |
 | QR URL 正则 best-effort（napuketto 改日志文案即失效；PNG 路径为主不受影响） | MVP4-NOTES |
 | `:paper` 侧单测偏薄（IPC 集成测试覆盖，Bukkit 桥接层缺单测） | MVP1-NOTES |
 | fabric chat relay 权限门缺失（`kurobridge.relay` 等价；接管 = fabric-permission-api；`/kurobridge` 的 op 级别粒度近似 `kurobridge.admin` 同根因） | STATUS 2026-09-19 fabric 块 / fabric design.md §3 |

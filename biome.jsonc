@@ -140,6 +140,20 @@
             }
         },
         {
+            // 白名单（同上惯例，2026-09-20 构建入口统一批补录）：sandbox/fake-player.mjs 入库
+            // toolings/paper/ 后纳入检查面，handlePacket 复杂度 25（MC 协议三态逐包分发，
+            // login/configuration/play 各带版本特有应答）。真机验收资产（DEBT-1 阶段 5），
+            // 行为冻结优先于拆函数；域内其余规则全量生效，仅豁免本条重构级规则。
+            "includes": ["toolings/paper/fake-player.mjs"],
+            "linter": {
+                "rules": {
+                    "complexity": {
+                        "noExcessiveCognitiveComplexity": "off"
+                    }
+                }
+            }
+        },
+        {
             "includes": ["**/*.test.ts", "**/*.test.tsx", "**/*.spec.ts", "**/__tests__/**"],
             "linter": {
                 "rules": {

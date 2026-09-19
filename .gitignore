@@ -24,7 +24,7 @@ platforms/je/out/
 # 嵌入式打包产物（构建期生成，gitignore）
 platforms/je/paper/src/main/resources/embedded/
 
-# scripts/embed.ts 的 node dist 下载缓存
+# toolings/packaging/embed.ts 的 node dist 下载缓存
 .cache/
 
 # 运行产物（沙盒）

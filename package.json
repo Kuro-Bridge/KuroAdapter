@@ -24,6 +24,10 @@
         "test": "vitest run",
         "test:watch": "vitest",
         "test:coverage": "vitest run --coverage",
+        "build:je": "node toolings/build/platforms.mjs je",
+        "build:endstone": "node toolings/build/platforms.mjs endstone",
+        "build:all": "pnpm -r build && node toolings/build/platforms.mjs all",
+        "check:all": "pnpm check && pnpm test && node toolings/build/platforms.mjs all",
         "build:jar": "node toolings/packaging/build-jar.mjs"
     },
     "devEngines": {

@@ -48,13 +48,16 @@ pnpm check:versions     # 版本对齐门禁：bridge 六点 0.1.0 + 协议两�
 pnpm fix                # biome 自动修复 + tsc
 pnpm test               # vitest run（TS 侧）
 pnpm -r build           # TS 全量构建（tsdown / esbuild）
-./gradlew build         # Java 薄壳（platforms/je）
-pnpm build:jar          # 全链路：TS 构建 → 嵌入式打包 → gradle :paper:shadowJar（toolings/packaging/build-jar.mjs 链式）
+pnpm build:je           # Java 薄壳门禁（platforms/je gradlew build，= CI java job；跨壳经 toolings/build/platforms.mjs）
+pnpm build:endstone     # endstone portable 构建回归（cmake+build+ctest 五目标，= CI endstone job；dll 轨道仍走手动 SOP）
+pnpm build:all          # 三侧全量构建：pnpm -r build + build:je + build:endstone
+pnpm check:all          # 全量门禁（CI 三 job 本地合体）：pnpm check + pnpm test + 平台两侧
+pnpm build:jar          # 全链路：TS 构建 → 嵌入式打包 → gradle :paper:shadowJar → :fabric:remapJar（toolings/packaging/build-jar.mjs 链式）
 ```
 
-**构建顺序（硬约束）**：`pnpm -r build`（bridge/embedded 产物）→ `toolings/packaging/embed.ts` 嵌入式打包（node 官方 dist 下载校验 + napuketto 嵌包，产出进 `platforms/je/paper/src/main/resources/embedded/`）→ `gradle :paper:shadowJar`。本地 `pnpm build:jar` 经 `toolings/packaging/build-jar.mjs` 链式执行三步。
+**构建顺序（硬约束）**：`pnpm -r build`（bridge/embedded 产物）→ `toolings/packaging/embed.ts` 嵌入式打包（node 官方 dist 下载校验 + napuketto 嵌包，产出进 `platforms/je/paper/src/main/resources/embedded/`）→ `gradle :paper:shadowJar`。本地 `pnpm build:jar` 经 `toolings/packaging/build-jar.mjs` 链式执行四步（TS 构建 → embed 嵌包 → shadowJar → fabric remapJar）。
 
-**CI（ADR-032，结构经 ADR-035 结论 4 简化）**：`.github/workflows/ci.yml` 双 job——ts job 只检出本仓，跑 `pnpm check && pnpm test`（check 链自含 build 首环，与本地 pre-commit 同构；lefthook 串行 check → test，ADR-035）；java job 经 mise 提供 JDK 25 跑 `gradlew build`。push master / PR 触发。
+**CI（ADR-032，结构经 ADR-035 结论 4 简化）**：`.github/workflows/ci.yml` 三 job——ts job 只检出本仓，跑 `pnpm check && pnpm test`（check 链自含 build 首环，与本地 pre-commit 同构；lefthook 串行 check → test，ADR-035）；java job 经 mise 提供 JDK 25 跑 `gradlew build`；endstone job 于 windows runner 跑 portable 层 `cmake --preset core && cmake --build --preset core && ctest --preset core`（本地等价 = `pnpm build:endstone`）。push master / PR 触发。
 
 **多版本策略（ADR-021）**：`:core` 版本无关（零 MC API）；Paper 单 jar 通吃；Fabric/NeoForge 按版本矩阵构建（每 MC 版本一个 jar）；Velocity 单 jar。改版本只重编适配层，不动 `:core` 与 `bridge/core`。
 

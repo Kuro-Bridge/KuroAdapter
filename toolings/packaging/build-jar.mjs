@@ -5,8 +5,8 @@
  * 见 embed.ts defaultEmbedTargets）→ gradle :paper:shadowJar（Paper 可分发 JAR）→
  * gradle :fabric:remapJar（Fabric mod JAR，shadow 合并 + loom 重映射）。
  * 替代 package.json 里的直排命令——原写法把 gradlew.bat 写死（M2-03），POSIX 贡献者不可用；
- * 本脚本按 process.platform 选择 wrapper，并给 gradle 子进程注入 UTF-8 输出编码
- * （cmd.exe GBK 代码页下中文日志乱码的缓解尝试）。
+ * wrapper 选择 / UTF-8 注入 / 失败即退经 toolings/lib/proc.mjs 共享（与 build/platforms.mjs
+ * 同源，此前两处各持一份）。
  *
  * 约束：零新依赖（node:child_process）；gradle 输出走 stdio inherit（MVP1-NOTES M-18：
  * 经管道转接会挂起客户端，inherit 直通终端不受影响）。
@@ -14,30 +14,11 @@
  * 用法：pnpm build:jar（仓库根）
  */
 
-import { spawnSync } from "node:child_process";
-import { chmodSync, existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { gradleUtf8Env, IS_WIN32, resolveGradlew, run } from "../lib/proc.mjs";
 
-const IS_WIN32 = process.platform === "win32";
 const ROOT = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
-
-function run(label, command, args, options = {}) {
-    // shell 模式下 Node 传 args 会触发 DEP0190 警告——改为拼接命令字符串
-    //（本脚本参数均无空格/特殊字符，拼接安全）
-    const useShell = options.shell === true;
-    const finalCommand = useShell ? [command, ...args].join(" ") : command;
-    const finalArgs = useShell ? [] : args;
-    console.log(`[build-jar] ${label}: ${finalCommand}`);
-    const result = spawnSync(finalCommand, finalArgs, {
-        stdio: "inherit",
-        ...options,
-    });
-    if (result.status !== 0) {
-        console.error(`[build-jar] ${label} 失败（exit=${result.status}）`);
-        process.exit(result.status ?? 1);
-    }
-}
 
 // 1) TS 全量构建（pnpm 在 Windows 是 .cmd，须经 shell 解析）
 run("TS 构建", "pnpm", ["-r", "build"], { cwd: ROOT, shell: IS_WIN32 });
@@ -47,36 +28,15 @@ run("embed 打包", process.execPath, [join(ROOT, "toolings", "packaging", "embe
     cwd: ROOT,
 });
 
-// 3) gradle shadowJar：win32 → gradlew.bat，POSIX → ./gradlew（chmod +x 兜底）
+// 3) gradle shadowJar + 4) gradle remapJar（fabric mod 产物：shadow 白名单合并 :core + Jackson
+//    后 loom 重映射，见 platforms/je/fabric/build.gradle.kts 与其 docs/design.md §6）
 const jeDir = join(ROOT, "platforms", "je");
-let gradlew = "./gradlew";
-if (IS_WIN32) {
-    gradlew = "gradlew.bat";
-} else {
-    const wrapper = join(jeDir, "gradlew");
-    if (existsSync(wrapper)) {
-        try {
-            chmodSync(wrapper, 0o755);
-        } catch {
-            // 只读工作区等场景放行——wrapper 已有执行位时无需处理
-        }
-    }
-}
-
-// 构建日志 UTF-8（cmd.exe GBK 代码页乱码缓解）：拼接保留既有 JAVA_TOOL_OPTIONS
-const utf8Flags = "-Dstdout.encoding=UTF-8 -Dstderr.encoding=UTF-8";
-const existingToolOptions = process.env["JAVA_TOOL_OPTIONS"] ?? "";
-const env = {
-    ...process.env,
-    JAVA_TOOL_OPTIONS: `${existingToolOptions} ${utf8Flags}`.trim(),
-};
+const gradlew = resolveGradlew(jeDir);
+const env = gradleUtf8Env();
 
 // gradlew.bat 是批处理：Node（CVE-2024-27980 起）拒绝无 shell 直接 spawn，Windows 必须经
 // shell 中介；args 里无空格/特殊字符，shell 拼接安全
 run("gradle shadowJar", gradlew, [":paper:shadowJar"], { cwd: jeDir, env, shell: IS_WIN32 });
-
-// 4) gradle remapJar：fabric mod 产物（shadow 白名单合并 :core + Jackson 后 loom 重映射，
-//    见 platforms/je/fabric/build.gradle.kts 与其 docs/design.md §6）
 run("gradle fabric remapJar", gradlew, [":fabric:remapJar"], { cwd: jeDir, env, shell: IS_WIN32 });
 
 console.log(
