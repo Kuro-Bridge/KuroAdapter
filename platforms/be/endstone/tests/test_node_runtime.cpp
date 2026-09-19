@@ -240,7 +240,7 @@ int main() {
     if (found > 0 && found < 32768) {
         const std::filesystem::path nodePath(std::wstring(nodeBuffer, found));  // 全路径（含文件名）
         testFullStackSmoke(
-            nodePath, std::filesystem::path(KUROBRIDGE_TEST_FIXTURE_DIR) / "stub_node.mjs");
+            nodePath, std::filesystem::path(KUROBRIDGE_TEST_FIXTURE_DIR) / "stub-node.mjs");
     } else {
         std::fprintf(stderr, "[test_node_runtime] PATH 上无 node.exe，全链冒烟跳过\n");
         CHECK(true);

@@ -41,8 +41,7 @@ function handleLine(line) {
     }
     const type = frame && frame.header ? frame.header.type : undefined;
     if (type === "shutdown") {
-        const reason =
-            frame.body && typeof frame.body.reason === "string" ? frame.body.reason : "";
+        const reason = frame.body && typeof frame.body.reason === "string" ? frame.body.reason : "";
         process.stderr.write(`[KuroBridge][node][info] 收到关机通知（${reason}），退出\n`);
         gracefulExit(0);
         return;

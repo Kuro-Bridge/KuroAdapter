@@ -44,7 +44,7 @@ std::optional<std::filesystem::path> locateNode() {
 }
 
 std::filesystem::path fixtureBundle() {
-    return std::filesystem::path(KUROBRIDGE_TEST_FIXTURE_DIR) / "stub_node.mjs";
+    return std::filesystem::path(KUROBRIDGE_TEST_FIXTURE_DIR) / "stub-node.mjs";
 }
 
 std::filesystem::path makeTempDir(const std::string& name) {
