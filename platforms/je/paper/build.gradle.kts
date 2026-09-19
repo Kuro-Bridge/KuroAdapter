@@ -14,7 +14,7 @@ dependencies {
     compileOnly("org.apache.logging.log4j:log4j-core:2.25.1")
     // QR 状态文件解析（KurobridgeCommand qr 子命令，MVP-4）：:core 的 Jackson 是 implementation
     // 不传递，本模块显式声明同版本（shadow 合并 runtimeClasspath，fat JAR 不重复）
-    implementation("com.fasterxml.jackson.core:jackson-databind:2.18.0")
+    implementation(libs.jackson.databind)
 }
 
 // 苛刻度：Spotless(Palantir)（ADR-011）

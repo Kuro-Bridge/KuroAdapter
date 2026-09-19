@@ -29,7 +29,7 @@ dependencies {
     modImplementation("net.fabricmc:fabric-loader:0.19.5")
     modImplementation("net.fabricmc.fabric-api:fabric-api:0.119.4+1.21.4")
 
-    testImplementation(platform("org.junit:junit-bom:5.11.0"))
+    testImplementation(platform(libs.junit.bom))
     testImplementation("org.junit.jupiter:junit-jupiter")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }

@@ -3,9 +3,9 @@
 // 依赖：Jackson（JSON-lines IPC 解析）
 
 dependencies {
-    implementation("com.fasterxml.jackson.core:jackson-databind:2.18.0")
+    implementation(libs.jackson.databind)
 
-    testImplementation(platform("org.junit:junit-bom:5.11.0"))
+    testImplementation(platform(libs.junit.bom))
     testImplementation("org.junit.jupiter:junit-jupiter")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }

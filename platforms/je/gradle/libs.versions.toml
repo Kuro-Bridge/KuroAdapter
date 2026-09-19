@@ -1,0 +1,12 @@
+# 依赖版本目录（批次 2026-09-19-modernize 引入，基线 §2.2/§5：版本值一律不变，仅消字面重复）
+# 收敛对象：jackson-databind（原 core/paper 各一处字面重复）、junit-bom（原 core/fabric 各一处）。
+# spotless/shadow/loom 插件版本仍留在各 plugins 块——catalog 仅接管依赖坐标，插件解析面不动。
+# paper 侧显式重声明 Jackson 的原因见 paper/build.gradle.kts 依赖注释（:core implementation 不传递）。
+
+[versions]
+jackson = "2.18.0"
+junit = "5.11.0"
+
+[libraries]
+jackson-databind = { module = "com.fasterxml.jackson.core:jackson-databind", version.ref = "jackson" }
+junit-bom = { module = "org.junit:junit-bom", version.ref = "junit" }
