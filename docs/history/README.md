@@ -33,5 +33,6 @@
 - 现行协议语义与逐帧字段表 SSOT → 姊妹仓 KuroProtocol 的 `docs/peer-guide.md`
   （本仓 [`../protocol/peer-guide.md`](../protocol/peer-guide.md) 已退位为迁移指针，ADR-031）。
 - 协议 schema 与版本史 → KuroProtocol 仓 `src/`（zod SSOT；版本演进见其 `docs/changelog.md`；
-  本仓 `bridge/protocol/src/` 为只读镜像）。
+  本仓 `bridge/protocol/` 只读镜像已于 2026-09-18 随 ADR-031 阶段 2 / ADR-035 退役删除，
+  协议现经 npm 依赖 `@kuro-bridge/protocol` 消费）。
 - ADR-023/025 引用的「§5.1 单程握手」等语义条目仍以本草案 §5 为准（历史文本）。

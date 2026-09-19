@@ -8,7 +8,7 @@
 >
 > | 契约 | 权威来源 |
 > |---|---|
-> | 接入规格（本文的权威版） | KuroProtocol `docs/peer-guide.md`（GitHub: <https://github.com/Oppenheymu/KuroProtocol/blob/master/docs/peer-guide.md>） |
+> | 接入规格（本文的权威版） | KuroProtocol `docs/peer-guide.md`（GitHub: <https://github.com/Kuro-Bridge/KuroProtocol/blob/master/docs/peer-guide.md>） |
 > | 帧名与字段 SSOT（zod schema） | KuroProtocol `src/`（发布名 `@kuro-bridge/protocol`） |
 > | 版本 SSOT | KuroProtocol `src/meta.ts` 的 `PROTOCOL_VERSION`（演进记录见其 `docs/changelog.md`） |
 > | 金样本夹具（物理契约） | KuroProtocol `fixtures/v<版本>/`（格式见其 `docs/fixtures.md`） |
