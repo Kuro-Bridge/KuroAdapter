@@ -113,13 +113,20 @@ ADR-031 阶段 2 于本日执行完成，协议消费全面转 npm：
   KuroAdapter-Pure `FixtureConformanceTest` 深度）。用例基线 142 → 153（13 文件）。
   有效性按纪律以「篡改即红」实证：篡改 node_modules 内 fixture 副本，SUMS 校验与行为
   回放两例即红（schema 层不红——内容 pin 层兜住语义合法的内容漂移），验后逐字节还原。
+- **embedded exports 悬空指针移除**（ADR-036 结论 2，闭环 ADR-035 结论 5② 预存缺陷）：
+  `bridge/embedded/package.json` 顶层 `types` 与 `exports["."].types` 两处删除（esbuild
+  只产 mjs 无 dts 能力，`dist/index.d.mts` 从不存在；全仓 grep 零代码 import 该包名，
+  JAR 消费走 `embed.ts` 物理路径直读 `dist/index.mjs`，private 语义 ADR-033——删除即
+  诚实态，未来开 npm 通道按 ADR-033 先立 exports/types 全套发布决策）。ADR-035 5② 当时
+  承诺的 STATUS 缺口登记实际未落地，本条以已闭环形态补记。
 
 ## 待定事项
 
-- **CI 推送激活**：CI 首跑已在 86a698a 发生（TS job 红，根因与修复见 ADR-035）；本地
-  master 领先 origin 5 笔（阶段 2 执行提交）未推——推送后复跑应转绿。CI 结构经
-  ADR-035 结论 4 简化：无姊妹仓检出，ts job = `pnpm check && pnpm test`（check 链
-  自含 build 首环）。
+- **CI 推送**：CI 已激活且绿（2026-09-19 推送阶段 2 提交后 run 35420391301 全绿，为
+  build 前置修复后的首次真 CI 验证；结构经 ADR-035 结论 4 简化：无姊妹仓检出，ts job
+  = `pnpm check && pnpm test`，check 链自含 build 首环）。本地 master 领先 origin 3 笔
+  （ADR-036 三连：立档 / 金样本检查 / embedded 悬空指针修复）待推送——推送后 CI 复跑
+  为最终验证。
 - koishi-plugin-kurobridge 独立仓库（ADR-018）：官方参考对端 + 平台渲染唯一归属，
   JE 闭环后启动（Koishi v4 基线）；其协议依赖 `^0.1.0` 亦待切 `^0.4.0`（上游协作）。
 - `platforms/be` 家族骨架已建：`lse/`（TS，复用 bridge/core，QuickJS 可跑是硬约束）、
