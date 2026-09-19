@@ -14,7 +14,7 @@
 #   KUROBRIDGE_STUB_PEER  stub 协议端脚本路径（测试件不进 JAR，缺省指向仓库内 stub）
 #   KUROBRIDGE_NODE / KUROBRIDGE_BUNDLE  开发覆盖（设置后绕过 JAR 解压链，用环境指定的 node/bundle）
 #
-# 用法：bash scripts/paper-start.sh
+# 用法：scripts\paper.cmd start（或 bash scripts/paper-start.sh）
 
 set -euo pipefail
 

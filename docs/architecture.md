@@ -123,7 +123,7 @@ kurobridge/
 │   ├── core/                # @kuro-bridge/bridge-core（平台无关）
 │   └── embedded/            # 嵌入式瘦身对端（esbuild 单文件，打进 JAR）
 ├── scripts/                 # 构建/工具脚本：embed.ts（嵌入式打包）/ build-jar.mjs（跨壳全链路）/
-│   │                          paper-start|stop（沙盒启停）/ paper-cmd|qr（.cmd/.ps1 快捷脚本）/
+│   │                          paper.cmd（沙盒单一入口 start|stop|cmd|qr：启停走 .sh，cmd|qr 走 .ps1）/
 │   │                          门禁脚本：check-docs-{scope,links} / check-versions（共用 lib/ 遍历层）
 └── sandbox/                 # 运行产物全 gitignore（Paper 服务端等；fake-player.mjs 离线假人）
 ```

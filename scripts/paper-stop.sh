@@ -1,5 +1,5 @@
 # 停止 sandbox Paper 服务端（向 cmd.in 追加 stop，等待进程退出；超时强杀）
-# 用法：bash scripts/paper-stop.sh
+# 用法：scripts\paper.cmd stop（或 bash scripts/paper-stop.sh）
 
 set -euo pipefail
 

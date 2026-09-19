@@ -1,5 +1,5 @@
 ﻿# 一键扫码：发送 kurobridge qr → 回显状态（含"距今 N 秒前"可判断是否过期）→ 自动用
-# 系统看图器打开二维码图片，手机 QQ 直接扫。用法：scripts\paper-qr.cmd
+# 系统看图器打开二维码图片，手机 QQ 直接扫。用法：scripts\paper.cmd qr
 $ErrorActionPreference = "Stop"
 
 $output = & "$PSScriptRoot\paper-cmd.ps1" kurobridge qr
