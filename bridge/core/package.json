@@ -21,7 +21,7 @@
     },
     "dependencies": {
         "@kuro-bridge/protocol": "^0.4.0",
-        "zod": "^4.0.0"
+        "zod": "^4.6.5"
     },
     "devDependencies": {
         "tsdown": "^0.22.14",
