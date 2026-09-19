@@ -98,7 +98,7 @@ bridge/embedded   esbuild 单文件（embedded 形态）     platforms/je（Java
 kurobridge/
 ├── readme.md / AGENTS.md / lefthook.yml / mise.toml
 ├── package.json（仅脚本 + workspaces）/ pnpm-workspace.yaml
-├── biome.json / tsconfig.json / vitest.config.ts / .editorconfig   # 对齐 NapukettoQQ
+├── biome.jsonc / tsconfig.json / vitest.config.ts / .editorconfig   # 对齐 NapukettoQQ
 ├── docs/
 │   ├── architecture.md（本文）/ DECISIONS.md / STATUS.md / config-schema.md
 │   ├── protocol/            # 协议说明文档（peer-guide.md 已退位为迁移指针，权威在 KuroProtocol，ADR-031）
@@ -147,7 +147,7 @@ kurobridge/
 | koishi-plugin-kurobridge（独立仓库） | TS | Koishi v4 + `@kuro-bridge/protocol` | Koishi 标准 | vitest + `@koishijs/plugin-mock` |
 
 **苛刻度（对齐 NapukettoQQ）**：
-- **TS 侧**：直接沿用 Napuketto 的 biome.json + tsconfig（`erasableSyntaxOnly`、`exactOptionalPropertyTypes`、`noUncheckedIndexedAccess`、`noFloatingPromises`、`noExcessiveCognitiveComplexity(15)`、`useNamingConvention`、`useErrorMessage`、organizeImports 全保留）。一份 biome 配置管 bridge/ + platforms/be/ + toolings/。
+- **TS 侧**：直接沿用 Napuketto 的 biome.jsonc + tsconfig（`erasableSyntaxOnly`、`exactOptionalPropertyTypes`、`noUncheckedIndexedAccess`、`noFloatingPromises`、`noExcessiveCognitiveComplexity(15)`、`useNamingConvention`、`useErrorMessage`、organizeImports 全保留）。一份 biome 配置管 bridge/ + platforms/be/ + toolings/。
 - **Java 侧（第一版）**：`-Xlint:all -Werror` + Spotless(Palantir) + JUnit 5（2026-09-18 求真裁决：JaCoCo 覆盖率门禁暂不实装——先让 CI 的 `gradlew build` 成为机器级门禁，覆盖率阈值化待 `:paper` 单测补强后再评估；原文「JaCoCo ≥60% 门禁」无配置支撑，就此清零）。**Error Prone / NullAway 第一版不上**（ADR-011），薄壳定型后再评估。
 - **协议防漂移门禁**：消息类型只能 import `@kuro-bridge/protocol`（**导入口径机械强制**：biome
   `style.noRestrictedImports` 禁止绕过包名入口的深路径导入，patterns 维持
