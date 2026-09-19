@@ -64,10 +64,13 @@
    - **图形界面（推荐）**：VS Installer → Build Tools 2026（残留实例需先修复/重装）→ 勾选「使用 C++ 的桌面开发」+ 单个组件「适用于 Windows 的 C++ Clang 编译器（MSVC ABI）」。
    - **命令行（备选）**：`choco install -y --force visualstudio2026buildtools visualstudio2026-workload-vctools`（choco 认为已装，必须 `--force`；装完仍需在 VS Installer 补勾 Clang 组件）。
 2. 验证：新开终端 → `"C:\Program Files (x86)\Microsoft Visual Studio\2026\BuildTools\VC\Auxiliary\Build\vcvars64.bat"`（实际路径以安装为准）→ `where clang-cl`。
+   **〔2026-09-20 勘误〕**：VS 2026 18.10.1 实测 `vcvars64.bat` **不会**把 clang-cl 加进 PATH（组件实体在 `VC\Tools\Llvm\x64\bin\`），须手动补：`set "PATH=C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\VC\Tools\Llvm\x64\bin;%PATH%"`。
 3. 构建 dll：vcvars64 环境内 `cmake --preset windows-clang-cl && cmake --build --preset windows-clang-cl` → 产物 `build/windows-clang-cl/endstone_kurobridge.dll`。
 4. 后续步骤（预置 bin/、装 endstone 服务端、联调）见 readme.md 真机 SOP。
 
 **不安装也不影响已交付层**：`cmake --preset core && ctest` 在现有工具链上恒可复验。
+
+**〔2026-09-20 解锁实录〕**：组件安装用 `setup.exe modify --installPath <实例> --add Microsoft.VisualStudio.Component.VC.Llvm.Clang --quiet --norestart`（**--quiet 必须从提权进程启动**，非提权 exit 5007；`--log` 非法参数 exit 87）。首构建成功：`endstone_kurobridge.dll`（808,960 B，导出表含 `init_endstone_plugin`），clang-cl ABI 下 portable ctest 5/5。连带修复：`CMakePresets.json` 的 `windows-clang-cl` 预设 inherits core 却未覆写 `binaryDir`，dll 曾构建进 `build/core` 顶掉 portable 缓存——已补 `binaryDir: build/windows-clang-cl`（与本期许产物路径一致）。
 
 ## 5. v1 范围裁决与简化登记
 

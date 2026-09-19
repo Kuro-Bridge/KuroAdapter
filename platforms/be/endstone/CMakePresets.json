@@ -15,6 +15,7 @@
       "name": "windows-clang-cl",
       "displayName": "endstone 插件 dll（需 clang-cl + VS Build Tools，见 docs/feasibility.md §4）",
       "inherits": "core",
+      "binaryDir": "${sourceDir}/build/windows-clang-cl",
       "cacheVariables": {
         "CMAKE_C_COMPILER": "clang-cl",
         "CMAKE_CXX_COMPILER": "clang-cl",
