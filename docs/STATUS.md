@@ -2,7 +2,7 @@
 
 > 开始任何工作前先读本文 → `architecture.md`（架构书）→ 对应包 `docs/design.md`。
 > 本文只讲「现在」；阶段史（原型 → MVP-1~4 → DEBT-1/2 → 改名）的任务书/实录全在
-> [`history/`](history/README.md)，拍板依据在 [`DECISIONS.md`](DECISIONS.md)（ADR-001~036）。
+> [`history/`](history/README.md)，拍板依据在 [`DECISIONS.md`](DECISIONS.md)（ADR-001~037）。
 
 ## 当前状态（2026-09-19）
 
@@ -25,11 +25,12 @@ ADR-030）。
 - **业务面**（DEBT-1）：绑定表 / 转发规则（按频道 fan-out）/ 群管理员映射 / WS command
   透传执行 / query 本地作答 / death / 配置热重载（`kurobridge reload`）/ 白名单 SSOT =
   MC 原生 whitelist。
-- **门禁基线**（2026-09-19 ADR-036 后）：`pnpm check`（一条入口：自含 `pnpm -r build`
+- **门禁基线**（2026-09-19 平台落地波后）：`pnpm check`（一条入口：自含 `pnpm -r build`
   首环 + biome + 根 tsc + lse typecheck + docs 门禁 + 版本对齐，ADR-035）/ `pnpm test`
-  （**153 用例 / 13 文件**——142 基线上新增金样本 fixture-driven 检查 11 例
-  （`bridge/core/src/__tests__/golden.fixtures.test.ts`，ADR-036）；180 → 142 差额 =
-  随镜像退役删除的 protocol 包用例）/ `gradlew build` + `:core:test --rerun`
+  （**247 用例 / 23 文件**——ADR-036 时点 153 用例 / 13 文件（142 基线 + 金样本
+  fixture-driven 检查 11 例 `bridge/core/src/__tests__/golden.fixtures.test.ts`；
+  180 → 142 差额 = 随镜像退役删除的 protocol 包用例），其后 fabric 线 embed 打包单测
+  +1（154）+ lse 线 +93 = 247）/ `gradlew build` + `:core:test --rerun`
   （**74 用例**）全绿。CI 双 job 已入库（ADR-032，其后经 ADR-035 结论 4 简化：无姊妹仓
   检出），CI 已激活且绿（见待定事项）。
 - **napuketto 外部契约原样**：env 名、文件名、TOML `[accounts.kurobot]` 段名、client
@@ -249,8 +250,8 @@ node 子进程宿主 kurobridge 服务端 + `bin/` 部署契约），宿主↔no
   时子进程按句柄值偶合父句柄、UTF-16 环境块需 CREATE_UNICODE_ENVIRONMENT）+ NodeIpc（坏行 WARN 截 200
   跳过/ready 30s 握手/请求 UUIDv4 关联 10s 超时/PID 文件三态/shutdown 帧→关 stdin→5s 宽限→强杀 2s
   双路径恰好一次通知/`[NodeIpc]` 逐字前缀契约）+ NodeSupervisor（退避 1s/5s/15s+600s 滑动窗累计 3 次
-  放弃，ready 清连败不清窗，clock/延迟执行器注入测试同步化）。测试：Java IpcFrameCodecTest 19 用例+
-  NodeSupervisorTest 6 用例语义对齐 + 真实 node.exe 集成五用例（stub_node.mjs 独立桩）。
+  放弃，ready 清连败不清窗，clock/延迟执行器注入测试同步化）。测试：Java IpcFrameCodecTest 21 用例+
+  NodeSupervisorTest 6 用例语义对齐 + 真实 node.exe 集成五用例（stub-node.mjs 独立桩）。
 - **endstone 面（src/main|bridge|events.cpp；语法验证≠ABI 构建）**：四事件 registerEvent→sendEvent
   （chat 无权限门=fabric 同款登记）、broadcast→runTask 回主线程广播调度即回执、execute_command→
   CommandSenderWrapper 双 lambda 收集执行完回执、status 快照 tps=0.0（R2）；clang 22.1.8
@@ -276,11 +277,12 @@ node 子进程宿主 kurobridge 服务端 + `bin/` 部署契约），宿主↔no
 
 - **CI 推送**：CI 已激活且绿（2026-09-19 推送阶段 2 提交后 run 35420391301 全绿，为
   build 前置修复后的首次真 CI 验证；结构经 ADR-035 结论 4 简化：无姊妹仓检出，ts job
-  = `pnpm check && pnpm test`，check 链自含 build 首环）。本地 master 领先 origin 3 笔
-  （ADR-036 三连：立档 / 金样本检查 / embedded 悬空指针修复）待推送——推送后 CI 复跑
-  为最终验证。
-- koishi-plugin-kurobridge 独立仓库（ADR-018）：官方参考对端 + 平台渲染唯一归属，
-  JE 闭环后启动（Koishi v4 基线）；其协议依赖 `^0.1.0` 亦待切 `^0.4.0`（上游协作）。
+  = `pnpm check && pnpm test`，check 链自含 build 首环）。ADR-036 三连（立档 / 金样本检查 /
+  embedded 悬空指针修复）已于 2026-09-19 推送，本地 master 与 origin/master 同步（零领先）；
+  后续推送仍以 CI 复跑为最终验证。
+- koishi-plugin-kurobridge 独立仓库（ADR-018）：官方参考对端 + 平台渲染唯一归属。
+  已发版 0.2.0（2026-09-19，Koishi v4 基线），协议依赖已切 `@kuro-bridge/protocol@^0.4.0`
+  ——「JE 闭环后启动」与其协议依赖 `^0.1.0` 待切两条待定就此收敛，后续协作随其仓推进。
 - `platforms/be` 家族：`lse/` 已于 2026-09-19 平台落地波实现（R2′「WS 回环薄壳」，见上方并行线
   1/4 块）；`endstone/` 已于 2026-09-19 平台落地波落地行走骨架（portable 层 ctest 5/5 绿 + endstone
   面语法验证零错误，见上方并行线 3/4 块）——dll ABI 有效构建待 clang-cl 工具链解锁（操作单
