@@ -117,9 +117,11 @@ kurobridge/
 │       │   ├── package.json / tsconfig.json / plugin.json / readme.md（真机 SOP）/ docs/role-adjudication.md（角色 SSOT）
 │       │   ├── src/         # 壳（事件桥接 / 看护器 / 游戏通道 WSClient 回环）→ dist/index.js
 │       │   └── src/runtime/ # Node shim（宿主 KurobridgeServer/Relay）→ dist/bin/index.mjs
-│       └── endstone/        # Endstone 适配（C++ 薄壳 + 内嵌 Node，预留骨架）
-│           ├── CMakeLists.txt
-│           └── src/main.cpp # 占位入口
+│       └── endstone/        # Endstone 适配（C++ 薄壳 + 内嵌 Node；docs/feasibility.md 裁决册）
+│           ├── CMakeLists.txt / CMakePresets.json   # core/windows-clang-cl 双轨（dll 待 clang-cl 解锁）
+│           ├── src/         # 薄壳（main 插件入口 / events 四事件桥接 / bridge 请求处理）
+│           ├── src/core/    # portable 层（JSON/帧编解码/进程拉起/IPC/看护器，零 endstone 依赖可独立测试）
+│           └── tests/       # ctest 五目标（含真实 node.exe 集成，fixtures/stub_node.mjs 桩）
 ├── bridge/
 │   ├── core/                # @kuro-bridge/bridge-core（平台无关）
 │   └── embedded/            # 嵌入式瘦身对端（esbuild 单文件，打进 JAR）
@@ -141,7 +143,7 @@ kurobridge/
 | `bridge/embedded` | TS | 无框架 | esbuild 单文件 | 集成测试（起真 WS server） |
 | `platforms/je` | Java 21 字节码（工具链 25，target 21） | Paper API（compileOnly）+ fabric-loader/fabric-api（modImplementation，:fabric）+ Jackson | Gradle（:paper shadowJar；:fabric shadow 白名单→loom remapJar） | JUnit 5（:core IPC 编解码 + 进程生命周期；:fabric TPS 自测） |
 | `platforms/be/lse` | TS → JS | `@levimc-lse/types` + `@kuro-bridge/bridge-core` + ws（shim 侧） | esbuild 双产物（壳 IIFE target es2020 + Node shim ESM） | vitest（含回环 e2e） |
-| `platforms/be/endstone` | **C++ 20** | Endstone API + 内嵌 Node | CMake（预留） | —（预留） |
+| `platforms/be/endstone` | **C++ 20** | Endstone API（header-only，CMake FetchContent）+ 内嵌 Node | CMake presets 双轨（core / windows-clang-cl，dll 待 clang-cl） | ctest 五目标（portable 层 + 真实 node 集成） |
 | koishi-plugin-kurobridge（独立仓库） | TS | Koishi v4 + `@kuro-bridge/protocol` | Koishi 标准 | vitest + `@koishijs/plugin-mock` |
 
 **苛刻度（对齐 NapukettoQQ）**：
