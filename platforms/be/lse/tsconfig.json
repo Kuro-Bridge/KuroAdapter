@@ -8,7 +8,8 @@
         "module": "ESNext",
         "moduleResolution": "bundler",
         "types": [
-            "@levimc-lse/types"
+            "@levimc-lse/types",
+            "node"
         ],
         "noEmit": true,
         "allowImportingTsExtensions": false

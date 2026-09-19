@@ -5,14 +5,17 @@
     "type": "module",
     "private": true,
     "scripts": {
-        "build": "esbuild src/index.ts --bundle --format=iife --platform=neutral --target=es2020 --outfile=dist/index.js"
+        "build": "esbuild src/index.ts --bundle --format=iife --platform=neutral --target=es2020 --outfile=dist/index.js && esbuild src/runtime/index.ts --bundle --format=esm --platform=node --target=es2020 --outfile=dist/bin/index.mjs --banner:js=\"import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);\""
     },
     "dependencies": {
         "@kuro-bridge/bridge-core": "workspace:*",
-        "@kuro-bridge/protocol": "^0.4.0"
+        "@kuro-bridge/protocol": "^0.4.0",
+        "ws": "^8.18.0"
     },
     "devDependencies": {
         "@levimc-lse/types": "^2.18.0",
+        "@types/node": "^26.1.2",
+        "@types/ws": "^8.18.0",
         "esbuild": "^0.25.0",
         "typescript": "^7.0.2"
     },
