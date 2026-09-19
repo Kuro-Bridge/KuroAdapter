@@ -113,9 +113,10 @@ kurobridge/
 │   │   ├── neoforge/        # 预留：NeoForge mod 适配（依赖 :core）
 │   │   └── velocity/        # 预留：Velocity 代理适配（依赖 :core）
 │   └── be/                  # BE 服务端家族（基岩版，ADR-020）
-│       ├── lse/             # LeviLamina LSE 平台适配（TS → JS，复用 bridge/core）
-│       │   ├── package.json / tsconfig.json / plugin.json
-│       │   └── src/index.ts # 入口（ll.registerPlugin + mc.listen）
+│       ├── lse/             # LeviLamina LSE 平台适配（R2′ WS 回环薄壳：QuickJS 壳 + Node shim 宿主 core，ADR-037）
+│       │   ├── package.json / tsconfig.json / plugin.json / readme.md（真机 SOP）/ docs/role-adjudication.md（角色 SSOT）
+│       │   ├── src/         # 壳（事件桥接 / 看护器 / 游戏通道 WSClient 回环）→ dist/index.js
+│       │   └── src/runtime/ # Node shim（宿主 KurobridgeServer/Relay）→ dist/bin/index.mjs
 │       └── endstone/        # Endstone 适配（C++ 薄壳 + 内嵌 Node，预留骨架）
 │           ├── CMakeLists.txt
 │           └── src/main.cpp # 占位入口
@@ -139,7 +140,7 @@ kurobridge/
 | `bridge/core` | TS | zod、`@kuro-bridge/protocol`（npm ^0.4.0，姊妹仓 KuroProtocol 发布）；零框架零 Node API | tsdown | vitest（+ fast-check，二期） |
 | `bridge/embedded` | TS | 无框架 | esbuild 单文件 | 集成测试（起真 WS server） |
 | `platforms/je` | Java 21 字节码（工具链 25，target 21） | Paper API（compileOnly）+ fabric-loader/fabric-api（modImplementation，:fabric）+ Jackson | Gradle（:paper shadowJar；:fabric shadow 白名单→loom remapJar） | JUnit 5（:core IPC 编解码 + 进程生命周期；:fabric TPS 自测） |
-| `platforms/be/lse` | TS → JS | `@levimc-lse/types` + `@kuro-bridge/bridge-core` | esbuild 单文件（IIFE，target es2020） | vitest |
+| `platforms/be/lse` | TS → JS | `@levimc-lse/types` + `@kuro-bridge/bridge-core` + ws（shim 侧） | esbuild 双产物（壳 IIFE target es2020 + Node shim ESM） | vitest（含回环 e2e） |
 | `platforms/be/endstone` | **C++ 20** | Endstone API + 内嵌 Node | CMake（预留） | —（预留） |
 | koishi-plugin-kurobridge（独立仓库） | TS | Koishi v4 + `@kuro-bridge/protocol` | Koishi 标准 | vitest + `@koishijs/plugin-mock` |
 

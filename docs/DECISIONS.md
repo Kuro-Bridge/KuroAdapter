@@ -508,3 +508,36 @@
   分歧本身是发现——逐条登记报协议仓主权（金样本冻结），不得为绿灯放宽断言；确属主仓
   实现缺口的修主仓。未来出现以包名 import `@kuro-bridge/bridge-embedded` 的 TS 消费
   方时，按 ADR-033 先立发布决策再补 types（即撤销本条结论 2）。
+
+## ADR-037 lse 平台角色裁决：R2′「WS 回环薄壳」——QuickJS 壳 + 本包 Node shim 宿主 kurobridge 服务端（2026-09-19）
+
+- **背景**：`platforms/be/lse` 落地线预勘察矛盾成立——包级 design.md 原方案「复用 core 客户端接入
+  kurobridge WS 服务端」两头不存在：core 导出全集无任何客户端类（`transport.ts:25`「kurobridge 永远
+  是 WS 服务端角色，ADR-005」），LSE 类型包亦无 WS 服务端/TCP 能力。任务书 R2（脚本薄壳 +
+  `system.newProcess` 管道）的成立前提被类型包声明层实证否死：`newProcess` 返回 `boolean`，无
+  Process 对象、无 stdin/stdout、回调仅进程结束后一次性回传（`@levimc-lse/types@2.18.7`
+  SystemCall.d.ts:40-51）；R3（进程内跑 core + 适配传输层）被同证否死（`HttpServer` 无 WS upgrade，
+  适配即改 core，违 ADR-007）；R1（平台侧建服务端）破坏 ADR-005 且需 koishi 侧/独立 hub 新能力
+  （跨仓超线）。证据册（角色拓扑 SSOT）：`platforms/be/lse/docs/role-adjudication.md`。
+- **选项**：R1（否决，见背景）/ R2（否决：管道不存在）/ R3（否决：无服务端 socket）/ R2′（侦察
+  新增：保留 R2 骨架，宿主↔node 通道换回环 WS）。
+- **决策**：采纳 R2′——(1) QuickJS 壳只做事件桥接与传输：`mc.listen` 四事件 → IPC 方言 JSON 帧
+  （KuroProtocol 0.4.0 现成 schema + `encodeFrame`）→ `WSClient` 发往 127.0.0.1 回环游戏通道；
+  (2) Node shim 为 lse 包内代码（`src/runtime/`），经 `newProcess` fire-and-forget 拉起，复用 core
+  导出面（`KurobridgeServer`/`Relay`/`CoreContext`/`parseConfig`/`defaultConfig`）+ core
+  `WsServer`/`IpcChannel` 接口的本包实现（ws 包 / 游戏通道门卫：单租户、首帧会话令牌，错 1008），
+  对 koishi 提供真 WS 服务端；(3) 生命周期脐带：已鉴权游戏通道断开 ⇔ shim 自杀（等价 JE stdin-EOF，
+  D-08）；壳内看护器对齐 JE NodeSupervisor（ready 30s、退避 1/5/15s、10 分钟窗 3 次放弃、
+  `kurobridgeretry` 手动恢复）；(4) 部署契约与 paper 同目录：`<BDS 根>/plugins/kurobridge/`
+  （plugin.json + index.js + bin/node.exe + bin/index.mjs）。ADR-005 不变量保持：WS 服务端仍由游戏侧
+  部署体宿主（shim 是壳拉起的子进程，与 JE 的 node 子进程同位），koishi 仍是 WS 客户端；
+  `bridge/**` 零改动；协议无新增线上词汇（仅新增「IPC 方言 over WS text frame」传输绑定）。
+- **理由**：R2′ 是唯一同时满足「不变量全保（ADR-005/007、协议 SSOT、领地）+ 类型包实证可落地」的
+  路线；拓扑与 JE 全同使降级/看护语义逐条可对齐（差异在册：`status` 帧不做——无 TPS API 不造假
+  数据；死亡文案恒空串——`onPlayerDie` 无文案参数；`config_reload`/`shutdown` 帧不做——无触发点，
+  通道断开兜底；无 kill API——node 卡死等脐带或人工）；node 侧不复用 bridge/embedded bundle
+  （入口 import 即自跑 + stdin EOF 自杀，不可作库），但业务零复制（core 导出面装配）。
+- **回退条件**：真机背书推翻待真机清单前提（尤其 `newProcess` 参数串 quoting/argv 切分、`WSClient`
+  回环与回调线程语义、`ll.getCurrentPluginInfo().filePath` 取值）→ 本 ADR 作废重裁，回到 R1 停线
+  预案交用户拍板；ws 包子协议握手门禁在 ws 8.21 不真正拒绝连接为 bridge 家族缺陷（embedded 同款），
+  修复归属 bridge 家族统一裁决，不随本 ADR 在 lse 单方面收敛。

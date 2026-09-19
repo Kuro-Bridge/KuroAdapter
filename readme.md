@@ -24,7 +24,7 @@ kurobridge（Paper JAR，Java 薄壳）
 
 ```
 ├─ platforms/je/     # Java 服务端适配（Gradle 多模块：core + paper + fabric + 预留 neoforge/velocity）
-├─ platforms/be/     # BE 服务端家族：lse（LSE TS）+ endstone（C++ 薄壳，预留）
+├─ platforms/be/     # BE 服务端家族：lse（LSE TS，R2′ WS 回环薄壳）+ endstone（C++ 薄壳，预留）
 ├─ bridge/
 │   ├── core/         # 业务核心 + 协议服务端（TS，平台无关）
 │   └── embedded/     # 嵌入式瘦身对端（打进 JAR，无 Koishi）
@@ -37,7 +37,7 @@ kurobridge（Paper JAR，Java 薄壳）
 ## 文档
 
 - [架构书](docs/architecture.md) —— 分层、进程模型、红线、工具链
-- [决策记录](docs/DECISIONS.md) —— 每项拍板的来龙去脉（ADR-001~035）
+- [决策记录](docs/DECISIONS.md) —— 每项拍板的来龙去脉（ADR-001~037）
 - [现状与路线](docs/STATUS.md) —— 当前进度、卡点、债务索引
 - [对端接入指南](docs/protocol/peer-guide.md) —— 已移交姊妹仓 KuroProtocol（本仓该文件为迁移指针，ADR-031）；版本以其 `src/meta.ts` 为 SSOT
 - [历史册归档](docs/history/README.md) —— 已完成阶段的任务书/实录索引

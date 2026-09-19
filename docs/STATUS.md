@@ -182,6 +182,56 @@ Gradle 接线 + 单测）→ `b03df09`（build：嵌入产物双平台化 + buil
      unused-param，其领地 mtime 实证），pre-commit 全链会被其挡住——本线提交以
      `LEFTHOOK=0` 绕过钩子，本线领地门禁独立验证如上；全链绿以 lse 落地后的 CI 为准。
 
+## 2026-09-19 平台落地波·并行线 1/4：`platforms/be/lse` 首次实现（R2′「WS 回环薄壳」）
+
+LeviLamina LSE 平台适配落地（任务书：角色裁决先行，真机不做、交付 SOP）。裁决改变任务书预案：
+任务书 R2 的管道前提（`newProcess` 暴露 stdin/stdout）被类型包声明层否死（返回 `boolean`、无
+Process 对象、回调仅进程死后一次），裁决采纳 R2′「WS 回环薄壳」——保留 R2 骨架（QuickJS 薄壳 +
+node 子进程宿主 kurobridge 服务端 + `bin/` 部署契约），宿主↔node 通道换成 127.0.0.1 回环 WS，帧
+方言与生命周期语义不变。ADR-005/ADR-007 无损，`bridge/**` 零改动。角色拓扑 SSOT：
+[`../platforms/be/lse/docs/role-adjudication.md`](../platforms/be/lse/docs/role-adjudication.md)；
+决策记录 ADR-037。提交链：`dcfc311`（docs：裁决册）→ `401bdac`（feat：壳 + shim）→ `6fa7776`
+（docs：design/readme SOP + 裁决册勘误）→ `5be0d30`（test+fix：93 用例 + 两缺陷修复）→ 收尾共享
+文档（本块所在提交）。
+
+- **拓扑与帧面**：koishi（WS 客户端）→ Node shim（ws 包宿主 core `KurobridgeServer`/`Relay`，
+  koishi 侧真 WS 服务端）↔ 游戏通道 WS（127.0.0.1，单租户，首帧会话令牌，错 1008）↔ QuickJS 壳
+  （`WSClient` + `mc.listen`）。上行 game_chat / player_join / player_quit / player_death（死亡文案
+  恒空串——onPlayerDie 无文案参数）；下行 broadcast（`say` + 立即 ok 回执，对齐 JE）与
+  execute_command（`runcmdEx` 输出按行回执，对齐 JE v0.3.0 执行完回执语义）；`ready{wsPort,
+  autoRestart}` 经游戏通道上报。`shutdown`/`config_reload`/`status` 均不做（无停服事件/无插件重载
+  触发点/无 TPS API，不造假数据）——koishi 侧在线状态不更新为登记差异。
+- **生命周期脐带**：已鉴权游戏通道断开 ⇔ shim 自杀（等价 JE stdin-EOF 自杀，D-08）；BDS 停服/崩溃
+  即通道断，无孤儿。壳内看护器对齐 JE NodeSupervisor：ready 握手 30s、失败退避 1s/5s/15s、10 分钟
+  滑动窗 3 次放弃（放弃 + `kurobridgeretry` 手动恢复）、autoRestart=false 只 warn、每轮全新 spawn
+  （新端口新令牌）；放弃后事件静默丢弃、BDS 继续跑（对齐 JE `ipc==null` 语义）。
+- **测试与缺陷（测试块锚定 → 修复闭环）**：10 文件 93 用例（含 loopback e2e：真 core 组装 + 真
+  ws 客户端扮壳，令牌→ready→game_chat↔chat→broadcast/execute_command 全链）。测试块锚定两缺陷并
+  当线修复（5be0d30）：① 上行态（ready 后）通道失联不重生——attempt 契约改双结算句柄（ready/done），
+  up 态失联进看护退避重生；② game-gate 未鉴权断开误触脐带（回环端口扫描连断可杀 shim）——引入
+  authenticated 标志，仅已鉴权租户断开触发脐带。全仓 vitest 247 全绿（154→247，+93 全为本线）。
+- **家族登记（不在本线收敛）**：ws 包 `handleProtocols` 返 false 在 ws 8.21 不真正拒绝握手（仅省略
+  子协议响应头）——「子协议不匹配拒连」门禁落空，bridge/embedded 同款（债务索引有行）；修复归属
+  bridge 家族统一裁决。
+- **真机清单（只能 LeviLamina 实机背书，SOP 见包 readme）**：
+  1. `newProcess` 参数串 quoting/argv 切分与子进程 cwd/环境继承（shim 已用 `--server-root` 显式传参
+     消解 cwd 依赖）。
+  2. `WSClient` 回环连接（ws://127.0.0.1:port）与回调线程语义（若不在游戏主线程，`mc.runcmd`
+     安全性需实测）。
+  3. `ll.getCurrentPluginInfo().filePath` 实际取值（插件目录假设——路径推导锚点）与
+     `system.randomGuid` 格式。
+  4. `runcmdEx` 输出编码/合流/截断；`say` 广播呈现。
+  5. BDS 硬杀时通道断开 → shim 自杀的时序；子进程 reap 行为。
+  6. 长驻 node 进程在 `newProcess` 下的稳定性（信号/控制台干扰）。
+  7. ready 前退出回调 output 可读性（stderr 是否并入）。
+- **门禁证据**：`pnpm -r build` 双产物（壳 dist/index.js 589.7kb + shim dist/bin/index.mjs 708.8kb）；
+  全仓 `pnpm check` 绿（biome 63 files、根 tsc + lse typecheck、docs 两门禁、check-versions 六点
+  一致）；vitest 247 全绿。
+- **过程偏离登记（两条，均如实）**：① 中途遭遇 subagent 5 小时限额硬墙一次（实现/文档两 agent
+  首派未启动），重派成功恢复，无绕行无降级；② `pnpm-lock.yaml`（仓库根）随 lse 新增 `ws` 依赖机械
+  更新，越出 `platforms/be/lse/**` 字面领地——package.json 依赖变更（任务书明示可写）的机械后果，
+  三包全命中本地 store 零下载。本线全部提交经全链 pre-commit（无 LEFTHOOK 绕行）。
+
 ## 待定事项
 
 - **CI 推送**：CI 已激活且绿（2026-09-19 推送阶段 2 提交后 run 35420391301 全绿，为
@@ -191,8 +241,8 @@ Gradle 接线 + 单测）→ `b03df09`（build：嵌入产物双平台化 + buil
   为最终验证。
 - koishi-plugin-kurobridge 独立仓库（ADR-018）：官方参考对端 + 平台渲染唯一归属，
   JE 闭环后启动（Koishi v4 基线）；其协议依赖 `^0.1.0` 亦待切 `^0.4.0`（上游协作）。
-- `platforms/be` 家族骨架已建：`lse/`（TS，复用 bridge/core，QuickJS 可跑是硬约束）、
-  `endstone/`（C++ 薄壳预留），实现排期在 JE 闭环后。
+- `platforms/be` 家族：`lse/` 已于 2026-09-19 平台落地波实现（R2′「WS 回环薄壳」，见上方并行线
+  1/4 块）；`endstone/`（C++ 薄壳预留），实现排期在 JE 闭环后。
 - `platforms/je` 的 neoforge/velocity 为预留骨架，接入对应服务端 API 后启用
   （多版本策略 ADR-021：适配层按版本矩阵构建，`:core` 与 `bridge/core` 不动）。
   fabric 已于 2026-09-19 平台落地波实现（见上方并行线 2/4 块）。
@@ -220,6 +270,7 @@ Gradle 接线 + 单测）→ `b03df09`（build：嵌入产物双平台化 + buil
 | fabric chat relay 权限门缺失（`kurobridge.relay` 等价；接管 = fabric-permission-api；`/kurobridge` 的 op 级别粒度近似 `kurobridge.admin` 同根因） | STATUS 2026-09-19 fabric 块 / fabric design.md §3 |
 | fabric 多 MC 版本矩阵（首版 1.21.4 单版本基线；接管点 = 版本坐标组 / depends 收放 / CI matrix） | STATUS 2026-09-19 fabric 块 / fabric design.md §1 |
 | fabric SERVER_STOPPING 时点早于玩家断开（paper onDisable 在断开后；关停语义有界等待+强杀不变） | STATUS 2026-09-19 fabric 块真机清单 7 |
+| ws 子协议握手门禁不真正拒绝（ws 8.21 `handleProtocols` 返 false 仅省略响应头，握手照常完成；bridge/embedded 与 platforms/be/lse 的 ws-server 同款，「子协议不匹配拒连」语义落空） | STATUS 2026-09-19 lse 块 / lse 裁决册 |
 
 ## 阶段史
 
