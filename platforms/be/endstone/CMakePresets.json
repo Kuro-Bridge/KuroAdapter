@@ -1,0 +1,44 @@
+{
+  "version": 6,
+  "configurePresets": [
+    {
+      "name": "core",
+      "displayName": "portable 层（本机工具链，无 endstone 依赖）",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/core",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "KUROBRIDGE_BUILD_DLL": "OFF"
+      }
+    },
+    {
+      "name": "windows-clang-cl",
+      "displayName": "endstone 插件 dll（需 clang-cl + VS Build Tools，见 docs/feasibility.md §4）",
+      "inherits": "core",
+      "cacheVariables": {
+        "CMAKE_C_COMPILER": "clang-cl",
+        "CMAKE_CXX_COMPILER": "clang-cl",
+        "KUROBRIDGE_BUILD_DLL": "ON"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "core",
+      "configurePreset": "core"
+    },
+    {
+      "name": "windows-clang-cl",
+      "configurePreset": "windows-clang-cl"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "core",
+      "configurePreset": "core",
+      "output": {
+        "outputOnFailure": true
+      }
+    }
+  ]
+}

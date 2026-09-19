@@ -1,0 +1,3 @@
+# CMake 构建产物目录（本包内自含，不动仓库根 .gitignore；
+# 对齐 platforms/je/**/build/ 先例，feasibility.md §7）
+build/
