@@ -23,7 +23,7 @@ kurobridge（Paper JAR，Java 薄壳）
 ## 仓库结构
 
 ```
-├─ platforms/je/     # Java 服务端适配（Gradle 多模块：core + paper + 预留 fabric/neoforge/velocity）
+├─ platforms/je/     # Java 服务端适配（Gradle 多模块：core + paper + fabric + 预留 neoforge/velocity）
 ├─ platforms/be/     # BE 服务端家族：lse（LSE TS）+ endstone（C++ 薄壳，预留）
 ├─ bridge/
 │   ├── core/         # 业务核心 + 协议服务端（TS，平台无关）

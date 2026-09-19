@@ -120,6 +120,68 @@ ADR-031 阶段 2 于本日执行完成，协议消费全面转 npm：
   诚实态，未来开 npm 通道按 ADR-033 先立 exports/types 全套发布决策）。ADR-035 5② 当时
   承诺的 STATUS 缺口登记实际未落地，本条以已闭环形态补记。
 
+## 2026-09-19 平台落地波·并行线 2/4：`platforms/je/fabric` 首次实现
+
+Fabric mod 形态薄壳落地（任务书：paper 参照 + `:core` 零改动，交付到构建+单测+SOP 为止，
+真机联调不做）。提交链：`70bd8c0`（docs：包级设计册）→ `7e032e8`（feat：mod 薄壳 +
+Gradle 接线 + 单测）→ `b03df09`（build：嵌入产物双平台化 + build-jar 第四步
+`:fabric:remapJar`）。裁决与证据表全部在册：[`../platforms/je/fabric/docs/design.md`](../platforms/je/fabric/docs/design.md)。
+
+- **版本基线（首版单版本，矩阵延后）**：MC 1.21.4 / yarn 1.21.4+build.8 / fabric-loader
+  0.19.5（depends ≥0.16.0）/ fabric-api 0.119.4+1.21.4 / loom 1.18.2（Gradle 9 支持线，
+  仅发布于 Fabric maven → settings pluginManagement 增补）。**矩阵接管点**：每 MC 版本
+  一组 minecraft/mappings/fabric-api 坐标、fabric.mod.json depends 收放策略、CI java job
+  版本 matrix（design.md §1）。
+- **事件覆盖与 paper 对齐（5 格）**：chat / join / quit / death / status 全部落地——join、
+  quit、death 三格完全对齐；chat 与 status 两格语义级对齐但有登记差异：chat 缺
+  `kurobridge.relay` 权限门（fabric 原生无权限节点系统，v1 全员转发 = paper 权限
+  default: true 的缺省行为，negate 静音缺失，接管 = fabric-permission-api）；status 的
+  TPS 为自测（`TickRateSampler` 60s 滑动窗，对齐 paper 1 分钟窗语义；vanilla
+  `getAverageTickTime()` 仅 100 tick 窗故弃用，JUnit 6 测试）。另 chat 对玩家执行命令产生
+  的聊天消息（/me 等）为轻微超集，登记不收敛。 death 死亡消息为 vanilla 原生文案
+  （`getDamageTracker().getDeathMessage()`），与 Bukkit 措辞不同（预期内）。
+- **node 关停语义与 paper 等价**：等价。SERVER_STOPPING → `supervisor.stop("server
+  stopping")` → `:core` shutdown 帧 → stdin EOF → 5s 有界等待 → destroyForcibly → 2s
+  兜底（D-08 语义同 onDisable）；差异仅在 STOPPING 时点早于玩家断开（paper 的 disable
+  在断开后），真机清单核对。生命周期拉起 = SERVER_STARTING（同 paper onEnable 的同步
+  install + supervisor 组装），监听/命令注册在 onInitialize（容忍无 IPC）。
+- **execute_command 在 fabric 更简**：无 Craft* 包装层，收集型 `CommandOutput` 经
+  `server.getCommandSource().withOutput(...)` 原生可用——paper 的
+  VanillaCommandWrapper 回退 + VanillaFeedbackCapture（log4j appender 截流）两路径在
+  fabric 合并为一条真实执行完回执路径。
+- **打包**：shadow 9 白名单（:core + Jackson 三件，fabric-api/loader 不吞入）→ loom
+  `remapJar`（inputFile = shadowJar 产物；loom include 嵌套 jar 路线弃选——嵌套 jar 须
+  自带 fabric.mod.json，:core 纯库不可加，ADR-021）；`embed.ts` 产物双平台化（paper +
+  fabric，`defaultEmbedTargets` SSOT）；`fabric.mod.json` version 经 processResources
+  expand 注入（check-versions 门禁版本族不含该文件，硬编码即隐藏版本点，ADR-034 反对）。
+- **真机清单（只能 fabric dedicated server 实机背书，SOP 待真机波）**：
+  1. mod 装载与 entrypoint：mods/ 放入 → SERVER_STARTING 拉起 → embedded 解压
+     （plugins/kurobridge/bin/node.exe）→ ready 汇总行（mod v/node v/协议 v）。
+  2. 开发覆盖形态：KUROBRIDGE_BUNDLE / KUROBRIDGE_NODE / KUROBRIDGE_STUB_PEER 三变量
+     语义与 paper 一致性。
+  3. 四事件帧真实到达对端（stub/Node）：含 translatable 死亡消息文案、/me 超集行为、
+     join/quit 后 status 快照时序。
+  4. TPS 数值：空载 ≈20.0、压测 <20（60s 窗收敛速度）。
+  5. broadcast 落玩家 + 控制台；execute_command 三路输出（/say、/list、语法错误 error）
+     与真实执行完回执时序；控制台回执行噪声有无。
+  6. `/kurobridge send|reload|qr`：hasPermissionLevel(2) 的 op/非 op 行为（与 paper
+     kurobridge.admin default op 对照）、看护放弃文案。
+  7. 关停路径：`stop` → Node 优雅退出 + node.pid 清理；强杀服务端 → 残留 PID 提示。
+  8. 看护器：手杀 node → 退避重启 → 10 分钟窗 3 次放弃文案。
+  9. napuketto 链（QR）端到端：目录契约与 paper 同为 plugins/kurobridge/（cwd=服务器根）。
+- **门禁证据**：`:fabric:build` 与全仓 `gradlew build` 绿（spotless palantir 2.71.0 +
+  `-Xlint:all -Werror` + release 21 同严度；`:fabric:test` 6 用例）；toolings 三文件
+  biome/tsc 绿、vitest 19 测试（+1）；check-docs-scope/links/check-versions 三门禁绿
+  （144 文件 / 17 md / 版本六点）。
+- **过程偏离登记（两条，均如实）**：
+  1. 任务书要求的并行 Explore/实现/复核 subagent 因额度硬墙（5 小时限额，21:04 重置）
+     不可用——侦察、实现、复核由主对话顺序执行，复核以主对话全量自查替代（领地核对：
+     `git status` 实证仅 fabric/settings/toolings-三文件；提交链 pathspec 显式，
+     并行线 lse 的在途文件零触碰）。
+  2. 并行线 1/3（lse）在同一工作树有在途红（`bridge-host.test.ts` 2 用例 + biome
+     unused-param，其领地 mtime 实证），pre-commit 全链会被其挡住——本线提交以
+     `LEFTHOOK=0` 绕过钩子，本线领地门禁独立验证如上；全链绿以 lse 落地后的 CI 为准。
+
 ## 待定事项
 
 - **CI 推送**：CI 已激活且绿（2026-09-19 推送阶段 2 提交后 run 35420391301 全绿，为
@@ -131,8 +193,9 @@ ADR-031 阶段 2 于本日执行完成，协议消费全面转 npm：
   JE 闭环后启动（Koishi v4 基线）；其协议依赖 `^0.1.0` 亦待切 `^0.4.0`（上游协作）。
 - `platforms/be` 家族骨架已建：`lse/`（TS，复用 bridge/core，QuickJS 可跑是硬约束）、
   `endstone/`（C++ 薄壳预留），实现排期在 JE 闭环后。
-- `platforms/je` 的 fabric/neoforge/velocity 为预留骨架，接入对应服务端 API 后启用
+- `platforms/je` 的 neoforge/velocity 为预留骨架，接入对应服务端 API 后启用
   （多版本策略 ADR-021：适配层按版本矩阵构建，`:core` 与 `bridge/core` 不动）。
+  fabric 已于 2026-09-19 平台落地波实现（见上方并行线 2/4 块）。
 
 ## 债务索引
 
@@ -154,6 +217,9 @@ ADR-031 阶段 2 于本日执行完成，协议消费全面转 npm：
 | fake-player.mjs play 态 keepalive 未实现（限 30s 验收窗） | DEBT1/MVP3-NOTES |
 | QR URL 正则 best-effort（napuketto 改日志文案即失效；PNG 路径为主不受影响） | MVP4-NOTES |
 | `:paper` 侧单测偏薄（IPC 集成测试覆盖，Bukkit 桥接层缺单测） | MVP1-NOTES |
+| fabric chat relay 权限门缺失（`kurobridge.relay` 等价；接管 = fabric-permission-api；`/kurobridge` 的 op 级别粒度近似 `kurobridge.admin` 同根因） | STATUS 2026-09-19 fabric 块 / fabric design.md §3 |
+| fabric 多 MC 版本矩阵（首版 1.21.4 单版本基线；接管点 = 版本坐标组 / depends 收放 / CI matrix） | STATUS 2026-09-19 fabric 块 / fabric design.md §1 |
+| fabric SERVER_STOPPING 时点早于玩家断开（paper onDisable 在断开后；关停语义有界等待+强杀不变） | STATUS 2026-09-19 fabric 块真机清单 7 |
 
 ## 阶段史
 

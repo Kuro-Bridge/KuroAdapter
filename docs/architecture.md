@@ -109,7 +109,7 @@ kurobridge/
 │   │   ├── core/            # 薄壳核心（IPC 客户端 / 进程管理，零 Bukkit API）
 │   │   ├── paper/           # Paper 适配（依赖 :core，产出 shadowJar）
 │   │   │   └── src/main/resources/embedded/   # 构建期生成（gitignore）
-│   │   ├── fabric/          # 预留：Fabric mod 适配（依赖 :core）
+│   │   ├── fabric/          # Fabric mod 适配（依赖 :core，shadow 白名单→loom remapJar；docs/design.md）
 │   │   ├── neoforge/        # 预留：NeoForge mod 适配（依赖 :core）
 │   │   └── velocity/        # 预留：Velocity 代理适配（依赖 :core）
 │   └── be/                  # BE 服务端家族（基岩版，ADR-020）
@@ -138,7 +138,7 @@ kurobridge/
 |---|---|---|---|---|
 | `bridge/core` | TS | zod、`@kuro-bridge/protocol`（npm ^0.4.0，姊妹仓 KuroProtocol 发布）；零框架零 Node API | tsdown | vitest（+ fast-check，二期） |
 | `bridge/embedded` | TS | 无框架 | esbuild 单文件 | 集成测试（起真 WS server） |
-| `platforms/je` | Java 21 字节码（工具链 25，target 21） | Paper API（compileOnly）+ Jackson | Gradle shadowJar | JUnit 5（IPC 编解码 + 进程生命周期） |
+| `platforms/je` | Java 21 字节码（工具链 25，target 21） | Paper API（compileOnly）+ fabric-loader/fabric-api（modImplementation，:fabric）+ Jackson | Gradle（:paper shadowJar；:fabric shadow 白名单→loom remapJar） | JUnit 5（:core IPC 编解码 + 进程生命周期；:fabric TPS 自测） |
 | `platforms/be/lse` | TS → JS | `@levimc-lse/types` + `@kuro-bridge/bridge-core` | esbuild 单文件（IIFE，target es2020） | vitest |
 | `platforms/be/endstone` | **C++ 20** | Endstone API + 内嵌 Node | CMake（预留） | —（预留） |
 | koishi-plugin-kurobridge（独立仓库） | TS | Koishi v4 + `@kuro-bridge/protocol` | Koishi 标准 | vitest + `@koishijs/plugin-mock` |
@@ -171,7 +171,8 @@ kurobridge/
 - 嵌入式打包：`toolings/packaging/embed.ts` 下载/校验 node 官方 dist（win-x64，sha256 对
   SHASUMS256.txt，下载源/缓存可换）+ 收集 napuketto 嵌包（npm 真实文件树 → 零依赖 zip
   writer）→ `embedded/{node.exe, index.mjs, NODE_LICENSE, manifest.json}` + 单一
-  `napuketto.zip`（7.6MB）+ `NAPUKETTO_LICENSES` 进 `:paper` resources；napuketto 版本
+  `napuketto.zip`（7.6MB）+ `NAPUKETTO_LICENSES` 进各平台模块 resources（`:paper` /
+  `:fabric`，目标清单 SSOT = embed.ts `defaultEmbedTargets`）；napuketto 版本
   SSOT = bridge/embedded package.json 精确 pin。多平台矩阵记债务。
 - 运行期解压（`:core EmbeddedRuntime`）：manifest sha256 幂等比对（复用/缺失/不符重建）+
   zip slip 防护 + 哨兵 `.kurobridge-install.json` 记 zip sha256（napuketto 同款幂等展开）。
