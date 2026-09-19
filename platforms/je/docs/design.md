@@ -39,9 +39,9 @@
 > 任务书：`docs/history/MVP2-PROMPT.md`。目标：JAR 自含 Node 运行时，装上就能用（不再依赖
 > `KUROBRIDGE_NODE`/`KUROBRIDGE_BUNDLE` 环境变量）。
 
-### scripts/embed 打包工具（产物契约）
+### toolings/packaging/embed 打包工具（产物契约）
 
-`scripts/embed.ts`（Node 脚本，只用内置依赖；Node ≥23.6 原生 TS 剥离直接跑，无需编译）：
+`toolings/packaging/embed.ts`（Node 脚本，只用内置依赖；Node ≥23.6 原生 TS 剥离直接跑，无需编译）：
 
 - 下载 node-v26.7.0-win-x64.zip（nodejs.org 官方 dist）+ SHASUMS256.txt sha256 校验；
   本地缓存 `.cache/node-dist/`（gitignored）。下载源/缓存可经环境变量覆盖：
@@ -52,7 +52,7 @@
   `node.exe`、`index.mjs`、`NODE_LICENSE`、`manifest.json`。
 - `manifest.json`：`{"nodeVersion":"26.7.0","files":{名字: sha256}}` —— 运行期比对的 SSOT。
 - 幂等：产物已存在且 sha256 一致 → 跳过；写盘走 tmp+rename 原子替换。
-- 纯逻辑（shasums 解析 / zip 读取 / 产物规划）配 vitest（`scripts/embed.test.ts`，
+- 纯逻辑（shasums 解析 / zip 读取 / 产物规划）配 vitest（`toolings/packaging/embed.test.ts`，
   下载器可注入，测试不发真网）。
 
 ### :paper 运行期解压加载链（EmbeddedRuntime，放 :core）
@@ -88,7 +88,7 @@
 
 ### 沙盒脚本
 
-`scripts/paper-start.sh`：不再强制导出 `KUROBRIDGE_NODE`/`KUROBRIDGE_BUNDLE`（保留透传能力），
+`toolings/paper/paper-start.sh`：不再强制导出 `KUROBRIDGE_NODE`/`KUROBRIDGE_BUNDLE`（保留透传能力），
 补 `KUROBRIDGE_STUB_PEER` 缺省值（仓库内 stub 路径）——验收「JAR 真装路径」。
 
 ## 债务清偿二（DEBT-2，2026-09-13）：进程健壮性

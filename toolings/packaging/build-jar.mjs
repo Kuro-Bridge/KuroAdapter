@@ -1,7 +1,7 @@
 /**
- * scripts/build-jar.mjs —— build:jar 全链路编排（DEBT-2，跨壳）
+ * toolings/packaging/build-jar.mjs —— build:jar 全链路编排（DEBT-2，跨壳）
  *
- * 步骤：pnpm -r build（TS 产物）→ scripts/embed.ts（node.exe 等进 :paper resources）→
+ * 步骤：pnpm -r build（TS 产物）→ toolings/packaging/embed.ts（node.exe 等进 :paper resources）→
  * gradle :paper:shadowJar（可分发 JAR）。替代 package.json 里的直排命令——原写法把
  * gradlew.bat 写死（M2-03），POSIX 贡献者不可用；本脚本按 process.platform 选择 wrapper，
  * 并给 gradle 子进程注入 UTF-8 输出编码（cmd.exe GBK 代码页下中文日志乱码的缓解尝试）。
@@ -18,7 +18,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const IS_WIN32 = process.platform === "win32";
-const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
+const ROOT = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
 
 function run(label, command, args, options = {}) {
     // shell 模式下 Node 传 args 会触发 DEP0190 警告——改为拼接命令字符串
@@ -40,8 +40,10 @@ function run(label, command, args, options = {}) {
 // 1) TS 全量构建（pnpm 在 Windows 是 .cmd，须经 shell 解析）
 run("TS 构建", "pnpm", ["-r", "build"], { cwd: ROOT, shell: IS_WIN32 });
 
-// 2) 嵌入式打包（Node 原生 TS 剥离直接执行 scripts/embed.ts）
-run("embed 打包", process.execPath, [join(ROOT, "scripts", "embed.ts")], { cwd: ROOT });
+// 2) 嵌入式打包（Node 原生 TS 剥离直接执行 toolings/packaging/embed.ts）
+run("embed 打包", process.execPath, [join(ROOT, "toolings", "packaging", "embed.ts")], {
+    cwd: ROOT,
+});
 
 // 3) gradle shadowJar：win32 → gradlew.bat，POSIX → ./gradlew（chmod +x 兜底）
 const jeDir = join(ROOT, "platforms", "je");

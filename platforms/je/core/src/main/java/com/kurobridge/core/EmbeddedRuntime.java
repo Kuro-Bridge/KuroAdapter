@@ -21,7 +21,7 @@ import java.util.zip.ZipInputStream;
 
 /**
  * JAR 内 embedded 资源 → 磁盘 bin 目录的解压加载链（MVP 阶段二，ADR-014「node.exe 进 JAR」的
- * 运行期半边；构建期半边是 scripts/embed.ts）。
+ * 运行期半边；构建期半边是 toolings/packaging/embed.ts）。
  *
  * <p>策略（幂等，支持版本升级覆盖）：
  * <ul>

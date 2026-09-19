@@ -30,7 +30,7 @@ final class EmbeddedRuntimeTest {
 
     private final List<String> logs = new ArrayList<>();
 
-    /** 内存资源源：manifest 按 files 的 sha256 现算（与 scripts/embed.ts 的产物形状一致）。 */
+    /** 内存资源源：manifest 按 files 的 sha256 现算（与 toolings/packaging/embed.ts 的产物形状一致）。 */
     private static final class InMemorySource implements EmbeddedRuntime.ResourceSource {
         private final Map<String, byte[]> resources = new TreeMap<>();
 

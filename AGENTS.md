@@ -49,10 +49,10 @@ pnpm fix                # biome 自动修复 + tsc
 pnpm test               # vitest run（TS 侧）
 pnpm -r build           # TS 全量构建（tsdown / esbuild）
 ./gradlew build         # Java 薄壳（platforms/je）
-pnpm build:jar          # 全链路：TS 构建 → 嵌入式打包 → gradle :paper:shadowJar（scripts/build-jar.mjs 链式）
+pnpm build:jar          # 全链路：TS 构建 → 嵌入式打包 → gradle :paper:shadowJar（toolings/packaging/build-jar.mjs 链式）
 ```
 
-**构建顺序（硬约束）**：`pnpm -r build`（bridge/embedded 产物）→ `scripts/embed.ts` 嵌入式打包（node 官方 dist 下载校验 + napuketto 嵌包，产出进 `platforms/je/paper/src/main/resources/embedded/`）→ `gradle :paper:shadowJar`。本地 `pnpm build:jar` 经 `scripts/build-jar.mjs` 链式执行三步。
+**构建顺序（硬约束）**：`pnpm -r build`（bridge/embedded 产物）→ `toolings/packaging/embed.ts` 嵌入式打包（node 官方 dist 下载校验 + napuketto 嵌包，产出进 `platforms/je/paper/src/main/resources/embedded/`）→ `gradle :paper:shadowJar`。本地 `pnpm build:jar` 经 `toolings/packaging/build-jar.mjs` 链式执行三步。
 
 **CI（ADR-032，结构经 ADR-035 结论 4 简化）**：`.github/workflows/ci.yml` 双 job——ts job 只检出本仓，跑 `pnpm check && pnpm test`（check 链自含 build 首环，与本地 pre-commit 同构；lefthook 串行 check → test，ADR-035）；java job 经 mise 提供 JDK 25 跑 `gradlew build`。push master / PR 触发。
 

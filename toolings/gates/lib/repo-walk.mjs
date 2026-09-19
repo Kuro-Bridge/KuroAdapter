@@ -1,4 +1,4 @@
-// scripts/lib/repo-walk.mjs —— 门禁共享遍历层（check-docs-scope / check-docs-links 单一权威）
+// toolings/gates/lib/repo-walk.mjs —— 门禁共享遍历层（check-docs-scope / check-docs-links 单一权威）
 //
 // 两个 docs 门禁的仓库根、跳过名单、豁免路径与递归遍历在此单点维护：名单改动一处生效，
 // 杜绝两份拷贝漂移（此前 scope/links 各持一份相同的名单与遍历器）。
@@ -10,8 +10,8 @@ import { readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-// 本文件位于 <仓库根>/scripts/lib/，上溯三级即仓库根
-export const repoRoot = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
+// 本文件位于 <仓库根>/toolings/gates/lib/，上溯四级即仓库根
+export const repoRoot = dirname(dirname(dirname(dirname(fileURLToPath(import.meta.url)))));
 
 // 目录名命中即整棵跳过（任意深度）：依赖、构建产物、沙盒
 const SKIP_DIR_NAMES = new Set(["node_modules", "dist", "build", "sandbox"]);

@@ -24,7 +24,7 @@ import type { Readable } from "node:stream";
 
 import type { KurobridgeConfig, Logger } from "@kuro-bridge/bridge-core";
 
-/** CLI 嵌包在 bin 目录下的固定布局（scripts/embed.ts 产 zip、:core EmbeddedRuntime 解压共同约定） */
+/** CLI 嵌包在 bin 目录下的固定布局（toolings/packaging/embed.ts 产 zip、:core EmbeddedRuntime 解压共同约定） */
 const CLI_ENTRY_PARTS = ["napuketto", "node_modules", "@napuketto", "cli", "dist", "index.mjs"];
 const DEFAULT_CONFIG_RELATIVE = join("plugins", "kurobridge", "napuketto.toml");
 const DEFAULT_DATA_RELATIVE = join("plugins", "kurobridge", "napuketto-data");

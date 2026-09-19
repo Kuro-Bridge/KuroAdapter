@@ -1,5 +1,5 @@
 /**
- * scripts/embed.ts 单测（MVP 阶段二任务书 §3 阶段 1：纯逻辑 + 可注入下载器，不发真网）。
+ * toolings/packaging/embed.ts 单测（MVP 阶段二任务书 §3 阶段 1：纯逻辑 + 可注入下载器，不发真网）。
  *
  * zip 读取器用测试内手搓的最小 zip（本地头 + 中央目录 + EOCD，stored/deflate 两法）
  * 喂给 extractZipEntry / runEmbed；node.exe / LICENSE / index.mjs 全部是假内容。

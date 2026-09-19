@@ -8,7 +8,7 @@
 
 - 复用 `bridge/core` 框架，作为对端连接 kurobridge 的 WS 服务端。
 - 内嵌 **napukettoqq** 协议端（QQ 连接，控制台扫码）。
-- **无 Koishi**：esbuild 单文件产物，随 JAR 分发（`scripts/embed.ts` 嵌入式打包）。
+- **无 Koishi**：esbuild 单文件产物，随 JAR 分发（`toolings/packaging/embed.ts` 嵌入式打包）。
 
 ## 与架构的关系（ADR-005 / ADR-006）
 
@@ -81,7 +81,7 @@ src/
 
 > 任务书：`docs/history/MVP2-PROMPT.md`（打包闭环）。本包源码零改动，本节记录形态变化。
 
-- **产物进 JAR**：`dist/index.mjs` 经 `scripts/embed.ts` 拷入
+- **产物进 JAR**：`dist/index.mjs` 经 `toolings/packaging/embed.ts` 拷入
   `platforms/je/paper/src/main/resources/embedded/index.mjs`（随 manifest.json 带 sha256），
   运行期由 :paper 解压到 `plugins/kurobridge/bin/` 后拉起（详见 platforms/je design 的
   「MVP 阶段二」节）。本包构建方式（esbuild 单文件）不变。
@@ -255,7 +255,7 @@ src/
   node.pid 式运维文件先例）。拷贝失败（PNG 写入中）下次轮询自然重试，不致命。
 - 消费方：`:paper` 的 `/kurobridge qr` 只读展示（Java 不解析内容，纯文件读取）。
 
-### 打包形状（与 scripts/embed.ts 的分工）
+### 打包形状（与 toolings/packaging/embed.ts 的分工）
 
 - embed.ts 新增：`pnpm`/`npm` 拉取 `@napuketto/cli@<pin>` 到缓存目录（真实文件，非 pnpm
   symlink）→ node_modules 树打成**单一 zip 资源** `embedded/napuketto.zip`（零依赖

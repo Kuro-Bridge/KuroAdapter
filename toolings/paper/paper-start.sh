@@ -1,7 +1,7 @@
 # 启动 sandbox Paper 服务端（原型阶段 4，Git Bash 运行）
 #
 # stdin 注入形态：java 的 stdin 由 `tail -f cmd.in` 提供，之后向 cmd.in 追加行即转发给
-# 控制台（stop-server.sh 用此优雅关服）。
+# 控制台（paper-stop.sh 用此优雅关服）。
 #
 # 关键坑（实测）：
 #   1. cmd.in 残留上轮的 "stop" 会被新 tail -f 回放 → 服务器启动即被停。
@@ -14,11 +14,11 @@
 #   KUROBRIDGE_STUB_PEER  stub 协议端脚本路径（测试件不进 JAR，缺省指向仓库内 stub）
 #   KUROBRIDGE_NODE / KUROBRIDGE_BUNDLE  开发覆盖（设置后绕过 JAR 解压链，用环境指定的 node/bundle）
 #
-# 用法：scripts\paper.cmd start（或 bash scripts/paper-start.sh）
+# 用法：toolings\paper\paper.cmd start（或 bash toolings/paper/paper-start.sh）
 
 set -euo pipefail
 
-SANDBOX="$(cd "$(dirname "${BASH_SOURCE[0]}")/../sandbox" && pwd)"
+SANDBOX="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../sandbox" && pwd)"
 SERVER="$SANDBOX/server"
 REPO="$(cd "$SANDBOX/.." && pwd)"
 

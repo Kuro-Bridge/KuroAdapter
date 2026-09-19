@@ -122,9 +122,9 @@ kurobridge/
 ├── bridge/
 │   ├── core/                # @kuro-bridge/bridge-core（平台无关）
 │   └── embedded/            # 嵌入式瘦身对端（esbuild 单文件，打进 JAR）
-├── scripts/                 # 构建/工具脚本：embed.ts（嵌入式打包）/ build-jar.mjs（跨壳全链路）/
-│   │                          paper.cmd（沙盒单一入口 start|stop|cmd|qr：启停走 .sh，cmd|qr 走 .ps1）/
-│   │                          门禁脚本：check-docs-{scope,links} / check-versions（共用 lib/ 遍历层）
+├── toolings/                # 工具链（按职责分目录）：packaging/（build-jar.mjs 跨壳全链路 + embed.ts 嵌包）/
+│   │                          gates/（门禁：check-docs-{scope,links} / check-versions，共用 lib/ 遍历层）/
+│   │                          paper/（沙盒单一入口 paper.cmd：start|stop|cmd|qr，启停走 .sh，cmd|qr 走 .ps1）
 └── sandbox/                 # 运行产物全 gitignore（Paper 服务端等；fake-player.mjs 离线假人）
 ```
 
@@ -144,7 +144,7 @@ kurobridge/
 | koishi-plugin-kurobridge（独立仓库） | TS | Koishi v4 + `@kuro-bridge/protocol` | Koishi 标准 | vitest + `@koishijs/plugin-mock` |
 
 **苛刻度（对齐 NapukettoQQ）**：
-- **TS 侧**：直接沿用 Napuketto 的 biome.json + tsconfig（`erasableSyntaxOnly`、`exactOptionalPropertyTypes`、`noUncheckedIndexedAccess`、`noFloatingPromises`、`noExcessiveCognitiveComplexity(15)`、`useNamingConvention`、`useErrorMessage`、organizeImports 全保留）。一份 biome 配置管 bridge/ + platforms/be/ + scripts/。
+- **TS 侧**：直接沿用 Napuketto 的 biome.json + tsconfig（`erasableSyntaxOnly`、`exactOptionalPropertyTypes`、`noUncheckedIndexedAccess`、`noFloatingPromises`、`noExcessiveCognitiveComplexity(15)`、`useNamingConvention`、`useErrorMessage`、organizeImports 全保留）。一份 biome 配置管 bridge/ + platforms/be/ + toolings/。
 - **Java 侧（第一版）**：`-Xlint:all -Werror` + Spotless(Palantir) + JUnit 5（2026-09-18 求真裁决：JaCoCo 覆盖率门禁暂不实装——先让 CI 的 `gradlew build` 成为机器级门禁，覆盖率阈值化待 `:paper` 单测补强后再评估；原文「JaCoCo ≥60% 门禁」无配置支撑，就此清零）。**Error Prone / NullAway 第一版不上**（ADR-011），薄壳定型后再评估。
 - **协议防漂移门禁**：消息类型只能 import `@kuro-bridge/protocol`（**导入口径机械强制**：biome
   `style.noRestrictedImports` 禁止绕过包名入口的深路径导入，patterns 维持
@@ -166,9 +166,9 @@ kurobridge/
 ## 9. 嵌入式打包要点（沿用 Napuketto 许可证方案，MVP-4 实况）
 
 - `node.exe`（MIT）→ 进 JAR；**腾讯闭源件（wrapper.node / QQ 安装包 / QQNT 二进制）不进
-  JAR**（红线，构建期扫描断言：`scripts/embed.ts` 打包前断言嵌包树不含 wrapper.node / QQ 安装包 /
-  QQNT 二进制，`scripts/embed.test.ts` 用例覆盖）；napuketto 嵌包仅自研件（其 stub `QQNT.dll` 为 napuketto 自研）。
-- 嵌入式打包：`scripts/embed.ts` 下载/校验 node 官方 dist（win-x64，sha256 对
+  JAR**（红线，构建期扫描断言：`toolings/packaging/embed.ts` 打包前断言嵌包树不含 wrapper.node / QQ 安装包 /
+  QQNT 二进制，`toolings/packaging/embed.test.ts` 用例覆盖）；napuketto 嵌包仅自研件（其 stub `QQNT.dll` 为 napuketto 自研）。
+- 嵌入式打包：`toolings/packaging/embed.ts` 下载/校验 node 官方 dist（win-x64，sha256 对
   SHASUMS256.txt，下载源/缓存可换）+ 收集 napuketto 嵌包（npm 真实文件树 → 零依赖 zip
   writer）→ `embedded/{node.exe, index.mjs, NODE_LICENSE, manifest.json}` + 单一
   `napuketto.zip`（7.6MB）+ `NAPUKETTO_LICENSES` 进 `:paper` resources；napuketto 版本

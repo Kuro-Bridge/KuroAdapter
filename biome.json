@@ -10,7 +10,7 @@
         "includes": [
             "bridge/**/src/**/*.{ts,tsx,mts,cts,js,mjs,cjs,jsx}",
             "platforms/be/**/*.{ts,tsx,mts,cts,js,mjs,cjs,jsx}",
-            "scripts/**/*.{ts,js,mjs}"
+            "toolings/**/*.{ts,js,mjs}"
         ]
     },
     "formatter": {
@@ -112,7 +112,7 @@
     },
     "overrides": [
         {
-            "includes": ["scripts/**"],
+            "includes": ["toolings/**"],
             "linter": {
                 "rules": {
                     "suspicious": {

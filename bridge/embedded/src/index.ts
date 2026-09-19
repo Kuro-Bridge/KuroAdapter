@@ -122,7 +122,7 @@ async function main(): Promise<void> {
     const context = new CoreContext({
         logger,
         // ADR-034：serverId 来自 config 的 server 段（缺省 "kurobridge"，消除 spike 残留）；
-        // version 唯一来源 = version.ts 的 BRIDGE_VERSION（对齐由 scripts/check-versions.mjs 强制）
+        // version 唯一来源 = version.ts 的 BRIDGE_VERSION（对齐由 toolings/gates/check-versions.mjs 强制）
         serverId: initialConfig.server?.id ?? "kurobridge",
         version: BRIDGE_VERSION,
         // token 在进程生命周期内固定：reload 不刷新（改 token 需重启 Node，见 DEBT1-NOTES）

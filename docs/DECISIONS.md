@@ -380,7 +380,7 @@
   4. **版本单点 + 机械对齐**：`bridge/embedded/src/version.ts` 导出
      `BRIDGE_VERSION = "0.1.0"`——hello_ack version 的唯一上报源（`VERSION` 常量
      删除；bridge/embedded package.json 版本轴 0.0.0 → 0.1.0 对齐）。新增零依赖门禁
-     `scripts/check-versions.mjs`（挂 check 链）断言两族一致：六点 "0.1.0"
+     `toolings/gates/check-versions.mjs`（挂 check 链）断言两族一致：六点 "0.1.0"
      （root package.json / bridge/embedded package.json / src/version.ts /
      paper-plugin.yml / platforms/je/build.gradle.kts 两处）＋ 协议两份
      （`bridge/protocol/src/meta.ts` ≡ `KurobridgeVersions.java` 的 PROTOCOL_VERSION）。
@@ -498,7 +498,7 @@
   有意不做行为实跑（执行责任在消费方），Pure 已证 16 份中 7 份可观测可回放；双层同
   文件保单一权威，动态发现让新增金样本自动纳入行为层，落 `bridge/core` 是被测实现
   所在，vitest include / 根 tsc / biome 自动纳管零配置。悬空指针删除优于补产：grep
-  实证全仓零 import 该包名（JAR 消费走 `scripts/embed.ts` 物理路径直读
+  实证全仓零 import 该包名（JAR 消费走 `toolings/packaging/embed.ts` 物理路径直读
   `dist/index.mjs`，完全绕过 exports，private 语义 ADR-033）；tsc emit 的 `.d.ts`
   与 exports 指向的 `.d.mts` 文件名对不齐；换 tsdown 则动 733KB JAR bundle 形状
   （createRequire banner、ADR-035 串行链序均围绕 esbuild 落定），风险与收益不对称。

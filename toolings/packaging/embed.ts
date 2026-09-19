@@ -1,5 +1,5 @@
 /**
- * scripts/embed.ts —— 嵌入式打包工具（MVP 阶段二；MVP-4 扩展 napuketto 嵌包）
+ * toolings/packaging/embed.ts —— 嵌入式打包工具（MVP 阶段二；MVP-4 扩展 napuketto 嵌包）
  *
  * 职责：下载/校验 node 官方 dist（win-x64）→ 只取 node.exe + LICENSE，连同
  * bridge/embedded/dist/index.mjs 产出到 platforms/je/paper/src/main/resources/embedded/。
@@ -16,7 +16,7 @@
  * - 红线：napuketto.zip 只含 npm 发布物（MIT 及其许可注记的资产）；wrapper.node / QQ
  *   安装包等腾讯二进制绝不出现（napuketto 运行期自取）。
  *
- * 用法（仓库根，pnpm -r build 之后）：node scripts/embed.ts
+ * 用法（仓库根，pnpm -r build 之后）：node toolings/packaging/embed.ts
  */
 
 import { spawnSync } from "node:child_process";
@@ -692,7 +692,7 @@ function readCentralDirectory(zip: Buffer): ZipEntry[] {
 // ---- CLI 入口（被 import 时不执行） ----
 
 async function runCli(): Promise<void> {
-    const root = dirname(dirname(fileURLToPath(import.meta.url)));
+    const root = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
     const result = await runEmbed({
         distBundle: join(root, "bridge", "embedded", "dist", "index.mjs"),
         outDir: join(root, "platforms", "je", "paper", "src", "main", "resources", "embedded"),

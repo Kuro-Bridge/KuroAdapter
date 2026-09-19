@@ -14,7 +14,7 @@ export default defineConfig({
             // 保证未来新增 platforms/be/*/src 的测试不会被默认 include 静默忽略）
             "platforms/be/*/src/**/*.test.ts",
             // 工具链脚本也纳入单测
-            "scripts/**/*.test.ts",
+            "toolings/**/*.test.ts",
         ],
         environment: "node",
         coverage: {

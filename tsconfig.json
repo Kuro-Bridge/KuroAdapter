@@ -44,6 +44,6 @@
     // 特殊环境（如 platforms/be/lse 的 QuickJS、未来的 C++ 薄壳）用各自 tsconfig，不进此范围。
     "include": [
         "bridge/*/src",
-        "scripts/*"
+        "toolings/packaging/*"
     ]
 }
