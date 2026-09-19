@@ -266,7 +266,7 @@ node 子进程宿主 kurobridge 服务端 + `bin/` 部署契约），宿主↔no
 - **简化登记 R1-R6**（feasibility §5）：dll 构建/CI 待解锁、TPS=0.0、运行期发现拷贝只做发现+降级、
   最小 JSON、命令面缺失、管道句柄限定；chat relay 权限门缺失与 fabric 同根因（见债务索引）。
 - **门禁证据**：`cmake --preset core && cmake --build --preset core && ctest --preset core` 全绿
-  （断言合计：test_json 97+test_ipc_frame 156+test_supervisor 32+test_node_ipc 39+
+  （断言合计为运行期实跑数：test_json 97+test_ipc_frame 156+test_supervisor 32+test_node_ipc 39+
   test_node_runtime 1231）；MSVC 工具链下 dll 分支按预定文案 FATAL 复验。
 - **过程偏离登记（两条）**：① 本线全部提交 LEFTHOOK=0 绕行 pre-commit——共享树上并行 lse 线有未提交
   WIP 测试文件，全仓 pnpm 链结果与本线 C++/md 改动无关（沿 fabric 线先例）；② 块 C endstone 面

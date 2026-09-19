@@ -4,8 +4,8 @@
 #   - portable 静态库 kurobridge_core（src/core/）：JSON-lines 帧编解码，零 endstone
 #     依赖、纯 std C++20，本机任意工具链（llvm-mingw/MSVC/clang-cl）均可构建测试；
 #   - endstone 插件 dll（KUROBRIDGE_BUILD_DLL=ON）：经 FetchContent 拉取 endstone v0.11
-#     （跟踪 0.11 补丁线，加载器强校验 API 版本），源文件 main/events/bridge 由后续块
-#     落地——本文件先行占位，dll 分支默认 OFF（preset core 显式 OFF）。
+#     （跟踪 0.11 补丁线，加载器强校验 API 版本），源文件 main/events/bridge 已落地
+#     （c196564/ee3efab，头文件语法验证零错误），dll 分支默认 OFF（preset core 显式 OFF）。
 #
 # 工具链硬约束（docs/feasibility.md §1/§4）：endstone v0.11.4 起要求 clang-cl
 # （MSVC 前端）+ Ninja + CMake ≥ 3.29；构建类型仅 Release/RelWithDebInfo
