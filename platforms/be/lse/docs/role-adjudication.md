@@ -95,10 +95,13 @@ koishi(WS 客户端) ──WS──> Node shim ──IpcChannel(游戏通道 WS,
 
 ### 4.2 拉起与鉴权
 
-- 壳推导路径：`root = dirname(dirname(ll.getCurrentPluginInfo().filePath))`（部署布局
-  `<root>/plugins/kurobridge/index.js`）；`binDir = <root>/plugins/kurobridge/bin`；node = `<binDir>/node.exe`（Linux `node`）。
+- 壳推导路径：假设 `ll.getCurrentPluginInfo().filePath` = **插件目录** `<root>/plugins/kurobridge`
+  （语义待真机核实，§6.4 首项）：`root = dirname(dirname(filePath))`；`binDir = <root>/plugins/kurobridge/bin`；
+  node = `<binDir>/node.exe`（Linux `node`）。若真机实证 filePath 是主脚本文件路径，则多取一层 dirname。
+  实现与测试按「目录」解释锚定（与部署布局 §4.1 自洽；实现期勘误 2026-09-19）。
 - 拉起：`system.newProcess("<node> <binDir>/index.mjs --server-root <root> --game-port N --game-token T>", exitCb, -1)`；
-  `N` = 壳每轮尝试随机选的临时端口（20000-40000），`T` = 壳每轮生成的会话令牌（`data.randomGuid()` 去连字符）。
+  `N` = 壳每轮尝试随机选的临时端口（20000-40000），`T` = 壳每轮生成的会话令牌（`system.randomGuid()` 去连字符；
+  勘误 2026-09-19：类型包实证 randomGuid 在 `system` 命名空间，非 `data`）。
 - shim 先绑 koishi WS（`config.ws?.port ?? 0` 动态端口），再绑 `127.0.0.1:N` 游戏通道；
   游戏通道**首帧必须等于 `T`**（明文，非 JSON），错误令牌 → close 1008；鉴权后两端一帧一 JSON（IPC 方言）。
 - shim 就绪后经游戏通道发 `ready{wsPort, autoRestart}`（现成 `readyFrame` schema；wsPort = koishi WS 实际端口）。
@@ -153,7 +156,7 @@ koishi(WS 客户端) ──WS──> Node shim ──IpcChannel(游戏通道 WS,
 1. `newProcess` 参数串解析/quoting 规则、子进程工作目录与环境继承（shim 已用 `--server-root` 显式传参消解 cwd 依赖，但 argv 切分规则未证实）。
 2. `WSClient` 回环连接（`ws://127.0.0.1:<port>` 目标串格式）与 `listen` 回调线程语义（游戏主线程还是网络线程；若后者，`mc.runcmd` 安全性需实测）。
 3. `runcmdEx` 输出串的编码/合流/截断语义；`mc.runcmd("say …")` 广播的实际呈现。
-4. `ll.getCurrentPluginInfo().filePath` 在 LSE 下的实际取值（主脚本绝对路径假设）与 `data.randomGuid` 格式。
+4. `ll.getCurrentPluginInfo().filePath` 在 LSE 下的实际取值（主脚本绝对路径假设）与 `system.randomGuid` 格式。
 5. BDS 硬杀时游戏通道断开能否及时触发 shim 自杀（TCP RST 时序）；LeviLamina 是否替子进程兜底 reap。
 6. 长驻 node 进程在 `newProcess` 下无回调期内是否被 LSE/BDS 干扰（信号、控制台）。
 7. `ready` 前退出回调的 `output` 内容可读性（引导失败的 stderr 是否并入）。
