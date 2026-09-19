@@ -14,7 +14,7 @@
     },
     "devDependencies": {
         "@levimc-lse/types": "^2.18.0",
-        "@types/node": "^26.1.2",
+        "@types/node": "^26.6.1",
         "@types/ws": "^8.18.0",
         "esbuild": "^0.25.0",
         "typescript": "^7.0.2"
