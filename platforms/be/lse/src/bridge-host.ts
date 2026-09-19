@@ -1,8 +1,11 @@
 /**
- * 一次「node shim 拉起尝试」的编排（裁决册 §4.2）：
+ * 一次「node shim 拉起尝试」的编排（裁决册 §4.2/§4.4）：
  * 随机回环端口 + 会话令牌 → newProcess（fire-and-forget，每次尝试全新 spawn）→
  * GameChannel 握手（令牌明文首帧 + ready，30s 上限）→ ready 后开通事件桥接。
- * 失败源归一：newProcess false / 退出回调先于 ready / WS 错误与失连 / 握手超时。
+ * 结算双面（AttemptHandle，单一 fail 出口天然免双计）：
+ * - ready 前：任何失败源（newProcess false / 退出回调 / WS 错误失连 / 握手超时）→ ready 拒绝；
+ * - ready 后（up 态）：通道失联/进程退出 → done 拒绝 + 事件桥停用（事件回静默丢弃）
+ *   ——看护器据此按退避重生（新 spawn 新端口新令牌）。
  * 路径布局：<BDS 根>/plugins/kurobridge/{index.js, bin/node.exe, bin/index.mjs}。
  */
 import { EventBridge } from "./event-bridge.js";
@@ -14,7 +17,7 @@ import {
     type ShellLogger,
     spawnProcess,
 } from "./lse-env.js";
-import type { AttemptOutcome } from "./supervisor.js";
+import type { AttemptHandle, AttemptOutcome } from "./supervisor.js";
 
 /** 握手总上限（newProcess → 连接 → 令牌 → ready），对齐 JE startTimeout（裁决册 §4.4） */
 const READY_TIMEOUT_MS = 30_000;
@@ -22,7 +25,7 @@ const READY_TIMEOUT_MS = 30_000;
 const GAME_PORT_MIN = 20_000;
 const GAME_PORT_SPAN = 20_001;
 
-export function attemptOnce(logger: ShellLogger): Promise<AttemptOutcome> {
+export function attemptOnce(logger: ShellLogger): AttemptHandle {
     const port = GAME_PORT_MIN + Math.floor(Math.random() * GAME_PORT_SPAN);
     const token = randomToken();
     const root = dirname(dirname(pluginFilePath()));
@@ -43,17 +46,20 @@ export function attemptOnce(logger: ShellLogger): Promise<AttemptOutcome> {
 
     const channel = new GameChannel();
     const bridge = new EventBridge();
-    return new Promise<AttemptOutcome>((resolve, reject) => {
-        let settled = false;
+    let rejectDone: ((error: Error) => void) | null = null;
+    const done = new Promise<void>((_, reject) => {
+        rejectDone = reject;
+    });
+    const ready = new Promise<AttemptOutcome>((resolve, reject) => {
         let autoRestart = true;
+        // 单一 fail 出口：promise「先结算优先、后结算 no-op」——ready 前失败由 ready 拒绝
+        // 结算；up 态（ready 已 resolve）失败由 done 拒绝结算 + 事件桥停用。
         const fail = (message: string): void => {
-            if (settled) {
-                return;
-            }
-            settled = true;
             bridge.uninstall();
             channel.close();
-            reject(new Error(message));
+            const error = new Error(message);
+            reject(error);
+            rejectDone?.(error);
         };
         channel.onFrame((frame) => {
             if (frame.type !== "ready") {
@@ -64,10 +70,10 @@ export function attemptOnce(logger: ShellLogger): Promise<AttemptOutcome> {
                 `node shim ready（wsPort=${frame.body.wsPort}，autoRestart=${autoRestart}）`,
             );
         });
+        // 失联（ready 前与 up 态）与退出回调共用 fail；二次失败源在已结算后为 no-op
         channel.onLost((reason) => {
             fail(`游戏通道断开：${reason}`);
         });
-        // 退出回调先于 ready = 引导失败；先于「成功 settle」= 崩溃（脐带对端已死）
         const launched = spawnProcess(command, (exitCode, output) => {
             const tail = output === "" ? "" : `，输出前 200 字符：${output.slice(0, 200)}`;
             fail(`node shim 进程退出（code=${exitCode}${tail}）`);
@@ -78,10 +84,6 @@ export function attemptOnce(logger: ShellLogger): Promise<AttemptOutcome> {
         }
         void channel.open(`ws://127.0.0.1:${port}`, token, READY_TIMEOUT_MS).then(
             () => {
-                if (settled) {
-                    return;
-                }
-                settled = true;
                 bridge.install(channel);
                 logger.info("事件桥接已开通");
                 resolve({ autoRestart });
@@ -91,6 +93,7 @@ export function attemptOnce(logger: ShellLogger): Promise<AttemptOutcome> {
             },
         );
     });
+    return { ready, done };
 }
 
 /** newProcess 参数串按整段路径加引号（quoting 规则待真机，裁决册 §6.1；先取最保守形态） */

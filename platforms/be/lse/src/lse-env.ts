@@ -77,6 +77,15 @@ export function logDebug(message: string): void {
     emit("debug", message);
 }
 
+/**
+ * 插件注册（LSE 装载期要求）：index.ts 顶层经此调用，ll 全局触点仍收敛本模块。
+ * 版本三元组与 plugin.json / 包版本联动（0.1.0）。
+ */
+export function registerPlugin(name: string, description: string): void {
+    // 第 4 参按类型契约是 Record<string, string>（附加信息，如作者/许可证），不能传裸字符串
+    ll.registerPlugin(name, description, [0, 1, 0], { author: "KuroBridge" });
+}
+
 /** system.newProcess fire-and-forget 拉起（timeLimit -1 不限时）；false = 启动失败 */
 export function spawnProcess(
     command: string,

@@ -6,15 +6,13 @@
  *   只服务一个通道；通道随脐带语义断开即关机）。
  * - 鉴权：首帧必须等于令牌原文（明文，非 JSON），不匹配 close(1008, "unauthorized")；
  *  限时未交令牌也关闭（防僵尸连接长期占位）。
- * - 脐带语义（D-08）：已鉴权连接断开 → IpcChannel onClose → 引导层关机，
- *   等价 embedded 的 stdin EOF 自杀。
+ * - 脐带语义（D-08）：仅已鉴权连接断开 → IpcChannel onClose + onChannelLost → 引导层
+ *   关机（等价 embedded 的 stdin EOF 自杀）；未鉴权连接的断开（端口扫描/令牌不匹配/
+ *   鉴权超时）只清租户槽位，绝不触发脐带。
  */
 import { setTimeout } from "node:timers";
 import type { IpcChannel, Logger } from "@kuro-bridge/bridge-core";
 import { type WebSocket, WebSocketServer } from "ws";
-
-/** 鉴权时限：壳 connectAsync 成功后立即发令牌，超时视为对端异常 */
-const AUTH_TIMEOUT_MS = 10_000;
 
 export interface GameGateOptions {
     /** 游戏通道监听端口（壳每轮尝试随机下发，裁决册 §4.2） */
@@ -22,7 +20,12 @@ export interface GameGateOptions {
     /** 会话令牌原文（首帧全等比对） */
     readonly token: string;
     readonly logger: Logger;
+    /** 鉴权时限毫秒（缺省 10s；测试注入短时限以确定性覆盖超时路径） */
+    readonly authTimeoutMs?: number | undefined;
 }
+
+/** 鉴权时限缺省：壳 connectAsync 成功后立即发令牌，超时视为对端异常 */
+const DEFAULT_AUTH_TIMEOUT_MS = 10_000;
 
 export class GameGate {
     private server: WebSocketServer | null = null;
@@ -33,11 +36,13 @@ export class GameGate {
     private readonly port: number;
     private readonly token: string;
     private readonly logger: Logger;
+    private readonly authTimeoutMs: number;
 
     constructor(options: GameGateOptions) {
         this.port = options.port;
         this.token = options.token;
         this.logger = options.logger;
+        this.authTimeoutMs = options.authTimeoutMs ?? DEFAULT_AUTH_TIMEOUT_MS;
     }
 
     onChannel(handler: (ipc: IpcChannel) => void): void {
@@ -103,15 +108,18 @@ export class GameGate {
             return;
         }
         this.current = ws;
+        // 鉴权标志是脐带的分界：未鉴权（含鉴权失败/超时）连接的断开只清槽位、不动脐带
+        // ——回环端口的端口扫描连断不得杀死 shim（修复 2 契约）
+        let authenticated = false;
         const authTimer = setTimeout(() => {
-            // 先释放租户槽位再关连接：未鉴权连接的断开不得触发脐带语义
+            // 先释放租户槽位再关连接：超时关停同样不走脐带
             if (this.current !== ws) {
                 return;
             }
             this.logger.warn("游戏通道鉴权超时（未收到令牌首帧），关闭连接");
             this.current = null;
             ws.close(1008, "unauthorized");
-        }, AUTH_TIMEOUT_MS);
+        }, this.authTimeoutMs);
         authTimer.unref();
         ws.once("message", (data) => {
             clearTimeout(authTimer);
@@ -124,6 +132,7 @@ export class GameGate {
                 ws.close(1008, "unauthorized");
                 return;
             }
+            authenticated = true;
             this.openChannel(ws);
         });
         ws.on("close", () => {
@@ -132,7 +141,7 @@ export class GameGate {
                 return;
             }
             this.current = null;
-            if (this.closing) {
+            if (!authenticated || this.closing) {
                 return;
             }
             // 关机日志由引导层打（单一出口）；此处只回调脐带通知
