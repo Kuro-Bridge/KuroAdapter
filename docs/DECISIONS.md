@@ -457,3 +457,54 @@
   `git restore --source=<镜像删除提交>^ -- bridge/protocol scripts/check-protocol-mirror.mjs`
   后按 ADR-031 时代挂点恢复 package.json / lefthook.yml / ci.yml。若 KuroProtocol
   发布纪律变化（包内不再随附 d.ts，或 assert-version 断言废除），第 3 条锚点选择须重审。
+
+## ADR-036 主仓金样本 fixture-driven 机器检查（双层）与 embedded exports 悬空指针闭环（2026-09-19）
+
+- **背景**：三阵营金样本消费矩阵在主仓缺角——KuroProtocol 是源（`src/fixtures.test.ts`
+  全语义自检 + 包级三方校验脚本）、KuroAdapter-Pure 有 `FixtureConformanceTest.java`
+  （SHA256SUMS 内容守卫 + 7 份行为级回放）、koishi 对端有 `golden.fixtures.test.ts`
+  （包内 fixtures + validateFixture + SHA256SUMS 双向完整性）；主仓自镜像退役
+  （ADR-031 阶段 2）后对 `@kuro-bridge/protocol@^0.4.0` 的金样本（包内
+  `fixtures/v0.4`，16 份）检查为零——协议在本仓只以 npm 包形态存在，消费正确性无机器
+  防线。同批登记小洞：`bridge/embedded` 的顶层 `types` 与 `exports["."].types` 指向
+  不存在的 `dist/index.d.mts`（esbuild 只产 mjs，无 dts 能力；ADR-035 结论 5② 登记
+  「本线不修」，且其承诺的 STATUS 缺口登记实际未落地）。本 ADR 先文档后代码。
+- **选项**：① 深度——a) 契约级（16 份 validateFixture + SUMS 校验，对齐对端深度）/
+  b) 行为级（server 类回放 fixture 帧、断言 reply 等价与 close code/reason，对齐 Pure
+  深度）/ c) 双层；落点——`bridge/core` 测试 / 独立 scripts 第二入口。② exports.types
+  ——移除悬空指针 / tsc emit dts / 换 tsdown 出类型。
+- **结论**：
+  1. **双层、单文件、单一入口**。新增 `bridge/core/src/__tests__/golden.fixtures.test.ts`
+     （命中现有 vitest include，进 `pnpm test` 基线；`pnpm check` / `pnpm test` 形状
+     不变，不立任何第二门禁入口）：
+     - **契约层（16 份全量）**：包根经
+       `createRequire(import.meta.url).resolve("@kuro-bridge/protocol")` 上溯定位
+       （对端同款；fixtures 不经 exports 暴露，以文件读取消费）；版本目录由包导出
+       `PROTOCOL_VERSION` 推导（`v主.次`）并断言 fixtures 根下唯一版本目录；
+       SHA256SUMS 双向完整性（行格式严格两空格、逐行实算比对、盘上未登记文件必须为
+       空）；逐份 `validateFixture`（消费包导出，不重复实现 schema）。
+     - **行为层（动态发现）**：对 `expect.behavior` 可观测（reply 或 close 非 null）
+       的样本逐份回放——`KurobridgeServer` + `FakeWsServer` / `FakeWsConnection` /
+       `manualTime`（复用 `test-fakes.ts`，非 hello 样本先内联握手），断言 reply 帧
+       与金样本 `frames[N]` JSON 全等、close code/reason 精确一致；行为层覆盖数下限
+       7（= Pure 现状地板，防覆盖静默缩水）。
+  2. **移除 embedded 的悬空 types 指针**（顶层 `types` 与 `exports["."].types` 两处；
+     指向真实产物的 `main` / `import` 不动）；不产 dts、不换构建器；同步以已闭环形态
+     补记 ADR-035 5② 承诺的 STATUS 缺口条目。
+  3. **基线数随实施同步 STATUS**（用例数与文件数，docs↔code 机械联动）；新检查有效性
+     按纪律以「篡改即红」实证（改 node_modules 内包 fixtures 副本必须红，验后还原，
+     收尾独立复核执行）。
+- **理由**：契约级只复刻对端已有深度，主仓作为 server 实现的真缺口是行为级——协议仓
+  有意不做行为实跑（执行责任在消费方），Pure 已证 16 份中 7 份可观测可回放；双层同
+  文件保单一权威，动态发现让新增金样本自动纳入行为层，落 `bridge/core` 是被测实现
+  所在，vitest include / 根 tsc / biome 自动纳管零配置。悬空指针删除优于补产：grep
+  实证全仓零 import 该包名（JAR 消费走 `scripts/embed.ts` 物理路径直读
+  `dist/index.mjs`，完全绕过 exports，private 语义 ADR-033）；tsc emit 的 `.d.ts`
+  与 exports 指向的 `.d.mts` 文件名对不齐；换 tsdown 则动 733KB JAR bundle 形状
+  （createRequire banner、ADR-035 串行链序均围绕 esbuild 落定），风险与收益不对称。
+  ADR-033 已锁「未来开 npm 通道前先立 exports/types 全套发布决策」——悬空指针恰是
+  该条款要防的敞口形态，删除即诚实态。
+- **回退条件**：主仓行为层若与金样本断言冲突（reply 形状 / close reason 措辞等），
+  分歧本身是发现——逐条登记报协议仓主权（金样本冻结），不得为绿灯放宽断言；确属主仓
+  实现缺口的修主仓。未来出现以包名 import `@kuro-bridge/bridge-embedded` 的 TS 消费
+  方时，按 ADR-033 先立发布决策再补 types（即撤销本条结论 2）。
