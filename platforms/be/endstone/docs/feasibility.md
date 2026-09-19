@@ -82,7 +82,7 @@
 | # | 简化 | 接管点 |
 |---|---|---|
 | R1 | dll 构建/CI 不接（任务书既定）；endstone 面源码仅头文件语法验证 | §4 解锁后首编；CI 接线留给后续线 |
-| R2 | status 帧 `tps` 字段：endstone 无已证实的 TPS 查询 API → v1 固定上报 `0.0`（schema 允许 nonneg，诚实降级），`onlinePlayers`/`uptimeSeconds` 真值 | 仿 fabric 线 TickRateSampler 思路自测采样（60s 滑动窗），或等 endstone 暴露 MSPT API |
+| R2 | status 帧 `tps` 字段：v1 固定上报 `0.0`（schema 允许 nonneg，诚实降级），`onlinePlayers`/`uptimeSeconds` 真值 | **补强（块 C2 语法验证时发现）**：v0.11.11 `server.h` 已有 `getCurrentTicksPerSecond`/`getAverageTicksPerSecond`——接管时优先核实该 API 语义（采样口径/更新频率）后接真值，退路才是仿 fabric TickRateSampler 自测采样 |
 | R3 | 「运行期发现拷贝」只做**发现+降级**：dll 不内嵌 node.exe（endstone 无资源解包机制），bin/ 预置靠真机 SOP 手动清单；bin/ 缺失 → SEVERE 日志 + 插件保持加载不崩服 | 未来打包线（wrapper.node 类闭源件分发 / embed targets 增 endstone，属 toolings 领地） |
 | R4 | JSON 解析为按协议面定制的最小实现（扁平对象 + `string[]`；深层嵌套/重复键末者胜对齐 `JSON.parse`），不做通用 JSON 库 | 若协议面未来出现富结构，引入 nlohmann/single-header 并全量回归 |
 | R5 | 自定义命令面（Java `/kurobridge send|reload|qr` 等价物）不做 | 后续线；codec 已预留 `config_reload` 等出帧能力 |
