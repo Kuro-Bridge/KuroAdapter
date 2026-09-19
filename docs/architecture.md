@@ -124,7 +124,7 @@ kurobridge/
 │   └── embedded/            # 嵌入式瘦身对端（esbuild 单文件，打进 JAR）
 ├── scripts/                 # 构建/工具脚本：embed.ts（嵌入式打包）/ build-jar.mjs（跨壳全链路）/
 │   │                          paper-start|stop（沙盒启停）/ paper-cmd|qr（.cmd/.ps1 快捷脚本）/
-│   │                          门禁脚本：check-docs-{scope,links} / check-versions
+│   │                          门禁脚本：check-docs-{scope,links} / check-versions（共用 lib/ 遍历层）
 └── sandbox/                 # 运行产物全 gitignore（Paper 服务端等；fake-player.mjs 离线假人）
 ```
 

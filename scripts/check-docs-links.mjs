@@ -2,18 +2,12 @@
 // 文档死链门禁：扫描全仓 *.md 的相对链接，目标文件必须真实存在（目录也算有效目标）。
 // 只查相对路径链接；外部链接（http:/https:/mailto:/data: 等 URI scheme 形式）与
 // 纯页内锚点（#fragment）不校验。docs/history/ 是冻结归档（正文不改写约定），不扫。
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+// 遍历/跳过语义单一权威在 lib/repo-walk.mjs（与 check-docs-scope 共用）。
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { listRepoFiles, repoRoot, toPosix } from "./lib/repo-walk.mjs";
 
-const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
-
-// 目录名命中即整棵跳过（任意深度）：依赖、构建产物、沙盒；
-// 以点开头的目录（.git/.gradle/.cache 等）全是工具产物，一并跳过。
-const SKIP_DIR_NAMES = new Set(["node_modules", "dist", "build", "sandbox"]);
-
-// 相对仓根的整棵跳过路径（冻结归档）
-const SKIP_REL_DIRS = ["docs/history"];
+const MARKDOWN_EXTENSIONS = new Set(["md"]);
 
 // URI scheme 前缀（http: https: mailto: data: ftp: …）一律视为外链，不校验
 const URI_SCHEME_PATTERN = /^[a-zA-Z][a-zA-Z0-9+.-]*:/;
@@ -27,29 +21,6 @@ const LINK_DEFINITION_PATTERN = /^ {0,3}\[[^\]]+\]:\s*(.+)$/;
 
 // 空白检测（target 与 "标题" 尾缀的分隔）
 const WHITESPACE_PATTERN = /\s/;
-
-function toPosix(p) {
-    return p.split("\\").join("/");
-}
-
-function isSkippedRelDir(relDir) {
-    return SKIP_REL_DIRS.some((skip) => relDir === skip || relDir.startsWith(`${skip}/`));
-}
-
-function listMarkdownFiles(dir, prefix = "") {
-    const out = [];
-    for (const entry of readdirSync(dir, { withFileTypes: true })) {
-        const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
-        if (entry.isDirectory()) {
-            if (entry.name.startsWith(".") || SKIP_DIR_NAMES.has(entry.name)) continue;
-            if (isSkippedRelDir(rel)) continue;
-            out.push(...listMarkdownFiles(join(dir, entry.name), rel));
-        } else if (entry.name.endsWith(".md")) {
-            out.push(rel);
-        }
-    }
-    return out.toSorted();
-}
 
 // 从链接捕获串里拆出干净的 target：去 <...> 包裹、去 "标题" 尾缀、去 #锚点、尽力解码 %xx
 function normalizeTarget(rawTarget) {
@@ -85,7 +56,7 @@ function collectLineTargets(line) {
 }
 
 const failures = [];
-const files = listMarkdownFiles(repoRoot);
+const files = listRepoFiles(repoRoot, MARKDOWN_EXTENSIONS);
 for (const rel of files) {
     const lines = readFileSync(join(repoRoot, rel), "utf8").split(/\r?\n/);
     for (let i = 0; i < lines.length; i++) {

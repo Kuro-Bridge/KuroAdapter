@@ -32,12 +32,20 @@ fi
 taskkill //F //IM tail.exe >/dev/null 2>&1 || true
 
 mkdir -p "$SERVER/plugins"
-PLUGIN_JAR="$REPO/platforms/je/paper/build/libs/kurobridge-0.1.0.jar"
-if [ -f "$PLUGIN_JAR" ]; then
+# 影子 JAR 名含版本号（paper/build.gradle.kts：kurobridge-${version}.jar）。版本单点在根
+# package.json（ADR-034），此处不硬编码：glob 取最新产物，升版零改动（否则成为门禁外
+# 的隐藏版本点，升版即静默降级为"无插件启动"）
+PLUGIN_JAR=""
+for candidate in "$REPO/platforms/je/paper/build/libs/"kurobridge-*.jar; do
+    if [ -f "$candidate" ] && { [ -z "$PLUGIN_JAR" ] || [ "$candidate" -nt "$PLUGIN_JAR" ]; }; then
+        PLUGIN_JAR="$candidate"
+    fi
+done
+if [ -n "$PLUGIN_JAR" ]; then
     cp -f "$PLUGIN_JAR" "$SERVER/plugins/kurobridge.jar"
     echo "[sandbox] 已安装插件：$PLUGIN_JAR"
 else
-    echo "[sandbox] 警告：未找到 shadowJar（$PLUGIN_JAR），本次启动不含 KuroBridge" >&2
+    echo "[sandbox] 警告：未找到 shadowJar（platforms/je/paper/build/libs/kurobridge-*.jar），本次启动不含 KuroBridge" >&2
 fi
 
 # stub 不进 JAR（测试件）：沙盒经仓库内路径注入；JAR 内自带 node.exe，无需 KUROBRIDGE_NODE

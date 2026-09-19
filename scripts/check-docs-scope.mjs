@@ -4,11 +4,10 @@
 // 归档之外全仓禁用。docs/history/ 是冻结归档（正文不改写约定），历史条目里的旧口径以
 // ADR-030 映射表为准，不门禁——只门禁本仓可自行修复的内容。
 // 注意：本文件自身不得出现旧口径字面量（否则门禁打自己），展示串从正则 source 派生。
-import { readdirSync, readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-
-const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
+// 遍历/跳过语义单一权威在 lib/repo-walk.mjs（与 check-docs-links 共用）。
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { listRepoFiles, repoRoot, toPosix } from "./lib/repo-walk.mjs";
 
 // 只扫文本文件：源码、文档、构建脚本、清单（覆盖 TS/Java/脚本/配置全口径）
 const TEXT_EXTENSIONS = new Set([
@@ -31,53 +30,13 @@ const TEXT_EXTENSIONS = new Set([
     "xml",
 ]);
 
-// 目录名命中即整棵跳过（任意深度）：依赖、构建产物、沙盒；
-// 以点开头的目录（.git/.gradle/.cache 等）全是工具产物，一并跳过。
-const SKIP_DIR_NAMES = new Set(["node_modules", "dist", "build", "sandbox"]);
-
-// 相对仓根的整棵跳过路径（冻结归档，见文件头注释）
-const SKIP_REL_DIRS = ["docs/history"];
-
 // 旧口径：见 pattern（本文件不写字面量，展示串从 source 派生）。正确写法 @kuro-bridge/（ADR-030 映射表）
 const LEGACY_SCOPE_PATTERN = /@kurobridge\//;
 const LEGACY_SCOPE = LEGACY_SCOPE_PATTERN.source.replace("\\/", "/");
 
-function toPosix(p) {
-    return p.split("\\").join("/");
-}
-
-function isSkippedRelDir(relDir) {
-    return SKIP_REL_DIRS.some((skip) => relDir === skip || relDir.startsWith(`${skip}/`));
-}
-
-// 目录级跳过判定：点开头（.git/.gradle/.cache 等工具产物）、名单命中、豁免路径
-function isSkippedDir(entry, relDir) {
-    if (entry.name.startsWith(".") || SKIP_DIR_NAMES.has(entry.name)) return true;
-    return isSkippedRelDir(relDir);
-}
-
-function fileExtension(name) {
-    const dot = name.lastIndexOf(".");
-    return dot === -1 ? "" : name.slice(dot + 1);
-}
-
-function listTextFiles(dir, prefix = "") {
-    const out = [];
-    for (const entry of readdirSync(dir, { withFileTypes: true })) {
-        const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
-        if (entry.isDirectory()) {
-            if (isSkippedDir(entry, rel)) continue;
-            out.push(...listTextFiles(join(dir, entry.name), rel));
-        } else if (TEXT_EXTENSIONS.has(fileExtension(entry.name))) {
-            out.push(rel);
-        }
-    }
-    return out.toSorted();
-}
-
 const failures = [];
 let scanned = 0;
-for (const rel of listTextFiles(repoRoot)) {
+for (const rel of listRepoFiles(repoRoot, TEXT_EXTENSIONS)) {
     const lines = readFileSync(join(repoRoot, rel), "utf8").split(/\r?\n/);
     scanned += 1;
     for (let i = 0; i < lines.length; i++) {
