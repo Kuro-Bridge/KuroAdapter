@@ -1,10 +1,12 @@
 /**
  * toolings/packaging/build-jar.mjs —— build:jar 全链路编排（DEBT-2，跨壳）
  *
- * 步骤：pnpm -r build（TS 产物）→ toolings/packaging/embed.ts（node.exe 等进 :paper resources）→
- * gradle :paper:shadowJar（可分发 JAR）。替代 package.json 里的直排命令——原写法把
- * gradlew.bat 写死（M2-03），POSIX 贡献者不可用；本脚本按 process.platform 选择 wrapper，
- * 并给 gradle 子进程注入 UTF-8 输出编码（cmd.exe GBK 代码页下中文日志乱码的缓解尝试）。
+ * 步骤：pnpm -r build（TS 产物）→ toolings/packaging/embed.ts（node.exe 等进各平台 resources，
+ * 见 embed.ts defaultEmbedTargets）→ gradle :paper:shadowJar（Paper 可分发 JAR）→
+ * gradle :fabric:remapJar（Fabric mod JAR，shadow 合并 + loom 重映射）。
+ * 替代 package.json 里的直排命令——原写法把 gradlew.bat 写死（M2-03），POSIX 贡献者不可用；
+ * 本脚本按 process.platform 选择 wrapper，并给 gradle 子进程注入 UTF-8 输出编码
+ * （cmd.exe GBK 代码页下中文日志乱码的缓解尝试）。
  *
  * 约束：零新依赖（node:child_process）；gradle 输出走 stdio inherit（MVP1-NOTES M-18：
  * 经管道转接会挂起客户端，inherit 直通终端不受影响）。
@@ -73,4 +75,10 @@ const env = {
 // shell 中介；args 里无空格/特殊字符，shell 拼接安全
 run("gradle shadowJar", gradlew, [":paper:shadowJar"], { cwd: jeDir, env, shell: IS_WIN32 });
 
-console.log("[build-jar] 完成：JAR 已产出（platforms/je/paper/build/libs/）");
+// 4) gradle remapJar：fabric mod 产物（shadow 白名单合并 :core + Jackson 后 loom 重映射，
+//    见 platforms/je/fabric/build.gradle.kts 与其 docs/design.md §6）
+run("gradle fabric remapJar", gradlew, [":fabric:remapJar"], { cwd: jeDir, env, shell: IS_WIN32 });
+
+console.log(
+    "[build-jar] 完成：JAR 已产出（platforms/je/paper/build/libs/ 与 platforms/je/fabric/build/libs/）",
+);

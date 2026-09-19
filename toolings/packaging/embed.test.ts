@@ -18,6 +18,7 @@ import {
     buildZip,
     collectLicenses,
     collectZipEntries,
+    defaultEmbedTargets,
     distUrls,
     type EmbedResult,
     extractZipEntry,
@@ -135,6 +136,15 @@ describe("distUrls", () => {
         expect(distUrls("https://npmmirror.com/mirrors/node", "26.7.0").zipUrl).toContain(
             "npmmirror.com/mirrors/node/v26.7.0/",
         );
+    });
+});
+
+describe("defaultEmbedTargets", () => {
+    it("覆盖 paper 与 fabric 两平台的 embedded 资源目录（嵌入目标 SSOT）", () => {
+        expect(defaultEmbedTargets("/repo")).toEqual([
+            join("/repo", "platforms", "je", "paper", "src", "main", "resources", "embedded"),
+            join("/repo", "platforms", "je", "fabric", "src", "main", "resources", "embedded"),
+        ]);
     });
 });
 

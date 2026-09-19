@@ -2,9 +2,10 @@
  * toolings/packaging/embed.ts —— 嵌入式打包工具（MVP 阶段二；MVP-4 扩展 napuketto 嵌包）
  *
  * 职责：下载/校验 node 官方 dist（win-x64）→ 只取 node.exe + LICENSE，连同
- * bridge/embedded/dist/index.mjs 产出到 platforms/je/paper/src/main/resources/embedded/。
- * MVP-4（ADR-029）：另收集 @napuketto/cli 依赖树（npm 安装到缓存，真实文件非 symlink）
- * → 单一 zip 资源 napuketto.zip + 许可聚合 NAPUKETTO_LICENSES → 进 manifest。
+ * bridge/embedded/dist/index.mjs 产出到各平台模块的 src/main/resources/embedded/
+ * （paper + fabric，目标清单 SSOT 见 defaultEmbedTargets；产物契约同 :core EmbeddedRuntime
+ * 消费的 manifest.json）。MVP-4（ADR-029）：另收集 @napuketto/cli 依赖树（npm 安装到缓存，
+ * 真实文件非 symlink）→ 单一 zip 资源 napuketto.zip + 许可聚合 NAPUKETTO_LICENSES → 进 manifest。
  *
  * - 只用 Node 内置依赖；Node ≥ 23.6 原生 TS 剥离直接执行（pnpm build:jar 接线，无需编译）。
  * - 幂等：产物已存在且 sha256 一致则跳过；写盘 tmp + rename 原子替换。
@@ -57,7 +58,7 @@ const ENV_NPM_REGISTRY = "KUROBRIDGE_NPM_REGISTRY";
 export interface EmbedOptions {
     /** bridge/embedded/dist/index.mjs（须先 pnpm -r build）。 */
     distBundle: string;
-    /** 产物目录（platforms/je/paper/src/main/resources/embedded）。 */
+    /** 产物目录（各平台模块的 src/main/resources/embedded，见 defaultEmbedTargets）。 */
     outDir: string;
     /** zip / SHASUMS256.txt / napuketto 依赖树缓存目录。 */
     cacheDir: string;
@@ -691,17 +692,33 @@ function readCentralDirectory(zip: Buffer): ZipEntry[] {
 
 // ---- CLI 入口（被 import 时不执行） ----
 
+/**
+ * 嵌入目标清单（SSOT）：paper 与 fabric 各一份同内容产物——manifest 契约不变，
+ * :core EmbeddedRuntime 原样消费（多平台共享同一解压链，docs/design.md §6 / fabric 任务书）。
+ * 新增平台 = 在此追加一行 + build-jar.mjs 追加对应 gradle 构件步骤。
+ */
+export function defaultEmbedTargets(repoRoot: string): string[] {
+    return [
+        join(repoRoot, "platforms", "je", "paper", "src", "main", "resources", "embedded"),
+        join(repoRoot, "platforms", "je", "fabric", "src", "main", "resources", "embedded"),
+    ];
+}
+
 async function runCli(): Promise<void> {
     const root = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
-    const result = await runEmbed({
+    const shared = {
         distBundle: join(root, "bridge", "embedded", "dist", "index.mjs"),
-        outDir: join(root, "platforms", "je", "paper", "src", "main", "resources", "embedded"),
         cacheDir: process.env[ENV_CACHE_DIR] ?? join(root, ".cache", "node-dist"),
         napuketto: { cliVersion: readNapukettoCliVersion(root) },
-    });
-    console.log(
-        `[embed] 产物目录就绪（写入 ${result.copied.length}，复用 ${result.reused.length}）`,
-    );
+    };
+    let copied = 0;
+    let reused = 0;
+    for (const outDir of defaultEmbedTargets(root)) {
+        const result = await runEmbed({ ...shared, outDir });
+        copied += result.copied.length;
+        reused += result.reused.length;
+    }
+    console.log(`[embed] 产物目录就绪（写入 ${copied}，复用 ${reused}）`);
 }
 
 const invokedDirectly =
