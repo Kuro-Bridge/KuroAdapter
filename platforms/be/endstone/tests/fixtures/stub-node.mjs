@@ -18,7 +18,7 @@
 let buffer = "";
 
 function send(text) {
-    process.stdout.write(text + "\n");
+    process.stdout.write(`${text}\n`);
 }
 
 /** 优雅退出：不调用 process.exit，交由事件循环排空在途 stderr 写后自然收敛 */
@@ -39,7 +39,7 @@ function handleLine(line) {
     } catch {
         return; // 坏行静默（父端自有容错用例）
     }
-    const type = frame && frame.header ? frame.header.type : undefined;
+    const type = frame?.header ? frame.header.type : undefined;
     if (type === "shutdown") {
         const reason = frame.body && typeof frame.body.reason === "string" ? frame.body.reason : "";
         process.stderr.write(`[KuroBridge][node][info] 收到关机通知（${reason}），退出\n`);
