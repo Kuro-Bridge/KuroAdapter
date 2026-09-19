@@ -157,14 +157,14 @@ kurobridge/
   **协议依赖纪律**（ADR-031 阶段 2 / ADR-035）：本仓无协议副本，经 npm 依赖
   `@kuro-bridge/protocol@^0.4.0` 消费；协议演进只能在 KuroProtocol 四件套同改 + 发版，
   本仓升依赖版本号。
-- **全仓门禁（一条入口）**：本地 `pnpm check` = `pnpm -r build` 首环（ADR-035：先构建发布物，
-  再在发布面 exports.types → dist d.ts 上做全部静态校验）+ biome + 根 tsc（bridge/*）+ lse
-  typecheck（`tsc -p platforms/be/lse`）+ docs 门禁（docs/history 外禁无连字符旧 scope 口径 +
-  md 相对链接死链）+ 版本对齐（`check-versions`：bridge 六点 "0.1.0" + 协议两份——锚 = 已安装
-  npm 包 `@kuro-bridge/protocol` 清单 version ≡ `KurobridgeVersions.java`，ADR-034/035）；
-  lefthook pre-commit 串行（`parallel: false`，防 build 清空 dist 与 test 的竞态，ADR-035）
-  跑 `pnpm check` → `pnpm test`，CI（ADR-032，结构经 ADR-035 结论 4 简化：无姊妹仓检出）
-  机器级复跑同一命令链 + Java `gradlew build`。
+- **全仓门禁（一条入口）**：本地 `pnpm check` 一条链覆盖构建首环（ADR-035：先构建发布物，再在
+  发布面做全部静态校验）→ 静态检查（biome + 根 tsc + lse typecheck）→ docs 两门禁（docs/history
+  外禁无连字符旧 scope 口径 + md 相对链接死链）→ 版本对齐（bridge 六点 + 协议两份——锚 = 已安装
+  npm 包 `@kuro-bridge/protocol` 清单 version ≡ `KurobridgeVersions.java`，ADR-034/035）。
+  命令明细的单一权威 = 根 `package.json` 的 `check` 脚本（`AGENTS.md` 工作流节有逐段解说），
+  本文不复列以免双写漂移。lefthook pre-commit 串行（`parallel: false`，防 build 清空 dist 与
+  test 的竞态，ADR-035）跑 `pnpm check` → `pnpm test`，CI（ADR-032，结构经 ADR-035 结论 4 简化：
+  无姊妹仓检出）机器级复跑同一命令链 + Java `gradlew build`。
 
 ## 9. 嵌入式打包要点（沿用 Napuketto 许可证方案，MVP-4 实况）
 
