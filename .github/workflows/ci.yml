@@ -60,11 +60,11 @@ jobs:
         with:
           path: KuroAdapter
 
-      # Gradle 缓存 + wrapper 校验（KP-JE-005 性能项；setup-gradle@v4 两项默认开启：
+      # Gradle 缓存 + wrapper 校验（KP-JE-005 性能项；setup-gradle@v6 两项默认开启：
       # ~/.gradle 依赖缓存与 gradle-wrapper.jar 校验和校验，补本地缺失的 wrapper 校验一环）。
       # 不用它装 Gradle：本仓以 wrapper 自举（9.7.0 pin），mise 只管 java 25 / node 26。
       - name: Gradle 缓存与 wrapper 校验
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v6
 
       # 只装 mise 本体（install: false），工具安装交给下一步 mise x：
       # mise 从工作目录向上发现 KuroAdapter/mise.toml（java 25 / node 26），
