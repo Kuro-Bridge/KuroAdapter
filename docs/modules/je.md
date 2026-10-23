@@ -107,7 +107,7 @@ plugins/kurobridge/
 | --- | --- | --- |
 | `KUROBRIDGE_BUNDLE` | 已设置即完全跳过 JAR 解压 | 不设置 |
 | `KUROBRIDGE_NODE` | 缺省 `node`（PATH） | 缺省 `plugins/kurobridge/bin/node.exe` |
-| `KUROBRIDGE_STUB_PEER` | 缺省从 bundle 推导 `../stub/peer.mjs` | 不设置 = 无 stub（external 形态） |
+| `KUROBRIDGE_STUB_PEER` | 缺省从 bundle 推导 `../stub/peer.ts` | 不设置 = 无 stub（external 形态） |
 
 ## 已知缺口
 

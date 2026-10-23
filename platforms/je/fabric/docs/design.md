@@ -60,13 +60,13 @@ loom 只发布在 Fabric maven（Gradle Plugin Portal 无此插件，实测 meta
 - **白名单式 include 的原因**：shadow 缺省吞整个 runtimeClasspath（loom 下含 fabric-api/loader 的 mod jar），必须显式只留 :core（group com.kurobridge）与 com.fasterxml.jackson.core 三件。
 - **embed 链**：toolings/packaging/embed.ts 的 runEmbed 本已参数化 outDir，硬编码仅在 CLI 入口 runCli——扩展为按目标目录列表循环（paper 与 fabric 各一份同内容产物；第二次调用走 zip/napuketto 缓存，零重复下载）。产物契约不变（manifest.json nodeVersion/files/napukettoZip + sha256），Java 侧 :core EmbeddedRuntime 原样消费。
 - **嵌入产物不入库**：paper 用根 .gitignore 先例；fabric 用**嵌套自含 .gitignore**（`fabric/src/main/resources/embedded/.gitignore` 内容 `*` + `!.gitignore`），不动根共享文件。
-- **build-jar.mjs**：三步链追加第四步 `:fabric:remapJar`（同 wrapper/UTF-8 环境注入逻辑），最终日志列两产物目录。
+- **build-jar.ts**：三步链追加第四步 `:fabric:remapJar`（同 wrapper/UTF-8 环境注入逻辑），最终日志列两产物目录。
 - **fabric.mod.json 版本**：`"version": "${version}"` 经 processResources expand 注入 project.version（SSOT = 根 version 族）。原因：check-versions 门禁的版本族不含 fabric.mod.json（门禁文件不在本线领地），硬编码会制造 ADR-034 反对的隐藏版本点；expand 让漂移在构建期不可能发生。depends 声明 `minecraft ~1.21.4`、`fabricloader >=0.16.0`、`java >=21`、`fabric-api *`。
 
 ## 7. 目录契约、环境变量与降级语义（照抄 :paper）
 
 - 目录契约：`<服务器根>/plugins/kurobridge/`（bin/、node.pid、qr.json），子进程 cwd = 服务器根。**不用** fabric 的 config/ 目录——Node 侧按 paper 时代契约定位 config.json，壳侧换目录即制造双权威（任务书红线）。
-- 三环境变量语义不变：`KUROBRIDGE_BUNDLE` 设=开发覆盖（node 缺省 "node"，stub 从 bundle 相对推导 `../stub/peer.mjs`）；未设=JAR 自含（EmbeddedRuntime.install → bin/node.exe，stub 仅显式注入）；`KUROBRIDGE_NODE` 覆盖 node 路径；`KUROBRIDGE_STUB_PEER` 显式 stub 路径。
+- 三环境变量语义不变：`KUROBRIDGE_BUNDLE` 设=开发覆盖（node 缺省 "node"，stub 从 bundle 相对推导 `../stub/peer.ts`）；未设=JAR 自含（EmbeddedRuntime.install → bin/node.exe，stub 仅显式注入）；`KUROBRIDGE_NODE` 覆盖 node 路径；`KUROBRIDGE_STUB_PEER` 显式 stub 路径。
 - 降级语义：install 失败 → SEVERE 日志 + 插件保持加载但无 IPC，不崩服（paper 同语义）。PID 文件写入/残留提示语义由 :core 承担。
 
 ## 8. 单测与验证边界

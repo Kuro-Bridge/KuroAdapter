@@ -68,11 +68,11 @@ public final class KuroBridgePlugin extends JavaPlugin {
     /** 开发覆盖模式下无 manifest，node 版本以 dev 标识（就绪汇总行展示用）。 */
     private static final String NODE_VERSION_DEV = "dev";
     /**
-     * 相对 bundle 父目录（dist/）的 stub 位置：dist/../stub/peer.mjs → embedded/stub/peer.mjs。
+     * 相对 bundle 父目录（dist/）的 stub 位置：dist/../stub/peer.ts → embedded/stub/peer.ts。
      * 注意 Java 的 Path.resolve 是纯字符串拼接，必须以 getParent() 为基准，否则
      * 「index.mjs/..」会消掉文件名而不是 dist 目录（sandbox 实测踩坑）。
      */
-    private static final String DEFAULT_STUB_RELATIVE = "../stub/peer.mjs";
+    private static final String DEFAULT_STUB_RELATIVE = "../stub/peer.ts";
 
     /** volatile：AsyncChat 事件线程 / IPC 回调线程会跨线程读取；null = 开发模式或已 disable。 */
     private volatile NodeIpc ipc;

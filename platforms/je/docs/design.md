@@ -27,7 +27,7 @@
 
 | 场景 | node | bundle | stub |
 | --- | --- | --- | --- |
-| `KUROBRIDGE_BUNDLE` 已设 | `KUROBRIDGE_NODE` 或 `node` | 环境变量值 | env 或从 bundle 推导 `../stub/peer.mjs` |
+| `KUROBRIDGE_BUNDLE` 已设 | `KUROBRIDGE_NODE` 或 `node` | 环境变量值 | env 或从 bundle 推导 `../stub/peer.ts` |
 | 未设（JAR 模式） | `KUROBRIDGE_NODE` 或 `bin/node.exe` | `bin/index.mjs` | env 或空（external 形态） |
 
 ## 运行期目录

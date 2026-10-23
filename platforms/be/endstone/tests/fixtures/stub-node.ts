@@ -1,5 +1,5 @@
 /**
- * kurobridge_core 集成测试专用 Node 桩（tests/fixtures/stub_node.mjs）。
+ * kurobridge_core 集成测试专用 Node 桩（tests/fixtures/stub-node.ts）。
  * 独立无 import（不落 bridge/embedded 依赖面），行为契约对齐 bridge/embedded 的
  * index.ts + ipc-stdio.ts + logger.ts 的最小可观测面：
  *
@@ -15,46 +15,51 @@
  * stderr 写为异步，立即 process.exit 可能丢行）；兜底 2s 强退只防悬挂，常态不触发。
  */
 
+interface StubFrame {
+    header?: { type?: string; id?: string };
+    body?: { reason?: unknown };
+}
+
 let buffer = "";
 
-function send(text) {
+function send(text: string): void {
     process.stdout.write(`${text}\n`);
 }
 
 /** 优雅退出：不调用 process.exit，交由事件循环排空在途 stderr 写后自然收敛 */
-function gracefulExit(exitCode) {
+function gracefulExit(exitCode: number): void {
     process.exitCode = exitCode;
     const safety = setTimeout(() => process.exit(exitCode), 2000);
     safety.unref();
 }
 
-function handleLine(line) {
+function handleLine(line: string): void {
     const trimmed = line.trim();
     if (trimmed.length === 0) {
         return;
     }
-    let frame;
+    let frame: StubFrame;
     try {
-        frame = JSON.parse(trimmed);
+        frame = JSON.parse(trimmed) as StubFrame;
     } catch {
         return; // 坏行静默（父端自有容错用例）
     }
-    const type = frame?.header ? frame.header.type : undefined;
+    const type = frame.header?.type;
     if (type === "shutdown") {
-        const reason = frame.body && typeof frame.body.reason === "string" ? frame.body.reason : "";
+        const reason = typeof frame.body?.reason === "string" ? frame.body.reason : "";
         process.stderr.write(`[KuroBridge][node][info] 收到关机通知（${reason}），退出\n`);
         gracefulExit(0);
         return;
     }
     if (type === "execute_command") {
         const output = ["pong"];
-        const mark = process.env.KUROBRIDGE_TEST_MARK;
+        const mark = process.env["KUROBRIDGE_TEST_MARK"];
         if (typeof mark === "string") {
             output.push(mark);
         }
         send(
             JSON.stringify({
-                header: { type: "execute_command_result", id: frame.header.id },
+                header: { type: "execute_command_result", id: frame.header?.id },
                 body: { ok: true, output },
             }),
         );
@@ -62,7 +67,7 @@ function handleLine(line) {
 }
 
 process.stdin.setEncoding("utf8");
-process.stdin.on("data", (chunk) => {
+process.stdin.on("data", (chunk: string) => {
     buffer += chunk;
     for (;;) {
         const index = buffer.indexOf("\n");

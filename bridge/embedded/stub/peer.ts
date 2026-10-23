@@ -31,7 +31,7 @@
  * - query <status|bindings>
  * - unknown <event|request>
  *
- * 用法：node peer.mjs <wsPort>（或设 KUROBRIDGE_STUB_WS_URL 后省略端口）
+ * 用法：node peer.ts <wsPort>（或设 KUROBRIDGE_STUB_WS_URL 后省略端口）
  * 零依赖：Node 26 内置全局 WebSocket（Undici）。
  */
 
@@ -45,37 +45,82 @@ const HEARTBEAT_INTERVAL_MS = 5000;
 /** 连续重连失败上限（DEBT-2 孤儿治理）：达到即退出（孤儿 stub 不再无限重连） */
 const MAX_CONSECUTIVE_FAILURES = 10;
 
-const envProtocolVersion = process.env.KUROBRIDGE_STUB_PROTOCOL_VERSION;
+const envProtocolVersion = process.env["KUROBRIDGE_STUB_PROTOCOL_VERSION"];
 const HELLO_VERSION =
     envProtocolVersion !== undefined && envProtocolVersion !== ""
         ? envProtocolVersion
         : PROTOCOL_VERSION;
-const HELLO_TOKEN = process.env.KUROBRIDGE_STUB_TOKEN ?? "";
+const HELLO_TOKEN = process.env["KUROBRIDGE_STUB_TOKEN"] ?? "";
 
 /** hello 的 client 自报身份（v0.3.1，MVP-3）：仅服务端连接日志辨识用 */
-const envClient = process.env.KUROBRIDGE_STUB_CLIENT;
+const envClient = process.env["KUROBRIDGE_STUB_CLIENT"];
 const HELLO_CLIENT = envClient !== undefined && envClient !== "" ? envClient : "";
 
 /**
  * 连接地址（MVP-3）：KUROBRIDGE_STUB_WS_URL 覆盖（external 对端形态，独立进程连入）；
  * 缺省维持现状 ws://127.0.0.1:<argv[2]>（孙进程拉起形态）。
  */
-const envWsUrl = process.env.KUROBRIDGE_STUB_WS_URL;
+const envWsUrl = process.env["KUROBRIDGE_STUB_WS_URL"];
 const port = process.argv[2];
 if (
     (envWsUrl === undefined || envWsUrl === "") &&
     (port === undefined || Number.isNaN(Number(port)))
 ) {
     process.stderr.write(
-        "[KuroBridge][stub] 用法：node peer.mjs <wsPort>（或设 KUROBRIDGE_STUB_WS_URL 指定连接地址）\n",
+        "[KuroBridge][stub] 用法：node peer.ts <wsPort>（或设 KUROBRIDGE_STUB_WS_URL 指定连接地址）\n",
     );
     process.exit(2);
 }
 const CONNECT_URL = envWsUrl !== undefined && envWsUrl !== "" ? envWsUrl : `ws://127.0.0.1:${port}`;
 
+interface AdminSource {
+    readonly channel: string;
+    readonly userId: string;
+}
+
+interface FrameBody {
+    ok?: boolean;
+    error?: string;
+    output?: string[];
+    data?: unknown;
+    serverId?: string;
+    protocolVersion?: string;
+    channelBindings?: string[];
+    reason?: string;
+    channel?: string;
+    playerName?: string;
+    player?: string;
+    content?: string;
+    message?: string;
+    tps?: number;
+    onlinePlayers?: number;
+    uptimeSeconds?: number;
+}
+
+interface InboundFrame {
+    header: { type: string; id?: string };
+    body: FrameBody;
+}
+
+interface RequestResult {
+    readonly ok: boolean;
+    readonly text: string;
+}
+
+interface PendingEntry {
+    readonly label: string;
+    readonly resolve: (result: RequestResult) => void;
+}
+
+interface OutboundMessage {
+    readonly type: string;
+    readonly id?: string;
+    readonly body: unknown;
+}
+
 /** command 帧的来源（channel:userId）；缺省与沙盒配置 admins 对齐 */
-function parseAdminSource(raw) {
-    const fallback = { channel: STUB_CHANNEL, userId: "stub-admin" };
+function parseAdminSource(raw: string | undefined): AdminSource {
+    const fallback: AdminSource = { channel: STUB_CHANNEL, userId: "stub-admin" };
     if (raw === undefined || !raw.includes(":")) {
         return fallback;
     }
@@ -85,14 +130,14 @@ function parseAdminSource(raw) {
     return channel.length > 0 && userId.length > 0 ? { channel, userId } : fallback;
 }
 
-const ADMIN_SOURCE = parseAdminSource(process.env.KUROBRIDGE_STUB_ADMIN_SOURCE);
+const ADMIN_SOURCE = parseAdminSource(process.env["KUROBRIDGE_STUB_ADMIN_SOURCE"]);
 
-function log(message) {
+function log(message: string): void {
     process.stderr.write(`[KuroBridge][stub] ${message}\n`);
 }
 
-function sendFrame(ws, message) {
-    const header = { type: message.type };
+function sendFrame(ws: WebSocket, message: OutboundMessage): void {
+    const header: { type: string; id?: string } = { type: message.type };
     if (message.id !== undefined) {
         header.id = message.id;
     }
@@ -100,10 +145,16 @@ function sendFrame(ws, message) {
 }
 
 /** 发送请求帧并等待同 id 的结果帧（command_result / query_result / 未知回执通用） */
-function sendRequestAwait(ws, type, body, pending, label) {
+function sendRequestAwait(
+    ws: WebSocket,
+    type: string,
+    body: unknown,
+    pendingRequests: Map<string, PendingEntry>,
+    label: string,
+): Promise<RequestResult> {
     const id = crypto.randomUUID();
-    const promise = new Promise((resolve) => {
-        pending.set(id, { label, resolve });
+    const promise = new Promise<RequestResult>((resolve) => {
+        pendingRequests.set(id, { label, resolve });
     });
     sendFrame(ws, { type, id, body });
     log(`已发送 ${label}（id=${id}）`);
@@ -111,27 +162,27 @@ function sendRequestAwait(ws, type, body, pending, label) {
 }
 
 let backoffMs = 1000;
-let heartbeatTimer = null;
+let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 let consecutiveFailures = 0;
 let lastErrorText = "unknown";
 /** 当前连接（交互命令投递用）；重连时由 connect() 刷新 */
-let currentWs = null;
+let currentWs: WebSocket | null = null;
 
 /** 当前连接的在途请求（id → {label, resolve}）；断开时全部放弃 */
-let pending = new Map();
+let pending = new Map<string, PendingEntry>();
 
-function rejectPending(reason) {
+function rejectPending(reason: string): void {
     for (const { label, resolve } of pending.values()) {
         resolve({ ok: false, text: `${label} 等待结果失败：${reason}` });
     }
-    pending = new Map();
+    pending = new Map<string, PendingEntry>();
 }
 
 /** 握手成功后的验收自动化序列（env 驱动，无人值守用） */
-async function runAutoSequence(ws) {
-    const autoCommand = process.env.KUROBRIDGE_STUB_SEND_COMMAND ?? "";
-    const autoQuery = process.env.KUROBRIDGE_STUB_SEND_QUERY ?? "";
-    const autoUnknown = process.env.KUROBRIDGE_STUB_SEND_UNKNOWN ?? "";
+async function runAutoSequence(ws: WebSocket): Promise<void> {
+    const autoCommand = process.env["KUROBRIDGE_STUB_SEND_COMMAND"] ?? "";
+    const autoQuery = process.env["KUROBRIDGE_STUB_SEND_QUERY"] ?? "";
+    const autoUnknown = process.env["KUROBRIDGE_STUB_SEND_UNKNOWN"] ?? "";
 
     if (autoCommand.length > 0) {
         for (const raw of autoCommand.split(";")) {
@@ -175,7 +226,7 @@ async function runAutoSequence(ws) {
     }
 }
 
-function handleLine(ws, line) {
+function handleLine(ws: WebSocket, line: string): void {
     if (line.length === 0) {
         return;
     }
@@ -231,7 +282,7 @@ function handleLine(ws, line) {
     );
 }
 
-function connect() {
+function connect(): void {
     const ws = new WebSocket(CONNECT_URL, WS_SUBPROTOCOL);
     currentWs = ws;
 
@@ -239,7 +290,14 @@ function connect() {
         consecutiveFailures = 0;
         backoffMs = 1000;
         log(`已连入 ${CONNECT_URL}（子协议 ${WS_SUBPROTOCOL}），发送 hello`);
-        const helloBody = {
+        const helloBody: {
+            peerId: string;
+            platform: string;
+            version: string;
+            protocolVersion: string;
+            token?: string;
+            client?: string;
+        } = {
             peerId: PEER_ID,
             platform: "stub",
             version: "0.0.1",
@@ -262,9 +320,9 @@ function connect() {
     });
 
     ws.addEventListener("message", (event) => {
-        let frame;
+        let frame: InboundFrame;
         try {
-            frame = JSON.parse(String(event.data));
+            frame = JSON.parse(String(event.data)) as InboundFrame;
         } catch {
             log(`收到非 JSON 帧，忽略：${String(event.data).slice(0, 120)}`);
             return;
@@ -274,7 +332,7 @@ function connect() {
             if (frame.body.ok) {
                 log(
                     `握手成功：serverId=${frame.body.serverId} protocolVersion=${frame.body.protocolVersion}` +
-                        ` channelBindings=[${frame.body.channelBindings.join(",")}]`,
+                        ` channelBindings=[${(frame.body.channelBindings ?? []).join(",")}]`,
                 );
                 // 沙盒验收：握手后主动发一条平台消息 → 绑定该频道时进游戏 broadcast
                 sendFrame(ws, {
@@ -285,7 +343,7 @@ function connect() {
                         content: "大家好，我是 stub 协议端",
                     },
                 });
-                void runAutoSequence(ws).catch((error) => {
+                void runAutoSequence(ws).catch((error: unknown) => {
                     log(`验收自动化序列异常：${String(error)}`);
                 });
             } else {
@@ -315,9 +373,10 @@ function connect() {
             return;
         }
         if (type === "bindings_updated") {
-            log(`收到绑定变更：[${frame.body.channelBindings.join(",")}]`);
+            const channelBindings = frame.body.channelBindings ?? [];
+            log(`收到绑定变更：[${channelBindings.join(",")}]`);
             // 沙盒验收（§4.3b）：自己被绑定后再发一条平台消息，验证「写绑定 → 消息进游戏」
-            if (frame.body.channelBindings.includes(STUB_CHANNEL)) {
+            if (channelBindings.includes(STUB_CHANNEL)) {
                 sendFrame(ws, {
                     type: "chat",
                     body: {
@@ -333,10 +392,14 @@ function connect() {
             return;
         }
         if (type.endsWith("_result")) {
-            const entry = pending.get(frame.header.id);
-            if (entry !== undefined) {
-                pending.delete(frame.header.id);
-                entry.resolve({ ok: frame.body.ok, text: formatResult(entry.label, frame.body) });
+            const frameId = frame.header.id;
+            const entry = frameId === undefined ? undefined : pending.get(frameId);
+            if (entry !== undefined && frameId !== undefined) {
+                pending.delete(frameId);
+                entry.resolve({
+                    ok: frame.body.ok === true,
+                    text: formatResult(entry.label, frame.body),
+                });
             } else {
                 log(`收到结果帧（无在途请求）：${JSON.stringify(frame.body).slice(0, 200)}`);
             }
@@ -345,7 +408,7 @@ function connect() {
         log(`收到未处理帧类型：${type}`);
     });
 
-    const scheduleReconnect = () => {
+    const scheduleReconnect = (): void => {
         if (heartbeatTimer !== null) {
             clearInterval(heartbeatTimer);
             heartbeatTimer = null;
@@ -359,7 +422,6 @@ function connect() {
                         "放弃重连并退出（孤儿治理：宿主可能已停止，不再无限重连）",
                 );
                 process.exit(1);
-                return;
             }
             log(
                 `连接断开，${backoffMs}ms 后重连（连续失败 ${consecutiveFailures}/${MAX_CONSECUTIVE_FAILURES}）`,
@@ -372,12 +434,13 @@ function connect() {
     ws.addEventListener("close", scheduleReconnect);
     ws.addEventListener("error", (event) => {
         // Undici 的 error 事件 message 常为空串——用 || 落到 error 对象/unknown
-        lastErrorText = String(event.message || event.error || "unknown");
+        const detail = event as unknown as { message?: string; error?: unknown };
+        lastErrorText = String(detail.message || detail.error || "unknown");
         log(`连接错误：${lastErrorText}`);
     });
 }
 
-function formatResult(label, body) {
+function formatResult(label: string, body: FrameBody): string {
     if (!body.ok) {
         return `${label} 结果：失败（error=${body.error}）`;
     }
@@ -392,7 +455,7 @@ function formatResult(label, body) {
 
 // 交互命令（standalone 运行时可用；stdio ignore / 管道关闭时静默禁用，不影响常驻）
 const readline = createInterface({ input: process.stdin, terminal: false });
-readline.on("line", (line) => {
+readline.on("line", (line: string) => {
     const ws = currentWs;
     if (ws === null || ws.readyState !== WebSocket.OPEN) {
         log(`未连接，忽略命令：${line}`);

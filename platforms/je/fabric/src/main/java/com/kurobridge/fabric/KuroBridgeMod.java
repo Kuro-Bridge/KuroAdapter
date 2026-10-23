@@ -71,10 +71,10 @@ public final class KuroBridgeMod implements ModInitializer {
     /** 开发覆盖模式下无 manifest，node 版本以 dev 标识（就绪汇总行展示用）。 */
     private static final String NODE_VERSION_DEV = "dev";
     /**
-     * 相对 bundle 父目录（dist/）的 stub 位置：dist/../stub/peer.mjs → embedded/stub/peer.mjs。
+     * 相对 bundle 父目录（dist/）的 stub 位置：dist/../stub/peer.ts → embedded/stub/peer.ts。
      * Path.resolve 是纯字符串拼接，必须以 getParent() 为基准（paper 实测踩坑记录）。
      */
-    private static final String DEFAULT_STUB_RELATIVE = "../stub/peer.mjs";
+    private static final String DEFAULT_STUB_RELATIVE = "../stub/peer.ts";
 
     /** volatile：IPC 回调线程 / 事件线程跨线程读取；null = 开发模式、降级或已停止。 */
     private volatile NodeIpc ipc;

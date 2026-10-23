@@ -37,9 +37,9 @@ class NodeIpcBundleIntegrationTest {
     /** Gradle 测试工作目录因版本/调用方式而异（:core 或 platforms/je），多基准探测。 */
     private static final Path BUNDLE = resolveRepoRelative("bridge/embedded/dist/index.mjs");
 
-    private static final Path STUB = resolveRepoRelative("bridge/embedded/stub/peer.mjs");
+    private static final Path STUB = resolveRepoRelative("bridge/embedded/stub/peer.ts");
 
-    /** stub 协议端的固定频道（peer.mjs 的 STUB_CHANNEL）。 */
+    /** stub 协议端的固定频道（peer.ts 的 STUB_CHANNEL）。 */
     private static final String STUB_CHANNEL = "stub-channel";
 
     private static Path resolveRepoRelative(String relative) {

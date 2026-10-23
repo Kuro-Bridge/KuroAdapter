@@ -49,7 +49,7 @@ else
 fi
 
 # stub 不进 JAR（测试件）：沙盒经仓库内路径注入；JAR 内自带 node.exe，无需 KUROBRIDGE_NODE
-export KUROBRIDGE_STUB_PEER="${KUROBRIDGE_STUB_PEER:-$REPO/bridge/embedded/stub/peer.mjs}"
+export KUROBRIDGE_STUB_PEER="${KUROBRIDGE_STUB_PEER:-$REPO/bridge/embedded/stub/peer.ts}"
 
 # 坑 1：清空旧输入（防止回放上轮 stop）
 : > "$SERVER/cmd.in"
