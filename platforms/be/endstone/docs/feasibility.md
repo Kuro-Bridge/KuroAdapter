@@ -17,13 +17,13 @@
 | 层 | 内容 | 本机状态 |
 |---|---|---|
 | **portable 层**（`src/core/`，零 endstone 依赖） | JSON-lines 帧编解码（含最小 JSON 解析器）+ Node 进程拉起（CreateProcess+管道）+ ready 握手 + 请求/响应 + 看护器状态机 + PID 文件 + 双关机路径 | **实现 + 单测/集成测试全绿**（本机 clang 22.1.8 + CMake 4.3.2 + Ninja，冒烟与 ctest 实证） |
-| **endstone 面**（`src/` 根，依赖 endstone 头） | 插件入口（ENDSTONE_PLUGIN）+ 四事件桥接 + broadcast/execute_command 请求处理（runTask 回主线程 + CommandSenderWrapper 捕获） | **源码就绪 + 对 v0.11.11 头文件语法验证通过**；ABI 有效构建（dll）待 §4 解锁，接管点已写进 CMake preset |
+| **endstone 面**（`src/` 根，依赖 endstone 头） | 插件入口（ENDSTONE_PLUGIN）+ 四事件桥接 + broadcast/execute_command 请求处理（runTask 回主线程 + CommandSenderWrapper 捕获） | **已实现**；clang-cl 工具链后续解锁并完成 dll 构建（导出 `init_endstone_plugin`，ctest 5/5）；真机联调待做 |
 
-真机联调不在本线（任务书既定），SOP 与清单见 readme.md 与 `docs/STATUS.md` 追加块。
+真机联调不在本线（任务书既定），SOP 与清单见 readme.md 与 [docs/status.md](../../../../docs/status.md)。
 
 ## 1. 版本锁定与升级语义
 
-- 目标 API 版本：`ENDSTONE_API_VERSION = "0.11"`，FetchContent `GIT_TAG v0.11`（跟踪 0.11 补丁线）。endstone 加载器**强校验插件 API 版本与服务器完全相等**，不等则拒载（`cpp_plugin_loader.cpp`）；0.x 阶段无 ABI 稳定性承诺 → **endstone 升级 = 插件必须重编**，接管点登记于 STATUS。
+- 目标 API 版本：`ENDSTONE_API_VERSION = "0.11"`，FetchContent `GIT_TAG v0.11`（跟踪 0.11 补丁线）。endstone 加载器**强校验插件 API 版本与服务器完全相等**，不等则拒载（`cpp_plugin_loader.cpp`）；0.x 阶段无 ABI 稳定性承诺 → **endstone 升级 = 插件必须重编**，接管点见 [docs/status.md](../../../../docs/status.md)。
 - 产物命名走官方 `endstone_add_plugin` 默认 `PREFIX "endstone_"` → `endstone_kurobridge.dll`（前缀缺失时加载器报错信息劣化，且不合官方惯例）。
 - 构建类型只允许 **Release / RelWithDebInfo**：`endstone.hpp` 顶部静态断言 `_ITERATOR_DEBUG_LEVEL == 0`（原文：*"We do not support compiling under MSVC Debug mode… ABI incompatible with the BDS environment, which is built in Release mode"*）。preset 统一 RelWithDebInfo。
 
@@ -101,7 +101,7 @@
 
 1. §4 工具链解锁（clang-cl）→ `cmake --preset windows-clang-cl` 构建出 `endstone_kurobridge.dll`。
 2. endstone 服务端：GitHub release 下载 `endstone-0.11.11-windows-x86_64.zip`（插件 API 版本必须与构建时 `ENDSTONE_API_VERSION` 一致）。
-3. 预置 `<BDS 根>/plugins/kurobridge/bin/`：`node.exe`、`index.mjs`（bridge/embedded esbuild 产物）、`NODE_LICENSE`、`manifest.json`（清单契约与 paper 一致，见 `platforms/je/docs/design.md:49-54`；产物可复用 `toolings/packaging` 输出，embed targets 增 endstone 属 R3 接管点）。
+3. 预置 `<BDS 根>/plugins/kurobridge/bin/`：`node.exe`、`index.mjs`（bridge/embedded esbuild 产物）、`NODE_LICENSE`、`manifest.json`（清单契约与 paper 一致，见 [构建与发布](../../../../docs/guides/build.md) 的嵌入式打包节；产物可复用 `toolings/packaging` 输出，embed targets 增 endstone 属 R3 接管点）。
 4. `plugins/kurobridge/config.json` 按 token 契约预置（cwd=BDS 根，node 侧按 cwd 定位）。
 5. dll 放入 `<BDS 根>/plugins/`，启动 endstone 服务端，核对：插件加载日志 → `[NodeIpc][INFO]` 拉起 → `[KuroBridge][node][info]` ready（含 wsPort）→ 四事件触发出现 `game_chat/player_join/player_quit/player_death` 出帧。
 6. 关停语义验证：停服 → shutdown 帧 + stdin EOF 双路径收敛、node 退出码 0、`plugins/kurobridge/node.pid` 被清理。

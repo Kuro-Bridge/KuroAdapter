@@ -4,11 +4,12 @@
 > 我们走 **C++ 薄壳**路线（ADR-020）：C++ 只做事件桥接 + 内嵌 Node 子进程管理 + JSON-lines IPC，
 > 业务核心仍在 `bridge/core`（TS），与 Java 薄壳完全同构。
 
-## 当前状态（2026-09-19，双层交付，见 docs/feasibility.md §0）
+## 当前状态（双层交付）
 
 - **portable 层（`src/core/`）**：实现 + 单测/集成测试全绿（本机 llvm-mingw + CMake + Ninja）。
-- **endstone 面（`src/` 根）**：源码就绪，对 endstone v0.11.11 官方头文件语法验证通过
-  （R1；语法验证过 ≠ ABI 有效构建）。dll 产物待 clang-cl 工具链解锁。
+- **endstone 面（`src/` 根）**：源码就绪；clang-cl 工具链已解锁并完成 dll 构建
+  （`endstone_kurobridge.dll` 约 809 KB，导出 `init_endstone_plugin`，ABI 下 ctest 5/5）。
+  真机联调仍待排期。
 
 ## 构建双轨
 
@@ -20,17 +21,17 @@
 工具链硬约束：endstone v0.11.4 起要求 clang-cl（MSVC 前端）+ CMake ≥ 3.29；构建类型仅
 Release/RelWithDebInfo（`endstone.hpp` 对 MSVC Debug 有静态断言）。
 
-## 真机 SOP（dll 构建绿之后、联调）
+## 真机 SOP（联调）
 
-1. **工具链解锁**：按 docs/feasibility.md §4 安装 VS Build Tools + Clang 组件，vcvars64 环境
-   内 `cmake --preset windows-clang-cl && cmake --build --preset windows-clang-cl`，得到
-   `build/windows-clang-cl/endstone_kurobridge.dll`。
+1. **工具链**：本机已解锁（VS Build Tools + Clang 组件）。新机器按 docs/feasibility.md §4 安装，
+   在 vcvars64 环境内执行 `cmake --preset windows-clang-cl && cmake --build --preset windows-clang-cl`，
+   得到 `build/windows-clang-cl/endstone_kurobridge.dll`。
 2. **下载 endstone 服务端**：GitHub release 取 `endstone-0.11.11-windows-x86_64.zip` 并解压出
    BDS 根；**插件 API 版本必须与构建时一致**（endstone 加载器强校验，0.x 阶段 endstone
    升级 = 插件必须重编）。
 3. **预置 `<BDS 根>/plugins/kurobridge/bin/`**（四件）：`node.exe`、`index.mjs`（bridge/embedded
    的 esbuild 产物）、`NODE_LICENSE`、`manifest.json`。清单契约与 paper 一致（见
-   `platforms/je/docs/design.md`「toolings/packaging/embed 打包工具」节；产物来自
+   [构建与发布](../../../docs/guides/build.md) 的嵌入式打包节；产物来自
    `toolings/packaging` embed 链）。endstone target 接入 embed 链是 **R3 接管点**，当前手动拷。
    开发覆盖：设 `KUROBRIDGE_NODE` / `KUROBRIDGE_BUNDLE` 环境变量可指向任意 node + bundle
    （与 Java 侧同语义）。

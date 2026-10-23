@@ -2,7 +2,7 @@
 
 > Java 服务端适配（Gradle 多模块，ADR-019：一个服务端 = 一个模块）：`:core` 薄壳核心
 > （IPC 编解码 + 进程管理，零 Bukkit API）+ 各服务端适配模块。业务核心在 Node 侧
-> `bridge/core`，Java 只做桥接薄壳。实况以 [docs/STATUS.md](../../docs/STATUS.md) 为准。
+> `bridge/core`，Java 只做桥接薄壳。实况以 [docs/status.md](../../docs/status.md) 为准。
 
 ## 模块状态（2026-09-19）
 

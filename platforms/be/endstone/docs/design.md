@@ -21,7 +21,7 @@ C++ 侧零业务：事件→出帧、Node 请求→游戏操作（回主线程�
 ```
 BDS + Endstone（插件 API v0.11，加载器强校验 API 版本相等）
     ↓ 游戏事件（chat 可能非主线程；join/quit/death 主线程）
-endstone 面（src/ 根，依赖 endstone 头，待 clang-cl 出 dll）
+endstone 面（src/ 根，依赖 endstone 头，clang-cl 构建 dll）
     │  main.cpp      入口与生命周期：ENDSTONE_PLUGIN、onEnable 组装/start（降级不崩服）、
     │                onDisable 优雅关停；日志中继接线
     │  events.cpp    四事件→出帧：game_chat / player_join / player_quit / player_death
@@ -37,8 +37,8 @@ portable 层（src/core/，零 endstone 依赖、纯 std C++20，本机可构建
     ←→ JSON-lines（stdin/stdout） ←→ 内嵌 Node 子进程（bridge/core，TS）
 ```
 
-portable 层可独立测试（`cmake --preset core` + ctest，5 目标）；endstone 面源码就绪，dll
-待 clang-cl 工具链解锁（`cmake --preset windows-clang-cl`，操作单 feasibility.md §4）。
+portable 层可独立测试（`cmake --preset core` + ctest，5 目标）；endstone 面源码就绪，clang-cl
+dll 已构建（导出 `init_endstone_plugin`），真机联调待排期。
 
 ## 与架构的关系
 
@@ -54,8 +54,8 @@ portable 层可独立测试（`cmake --preset core` + ctest，5 目标）；ends
    find_package，旧文假设已纠正）——完成，见 feasibility.md §2 与本包 CMakeLists dll 分支。
 2. **事件桥接（chat/join/quit/death）**：完成（本次），对 v0.11.11 头文件语法验证通过（R1）。
 3. **IPC 客户端 + Node 子进程管理**：完成（portable 层，ctest 5/5 绿）。
-4. **复用 `bridge/core`（内嵌 Node 运行）**：组装面完成（node_runtime 看护拉起）；真机联调
-   待 dll 解锁，步骤见 readme.md 真机 SOP。
+4. **复用 `bridge/core`（内嵌 Node 运行）**：组装面完成（node_runtime 看护拉起），clang-cl
+   dll 已构建；真机联调待排期，步骤见 readme.md 真机 SOP。
 
 ## 语法验证记录（2026-09-19）
 
@@ -103,7 +103,7 @@ portable 层可独立测试（`cmake --preset core` + ctest，5 目标）；ends
 
 | # | 一句话 |
 |---|---|
-| R1 | dll 构建/CI 不接，endstone 面仅头文件语法验证 |
+| R1 | dll 已可本机构建；CI 仍只跑 portable 层 |
 | R2 | status 帧 tps 固定 0.0（诚实降级），onlinePlayers/uptimeSeconds 真值 |
 | R3 | dll 不内嵌 node.exe，bin/ 预置靠真机 SOP 手动清单；缺失 → 降级不崩服 |
 | R4 | JSON 解析为按协议面定制的最小实现，不做通用库 |

@@ -1,7 +1,7 @@
 # lse 角色裁决册（2026-09-19，2026-09-19 平台落地波〔批次 2026-09-19-platforms〕线 1/4）
 
 > 本文件是 lse 平台**角色拓扑的单一权威（SSOT）**。包级 `design.md`、实现代码、readme SOP 与
-> `docs/DECISIONS.md` ADR-037 均以本册为准。裁决先于代码（治理铁律 3）。
+> `docs/decisions.md` ADR-037 均以本册为准。裁决先于代码（治理铁律 3）。
 
 ## 1. 结论
 
@@ -166,5 +166,5 @@ koishi(WS 客户端) ──WS──> Node shim ──IpcChannel(游戏通道 WS,
 - 裁决人：本线主对话（2026-09-19）；证据核实方式：2+1 并行 Explore subagent 侦察 + 主对话亲核
   `SystemCall.d.ts`/`Network.d.ts`/`PlayerEvents.d.ts`/`Li.d.ts`/`transport.ts`/`index.ts(core 导出)`/
   `business/config.ts` 原文。
-- 升级：本册结论收尾时追加为 `docs/DECISIONS.md` ADR-037（追加式，不动他人内容）。
+- 升级：本册结论收尾时追加为 `docs/decisions.md` ADR-037（追加式，不动他人内容）。
 - 若真机背书推翻 §6 任一前提（尤其 1/2），本册作废重裁，回到 R1 停线预案。
