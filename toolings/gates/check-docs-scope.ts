@@ -2,13 +2,13 @@
 // 文档口径门禁（ADR-030 品牌迁移的机械执行机构）：
 // 旧 npm scope 口径（见下方 LEGACY_SCOPE_PATTERN，正确写法 `@kuro-bridge/`）全仓禁用。
 // 注意：本文件自身不得出现旧口径字面量（否则门禁打自己），展示串从正则 source 派生。
-// 遍历/跳过语义单一权威在 lib/repo-walk.mjs（与 check-docs-links 共用）。
+// 遍历/跳过语义单一权威在 lib/repo-walk.ts（与 check-docs-links 共用）。
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { listRepoFiles, repoRoot, toPosix } from "./lib/repo-walk.mjs";
+import { listRepoFiles, repoRoot, toPosix } from "./lib/repo-walk.ts";
 
 // 只扫文本文件：源码、文档、构建脚本、清单（覆盖 TS/Java/脚本/配置全口径）
-const TEXT_EXTENSIONS = new Set([
+const TEXT_EXTENSIONS: ReadonlySet<string> = new Set([
     "md",
     "ts",
     "mjs",
@@ -33,13 +33,12 @@ const TEXT_EXTENSIONS = new Set([
 const LEGACY_SCOPE_PATTERN = /@kurobridge\//;
 const LEGACY_SCOPE = LEGACY_SCOPE_PATTERN.source.replace("\\/", "/");
 
-const failures = [];
+const failures: string[] = [];
 let scanned = 0;
 for (const rel of listRepoFiles(repoRoot, TEXT_EXTENSIONS)) {
     const lines = readFileSync(join(repoRoot, rel), "utf8").split(/\r?\n/);
     scanned += 1;
-    for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
+    for (const [i, line] of lines.entries()) {
         if (LEGACY_SCOPE_PATTERN.test(line)) {
             failures.push(`${toPosix(rel)}:${i + 1}:${line.trim()}`);
         }

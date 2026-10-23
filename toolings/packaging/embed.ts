@@ -695,7 +695,7 @@ function readCentralDirectory(zip: Buffer): ZipEntry[] {
 /**
  * 嵌入目标清单（SSOT）：paper 与 fabric 各一份同内容产物——manifest 契约不变，
  * :core EmbeddedRuntime 原样消费（多平台共享同一解压链，platforms/je/fabric/docs/design.md §6）。
- * 新增平台 = 在此追加一行 + build-jar.mjs 追加对应 gradle 构件步骤。
+ * 新增平台 = 在此追加一行 + build-jar.ts 追加对应 gradle 构件步骤。
  */
 export function defaultEmbedTargets(repoRoot: string): string[] {
     return [

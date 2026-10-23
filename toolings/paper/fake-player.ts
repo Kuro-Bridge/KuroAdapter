@@ -1,5 +1,5 @@
 /**
- * toolings/paper/fake-player.mjs —— 离线模式假人（DEBT-1 阶段 5 沙盒验收测试资产，零依赖）
+ * toolings/paper/fake-player.ts —— 离线模式假人（DEBT-1 阶段 5 沙盒验收测试资产，零依赖）
  *
  * 用最小 MC Java 协议（1.21.4 = protocol 769，online-mode=false 免加密）实现：
  * 登录 → configuration 应答（finish_configuration ack / keepalive / known packs）→
@@ -8,7 +8,7 @@
  * 动机（DEBT1-NOTES）：§4.7（游戏内 /kill → death 帧与 §4.9（kurobot.relay negate → 聊天
  * 不转发）都需要真实玩家在线触发 Bukkit 事件，无人值守会话用本假人充当玩家。
  *
- * 用法：node toolings/paper/fake-player.mjs <playerName> <host> <port> [chat <文本...>]
+ * 用法：node toolings/paper/fake-player.ts <playerName> <host> <port> [chat <文本...>]
  *   - join 后等待 ~1.5s 再发聊天（等 PLAY 态稳定）；不传 chat 则只挂机保活。
  *   - 生命周期 90s 自动退出；收到 S2C disconnect / socket 错误立即退出（exit 1）。
  * 零依赖：node:net / node:zlib / node:crypto。
@@ -24,31 +24,36 @@ const LIFETIME_MS = 90_000;
 const [playerName, host, port, ...restArgs] = process.argv.slice(2);
 if (playerName === undefined || host === undefined || port === undefined) {
     process.stderr.write(
-        "[fake-player] 用法：node fake-player.mjs <playerName> <host> <port> [chat <文本...>]\n",
+        "[fake-player] 用法：node fake-player.ts <playerName> <host> <port> [chat <文本...>]\n",
     );
     process.exit(2);
 }
-let chatMessage = null;
+let chatMessage: string | null = null;
 if (restArgs[0] === "chat" && restArgs.length >= 2) {
     chatMessage = restArgs.slice(1).join(" ");
 }
 
-function log(message) {
+function log(message: string): void {
     process.stderr.write(`[fake-player:${playerName}] ${message}\n`);
 }
 
 /** 离线玩家 UUID（对齐 Bukkit nameUUIDFromBytes("OfflinePlayer:"+name) 的 MD5 v3） */
-function offlineUuid(name) {
+function offlineUuid(name: string): Buffer {
     const digest = createHash("md5").update(`OfflinePlayer:${name}`, "utf8").digest();
-    digest[6] = (digest[6] & 0x0f) | 0x30; // version 3
-    digest[8] = (digest[8] & 0x3f) | 0x80; // variant IETF
+    digest[6] = ((digest[6] ?? 0) & 0x0f) | 0x30; // version 3
+    digest[8] = ((digest[8] ?? 0) & 0x3f) | 0x80; // variant IETF
     return digest;
 }
 
 // ---- varint / buffer 编解码 ----
 
-function writeVarint(value) {
-    const bytes = [];
+interface Varint {
+    readonly value: number;
+    readonly next: number;
+}
+
+function writeVarint(value: number): Buffer {
+    const bytes: number[] = [];
     let v = value;
     do {
         let byte = v & 0x7f;
@@ -59,12 +64,12 @@ function writeVarint(value) {
     return Buffer.from(bytes);
 }
 
-function writeString(text) {
+function writeString(text: string): Buffer {
     const payload = Buffer.from(text, "utf8");
     return Buffer.concat([writeVarint(payload.length), payload]);
 }
 
-function readVarint(buffer, offset) {
+function readVarint(buffer: Buffer, offset: number): Varint | null {
     let value = 0;
     let shift = 0;
     let index = offset;
@@ -72,7 +77,7 @@ function readVarint(buffer, offset) {
         if (index >= buffer.length) {
             return null;
         }
-        const byte = buffer[index];
+        const byte = buffer[index] ?? 0;
         value |= (byte & 0x7f) << shift;
         index += 1;
         if ((byte & 0x80) === 0) {
@@ -85,7 +90,7 @@ function readVarint(buffer, offset) {
     }
 }
 
-function concat(parts) {
+function concat(parts: readonly Uint8Array[]): Buffer {
     return Buffer.concat(parts);
 }
 
@@ -93,7 +98,7 @@ function concat(parts) {
 
 let compressionThreshold = -1;
 
-function encodePacket(packetId, ...bodyParts) {
+function encodePacket(packetId: number, ...bodyParts: Uint8Array[]): Buffer {
     const payload = concat([writeVarint(packetId), ...bodyParts]);
     if (compressionThreshold < 0) {
         return concat([writeVarint(payload.length), payload]);
@@ -107,8 +112,14 @@ function encodePacket(packetId, ...bodyParts) {
     return concat([writeVarint(framed.length), framed]);
 }
 
+interface DecodedFrame {
+    readonly packetId: number;
+    readonly body: Buffer;
+    readonly consumed: number;
+}
+
 /** 从缓冲前部解析一帧；不足返回 null，成功返回 { packetId, body, consumed } */
-function decodeFrame(buffer) {
+function decodeFrame(buffer: Buffer): DecodedFrame | null {
     const length = readVarint(buffer, 0);
     if (length === null) {
         return null;
@@ -120,33 +131,43 @@ function decodeFrame(buffer) {
     let payload = buffer.subarray(length.next, total);
     if (compressionThreshold >= 0) {
         const dataLength = readVarint(payload, 0);
+        if (dataLength === null) {
+            return null;
+        }
         payload = payload.subarray(dataLength.next);
         if (dataLength.value > 0) {
             payload = inflateSync(payload);
         }
     }
     const packetId = readVarint(payload, 0);
+    if (packetId === null) {
+        return null;
+    }
     return { packetId: packetId.value, body: payload.subarray(packetId.next), consumed: total };
 }
 
 // ---- 状态机 ----
 
 const socket = new net.Socket();
-let readBuffer = Buffer.alloc(0);
-let state = "login"; // login → configuration → play
+let readBuffer: Buffer = Buffer.alloc(0);
+let state: "login" | "configuration" | "play" = "login"; // login → configuration → play
 let chatSent = false;
+const seenPlayPackets = new Set<number>();
 
-function send(packetId, ...bodyParts) {
+function send(packetId: number, ...bodyParts: Uint8Array[]): void {
     const frame = encodePacket(packetId, ...bodyParts);
     socket.write(frame);
 }
 
-function handlePacket(packetId, body) {
+function handlePacket(packetId: number, body: Buffer): void {
     if (state === "login") {
         if (packetId === 0x03) {
             // set_compression
-            compressionThreshold = readVarint(body, 0).value;
-            log(`set_compression：threshold=${compressionThreshold}`);
+            const threshold = readVarint(body, 0);
+            if (threshold !== null) {
+                compressionThreshold = threshold.value;
+                log(`set_compression：threshold=${compressionThreshold}`);
+            }
             return;
         }
         if (packetId === 0x02) {
@@ -172,6 +193,9 @@ function handlePacket(packetId, body) {
         }
         if (packetId === 0x00) {
             const textLength = readVarint(body, 0);
+            if (textLength === null) {
+                return;
+            }
             log(
                 `登录被拒（disconnect）：${body
                     .subarray(textLength.next, textLength.next + textLength.value)
@@ -206,6 +230,9 @@ function handlePacket(packetId, body) {
         }
         if (packetId === 0x02) {
             const textLength = readVarint(body, 0);
+            if (textLength === null) {
+                return;
+            }
             log(
                 `configuration 被踢：${body
                     .subarray(textLength.next, textLength.next + textLength.value)
@@ -221,19 +248,17 @@ function handlePacket(packetId, body) {
         // 不确认则玩家停在半生成状态（实测 health 0、怪物不索敌、死亡事件不触发）
         if (packetId === 0x42) {
             const teleportId = readVarint(body, 0);
+            if (teleportId === null) {
+                return;
+            }
             send(0x00, writeVarint(teleportId.value));
-            globalThis.__teleportConfirmed = true;
             log(`已确认传送（id=${teleportId.value}）`);
             return;
         }
         // keepalive 响应等 ID 随版本漂移（1.21.4 实测 0x18 被解码为 interact），误发包反而
         // 立即被踢；本假人的证据窗口（join → chat/kill）只有几秒，静默挂机即可
-        if (globalThis.__seenPlayPackets === undefined) {
-            globalThis.__seenPlayPackets = new Set();
-        }
-        const seen = globalThis.__seenPlayPackets;
-        if (!seen.has(packetId)) {
-            seen.add(packetId);
+        if (!seenPlayPackets.has(packetId)) {
+            seenPlayPackets.add(packetId);
             log(`play 包 id=0x${packetId.toString(16)} len=${body.length}（首见，忽略）`);
         }
         return;
@@ -241,8 +266,8 @@ function handlePacket(packetId, body) {
 }
 
 /** serverbound chat（1.21.4 C2S play = 0x07）。body：msg/ts/salt/无签名 + LastSeenMessages.Update。 */
-function sendChat() {
-    if (chatSent || state !== "play") {
+function sendChat(): void {
+    if (chatSent || state !== "play" || chatMessage === null) {
         return;
     }
     chatSent = true;
@@ -261,10 +286,10 @@ function sendChat() {
     log(`已发送聊天：${chatMessage}`);
 }
 
-socket.on("data", (chunk) => {
+socket.on("data", (chunk: Buffer) => {
     readBuffer = concat([readBuffer, chunk]);
     for (;;) {
-        let frame;
+        let frame: DecodedFrame | null;
         try {
             frame = decodeFrame(readBuffer);
         } catch (error) {
@@ -279,7 +304,7 @@ socket.on("data", (chunk) => {
     }
 });
 
-socket.on("error", (error) => {
+socket.on("error", (error: Error) => {
     log(`socket 错误：${error.message}`);
     process.exit(1);
 });

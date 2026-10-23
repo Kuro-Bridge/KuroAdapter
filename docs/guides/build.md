@@ -12,7 +12,7 @@ gradlew :paper:shadowJar          # kurobridge-0.1.0.jar
 gradlew :fabric:remapJar          # kurobridge-fabric-0.1.0.jar
 ```
 
-根命令 `pnpm build:jar` 依次执行以上四步（`toolings/packaging/build-jar.mjs`）。顺序是硬约束：先有 TS 产物，才能嵌包，才能打 JAR。
+根命令 `pnpm build:jar` 依次执行以上四步（`toolings/packaging/build-jar.ts`）。顺序是硬约束：先有 TS 产物，才能嵌包，才能打 JAR。
 
 ## 产物
 

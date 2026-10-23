@@ -12,7 +12,7 @@
 // 2) 协议版本族（两份）：已安装 npm 包清单 version
 //    （bridge/core/node_modules/@kuro-bridge/protocol/package.json，期望来源）≡
 //    platforms/je/core/.../KurobridgeVersions.java 的 PROTOCOL_VERSION（Java 硬编码副本）。
-//    等价性依据：KuroProtocol 发布侧 scripts/assert-version.mjs 机械断言
+//    等价性依据：KuroProtocol 发布侧 scripts/assert-version.ts 机械断言
 //    「包 version ≡ src/meta.ts PROTOCOL_VERSION」（0.4.0 实证对齐），故 npm 清单 version
 //    即协议 SSOT（ADR-035 结论 3：锚点换源，先于镜像目录删除落库）。
 import { readFileSync } from "node:fs";
@@ -20,26 +20,29 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
-const failures = [];
+const failures: string[] = [];
 
-function readText(relativePath) {
+function readText(relativePath: string): string {
     return readFileSync(join(repoRoot, relativePath), "utf8");
 }
 
 /** JSON 文件的 version 字段；缺失/非字符串 → undefined */
-function jsonVersion(relativePath) {
-    const raw = JSON.parse(readText(relativePath));
-    const version = raw.version;
+function jsonVersion(relativePath: string): string | undefined {
+    const raw: unknown = JSON.parse(readText(relativePath));
+    if (typeof raw !== "object" || raw === null) {
+        return undefined;
+    }
+    const version = (raw as { version?: unknown }).version;
     return typeof version === "string" && version.length > 0 ? version : undefined;
 }
 
 /** 文本内首个捕获组（如 BRIDGE_VERSION = "0.1.0"）；无匹配 → undefined */
-function firstMatch(relativePath, pattern) {
+function firstMatch(relativePath: string, pattern: RegExp): string | undefined {
     const match = pattern.exec(readText(relativePath));
     return match === null ? undefined : match[1];
 }
 
-function check(label, expected, actual) {
+function check(label: string, expected: string | undefined, actual: string | undefined): void {
     if (expected !== actual) {
         failures.push(`${label}：期望 ${expected ?? "(缺失)"}，实际 ${actual ?? "(缺失)"}`);
     }
@@ -73,7 +76,7 @@ if (expectedBridge === undefined) {
     // 少于 2 处即门禁红；languageVersion 等其它键不以裸 `version` 起始，不会误匹配）
     const gradleVersions = [
         ...readText("platforms/je/build.gradle.kts").matchAll(/^[ \t]*version = "([^"]+)"/gm),
-    ].map((match) => match[1]);
+    ].map((match) => match[1] ?? "");
     if (gradleVersions.length < 2) {
         failures.push(
             `platforms/je/build.gradle.kts 的 \`version = "..."\` 出现 ${gradleVersions.length} 处（少于 2 处：根级与 subprojects 应各一）`,
@@ -91,7 +94,7 @@ if (expectedBridge === undefined) {
 
 // ---- 协议版本族（两份） ----
 
-let expectedProtocol;
+let expectedProtocol: string | undefined;
 try {
     expectedProtocol = jsonVersion("bridge/core/node_modules/@kuro-bridge/protocol/package.json");
 } catch {

@@ -45,7 +45,12 @@
     // vitest.config.ts 为根目录 config ts（与 KuroProtocol 对齐口径，基线 §2.1/§2.4 收编）。
     "include": [
         "bridge/*/src",
-        "toolings/packaging/*",
+        // 开发/沙盒用 stub 协议端（node 直接跑 peer.ts）
+        "bridge/*/stub",
+        // toolings 全部 TS 脚本与单测（含 gates / build / packaging / paper）
+        "toolings/**/*.ts",
+        // Endstone C++ 集成测试的 Node 桩
+        "platforms/be/endstone/tests/fixtures/*.ts",
         "vitest.config.ts"
     ]
 }

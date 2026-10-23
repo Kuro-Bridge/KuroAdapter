@@ -103,10 +103,10 @@ KuroAdapter/
 │       ├── lse/         # LeviLamina 平台适配（壳 + Node shim）
 │       └── endstone/    # Endstone 适配（C++ 薄壳 + portable 层）
 ├── toolings/
-│   ├── build/           # platforms.mjs：je | endstone | all
+│   ├── build/           # platforms.ts：je | endstone | all
 │   ├── gates/           # docs scope / docs links / versions
 │   ├── lib/             # 构建脚本共用进程助手
-│   ├── packaging/       # embed.ts + build-jar.mjs
+│   ├── packaging/       # embed.ts + build-jar.ts
 │   └── paper/           # 沙盒入口 paper.cmd 与假人
 ├── docs/                # 本目录
 ├── sandbox/             # 运行产物（gitignore）

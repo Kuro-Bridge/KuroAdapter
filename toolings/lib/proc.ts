@@ -1,7 +1,7 @@
 /**
- * toolings/lib/proc.mjs —— 跨壳进程助手（toolings 编排脚本共用）
+ * toolings/lib/proc.ts —— 跨壳进程助手（toolings 编排脚本共用）
  *
- * 收敛 packaging/build-jar.mjs 与 build/platforms.mjs 各持一份的三件套：
+ * 收敛 packaging/build-jar.ts 与 build/platforms.ts 各持一份的三件套：
  * run（子进程直通终端 + 失败即退）、resolveGradlew（wrapper 跨平台选择）、
  * gradleUtf8Env（cmd.exe GBK 代码页下 gradle 中文日志乱码缓解）。
  * 语义与抽取前逐字节一致；新编排脚本一律经此调用，不再各写一份。
@@ -13,13 +13,27 @@ import { spawnSync } from "node:child_process";
 import { chmodSync, existsSync } from "node:fs";
 import { join } from "node:path";
 
-export const IS_WIN32 = process.platform === "win32";
+export interface RunOptions {
+    /** 子进程工作目录（缺省继承当前进程） */
+    readonly cwd?: string;
+    /** 子进程环境变量（缺省继承 process.env） */
+    readonly env?: NodeJS.ProcessEnv;
+    /** 经 shell 解析命令（Windows 的 .bat/.cmd 必须开启） */
+    readonly shell?: boolean;
+}
+
+export const IS_WIN32: boolean = process.platform === "win32";
 
 /**
  * 同步跑一条命令，stdio inherit 直通终端（MVP1-NOTES M-18：经管道转接会挂起客户端），
  * 非零退出直接终止编排（退出码透传）。
  */
-export function run(label, command, args, options = {}) {
+export function run(
+    label: string,
+    command: string,
+    args: readonly string[],
+    options: RunOptions = {},
+): void {
     // shell 模式下 Node 传 args 会触发 DEP0190 警告——改为拼接命令字符串
     //（调用方参数均无空格/特殊字符，拼接安全）
     const useShell = options.shell === true;
@@ -41,7 +55,7 @@ export function run(label, command, args, options = {}) {
  * 无 shell 直接 spawn .bat，调用方须配 shell: true）；POSIX → ./gradlew（chmod +x 兜底，
  * 只读工作区等场景放行——wrapper 已有执行位时无需处理）。
  */
-export function resolveGradlew(dir) {
+export function resolveGradlew(dir: string): string {
     if (IS_WIN32) {
         return "gradlew.bat";
     }
@@ -57,7 +71,7 @@ export function resolveGradlew(dir) {
 }
 
 /** gradle 子进程注入 UTF-8 输出编码；拼接保留调用方既有 JAVA_TOOL_OPTIONS。 */
-export function gradleUtf8Env() {
+export function gradleUtf8Env(): NodeJS.ProcessEnv {
     const utf8Flags = "-Dstdout.encoding=UTF-8 -Dstderr.encoding=UTF-8";
     const existingToolOptions = process.env["JAVA_TOOL_OPTIONS"] ?? "";
     return {

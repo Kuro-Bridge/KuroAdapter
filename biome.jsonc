@@ -9,7 +9,7 @@
         "ignoreUnknown": false,
         "includes": [
             "bridge/**/src/**/*.{ts,tsx,mts,cts,js,mjs,cjs,jsx}",
-            "bridge/**/stub/**/*.mjs",
+            "bridge/**/stub/**/*.ts",
             "platforms/be/**/*.{ts,tsx,mts,cts,js,mjs,cjs,jsx}",
             "toolings/**/*.{ts,js,mjs}"
         ]
@@ -124,13 +124,13 @@
         },
         {
             // 白名单（批次 2026-09-19-modernize，基线 §10 终裁 2：扩面暴露的重构级违例逐条
-            // 入册、本波零重构）。stub/peer.mjs 为 JAR 内嵌运行时脚本（384 行，决策 D-06
+            // 入册、本波零重构）。stub/peer.ts 为 JAR 内嵌运行时脚本（384 行，决策 D-06
             // 沙盒验收端），拆函数触碰发布物字节，超出「零行为变更」红线授权面。逐条：
             // - runAutoSequence：复杂度 24（env 驱动的验收自动化序列，三分支各自循环+跳过）
             // - handleLine：复杂度 18（stdin 交互命令三分发，各带用法校验）
             // - connect 的 message 监听器：复杂度 23（协议帧逐类型分发，hello_ack 分支嵌套）
             // 域内其余规则（格式、noConsole 等）全量生效，仅豁免本条重构级规则。
-            "includes": ["bridge/**/stub/**/*.mjs"],
+            "includes": ["bridge/**/stub/**/*.ts"],
             "linter": {
                 "rules": {
                     "complexity": {
@@ -140,11 +140,11 @@
             }
         },
         {
-            // 白名单（同上惯例，2026-09-20 构建入口统一批补录）：sandbox/fake-player.mjs 入库
+            // 白名单（同上惯例，2026-09-20 构建入口统一批补录）：sandbox/fake-player.ts 入库
             // toolings/paper/ 后纳入检查面，handlePacket 复杂度 25（MC 协议三态逐包分发，
             // login/configuration/play 各带版本特有应答）。真机验收资产（DEBT-1 阶段 5），
             // 行为冻结优先于拆函数；域内其余规则全量生效，仅豁免本条重构级规则。
-            "includes": ["toolings/paper/fake-player.mjs"],
+            "includes": ["toolings/paper/fake-player.ts"],
             "linter": {
                 "rules": {
                     "complexity": {

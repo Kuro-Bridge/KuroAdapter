@@ -71,7 +71,7 @@
 | QR URL 正则 best-effort | napuketto 改日志文案会失效（PNG 路径不受影响） |
 | quick-login 登录历史不稳定 | 每次重启可能需重扫码（napuketto 侧） |
 | vanilla 命令输出捕获依赖 log4j 主线程窗口 | 并发混行理论风险 |
-| `fake-player.mjs` 无 play 态 keepalive | 仅 30s 验收窗 |
+| `fake-player.ts` 无 play 态 keepalive | 仅 30s 验收窗 |
 
 ## 已收敛（不要重复报告）
 

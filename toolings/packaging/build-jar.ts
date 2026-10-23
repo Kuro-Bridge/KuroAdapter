@@ -1,11 +1,11 @@
 /**
- * toolings/packaging/build-jar.mjs —— build:jar 全链路编排（DEBT-2，跨壳）
+ * toolings/packaging/build-jar.ts —— build:jar 全链路编排（DEBT-2，跨壳）
  *
  * 步骤：pnpm -r build（TS 产物）→ toolings/packaging/embed.ts（node.exe 等进各平台 resources，
  * 见 embed.ts defaultEmbedTargets）→ gradle :paper:shadowJar（Paper 可分发 JAR）→
  * gradle :fabric:remapJar（Fabric mod JAR，shadow 合并 + loom 重映射）。
  * 替代 package.json 里的直排命令——原写法把 gradlew.bat 写死（M2-03），POSIX 贡献者不可用；
- * wrapper 选择 / UTF-8 注入 / 失败即退经 toolings/lib/proc.mjs 共享（与 build/platforms.mjs
+ * wrapper 选择 / UTF-8 注入 / 失败即退经 toolings/lib/proc.ts 共享（与 build/platforms.ts
  * 同源，此前两处各持一份）。
  *
  * 约束：零新依赖（node:child_process）；gradle 输出走 stdio inherit（MVP1-NOTES M-18：
@@ -16,7 +16,7 @@
 
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { gradleUtf8Env, IS_WIN32, resolveGradlew, run } from "../lib/proc.mjs";
+import { gradleUtf8Env, IS_WIN32, resolveGradlew, run } from "../lib/proc.ts";
 
 const ROOT = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
 

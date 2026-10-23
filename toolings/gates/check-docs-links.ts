@@ -2,12 +2,12 @@
 // 文档死链门禁：扫描全仓 *.md 的相对链接，目标文件必须真实存在（目录也算有效目标）。
 // 只查相对路径链接；外部链接（http:/https:/mailto:/data: 等 URI scheme 形式）与
 // 纯页内锚点（#fragment）不校验。
-// 遍历/跳过语义单一权威在 lib/repo-walk.mjs（与 check-docs-scope 共用）。
+// 遍历/跳过语义单一权威在 lib/repo-walk.ts（与 check-docs-scope 共用）。
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { listRepoFiles, repoRoot, toPosix } from "./lib/repo-walk.mjs";
+import { listRepoFiles, repoRoot, toPosix } from "./lib/repo-walk.ts";
 
-const MARKDOWN_EXTENSIONS = new Set(["md"]);
+const MARKDOWN_EXTENSIONS: ReadonlySet<string> = new Set(["md"]);
 
 // URI scheme 前缀（http: https: mailto: data: ftp: …）一律视为外链，不校验
 const URI_SCHEME_PATTERN = /^[a-zA-Z][a-zA-Z0-9+.-]*:/;
@@ -23,7 +23,7 @@ const LINK_DEFINITION_PATTERN = /^ {0,3}\[[^\]]+\]:\s*(.+)$/;
 const WHITESPACE_PATTERN = /\s/;
 
 // 从链接捕获串里拆出干净的 target：去 <...> 包裹、去 "标题" 尾缀、去 #锚点、尽力解码 %xx
-function normalizeTarget(rawTarget) {
+function normalizeTarget(rawTarget: string): string | null {
     let target = rawTarget.trim();
     if (target.startsWith("<") && target.endsWith(">")) {
         target = target.slice(1, -1);
@@ -31,7 +31,7 @@ function normalizeTarget(rawTarget) {
     // 形如 `./a.md "标题"`：按空白拆，只取第一段
     const spaceAt = target.search(WHITESPACE_PATTERN);
     if (spaceAt !== -1) target = target.slice(0, spaceAt);
-    target = target.split("#")[0];
+    target = target.split("#")[0] ?? "";
     if (target === "") return null; // 纯页内锚点，不校验
     try {
         target = decodeURIComponent(target);
@@ -41,8 +41,8 @@ function normalizeTarget(rawTarget) {
     return target;
 }
 
-function collectLineTargets(line) {
-    const targets = [];
+function collectLineTargets(line: string): string[] {
+    const targets: string[] = [];
     for (const match of line.matchAll(INLINE_LINK_PATTERN)) {
         const target = normalizeTarget(match[2] ?? "");
         if (target !== null) targets.push(target);
@@ -55,12 +55,12 @@ function collectLineTargets(line) {
     return targets;
 }
 
-const failures = [];
+const failures: string[] = [];
 const files = listRepoFiles(repoRoot, MARKDOWN_EXTENSIONS);
 for (const rel of files) {
     const lines = readFileSync(join(repoRoot, rel), "utf8").split(/\r?\n/);
-    for (let i = 0; i < lines.length; i++) {
-        for (const target of collectLineTargets(lines[i])) {
+    for (const [i, line] of lines.entries()) {
+        for (const target of collectLineTargets(line)) {
             if (URI_SCHEME_PATTERN.test(target)) continue; // 外链不校验
             const resolved = join(dirname(join(repoRoot, rel)), target);
             if (!existsSync(resolved)) {

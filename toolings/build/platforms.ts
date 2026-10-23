@@ -1,5 +1,5 @@
 /**
- * toolings/build/platforms.mjs —— 平台侧构建统一入口（跨壳）
+ * toolings/build/platforms.ts —— 平台侧构建统一入口（跨壳）
  *
  * 背景：三侧构建此前只有 TS 侧有根级入口（pnpm -r build / pnpm check）；Java 侧要手动
  * cd platforms/je 跑 gradlew，C++ 侧（endstone）更是只有 CI 里三条裸命令。本脚本把平台
@@ -11,19 +11,19 @@
  *              windows-clang-cl 仍是手动 SOP，见 platforms/be/endstone/readme.md）
  *   all      → je + endstone（TS 侧不在此重复：pnpm -r build / pnpm check 已覆盖）
  *
- * 约束：零新依赖；gradle 侧复用 toolings/lib/proc.mjs（wrapper 选择与 UTF-8 注入与
- * build-jar.mjs 同源）。ctest 集成目标缺 node.exe 时自跳过（endstone readme 语义）。
+ * 约束：零新依赖；gradle 侧复用 toolings/lib/proc.ts（wrapper 选择与 UTF-8 注入与
+ * build-jar.ts 同源）。ctest 集成目标缺 node.exe 时自跳过（endstone readme 语义）。
  *
  * 用法：pnpm build:je | pnpm build:endstone | pnpm build:all（仓库根）
  */
 
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { gradleUtf8Env, IS_WIN32, resolveGradlew, run } from "../lib/proc.mjs";
+import { gradleUtf8Env, IS_WIN32, resolveGradlew, run } from "../lib/proc.ts";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
-function buildJe() {
+function buildJe(): void {
     const jeDir = join(ROOT, "platforms", "je");
     run("build:je", resolveGradlew(jeDir), ["build"], {
         cwd: jeDir,
@@ -32,7 +32,7 @@ function buildJe() {
     });
 }
 
-function buildEndstone() {
+function buildEndstone(): void {
     const beDir = join(ROOT, "platforms", "be", "endstone");
     // cmake/ctest 都是真实可执行文件（非 .bat），无需 shell 中介
     run("build:endstone configure", "cmake", ["--preset", "core"], { cwd: beDir });
@@ -49,7 +49,7 @@ if (target === "je") {
     buildJe();
     buildEndstone();
 } else {
-    console.error("用法：node toolings/build/platforms.mjs <je|endstone|all>");
+    console.error("用法：node toolings/build/platforms.ts <je|endstone|all>");
     process.exit(1);
 }
 console.log(`[build:platforms] 完成（${target}）`);
