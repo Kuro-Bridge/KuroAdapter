@@ -1,6 +1,6 @@
 # KuroBridge 工程指南
 
-> 本文件是项目级指令（VS Code Copilot 自动加载）。开始任何工作前，先读本文件与 `docs/STATUS.md`（现状 + 关键决策点）→ `docs/architecture.md`（架构书）→ 对应包的 `docs/design.md`。工程体系（配置/文档/工作流）借鉴 **NapukettoQQ**，规范对齐。
+> 本文件是项目级指令（VS Code Copilot 自动加载）。开始任何工作前，先读本文件与 `docs/status.md`（现状 + 已知缺口）→ `docs/architecture/overview.md`（架构）→ `docs/modules/` 下对应模块文档。工程体系（配置/文档/工作流）借鉴 **NapukettoQQ**，规范对齐。
 
 ## 项目是什么
 
@@ -17,7 +17,7 @@ KuroBridge：MC 服务器 ↔ 社交平台群服互通插件。Paper JAR + 内�
    协议演进唯一路径 = KuroProtocol 四件套同改（schema + peer-guide + fixtures + changelog）
    + 发版，本仓只升依赖版本号。
    任何文件禁止手写消息类型，必须 `import { ... } from "@kuro-bridge/protocol"`。
-   `docs/protocol/` 只放说明文档（peer-guide 已退位为迁移指针）。
+   `docs/reference/protocol.md` 只放说明文档（权威契约在 KuroProtocol 仓）。
 5. **kurobridge 永远是 WS 服务端角色**：对端主动连入；只认 `kurobridge-ws` 协议，不关心对端是谁。embedded / external 只是打包差异，不是架构差异。
 6. **不采用 OneBot 11**：方向不匹配（OneBot 是「机器人→QQ」，群服互通是「服务器↔群」）。
 7. **依赖方向**（只允许向下依赖）：
@@ -27,12 +27,12 @@ KuroBridge：MC 服务器 ↔ 社交平台群服互通插件。Paper JAR + 内�
    bridge/core    依赖 protocol；零 Node API、零框架
    bridge/embedded  依赖 core + protocol；esbuild 单文件
    platforms/je   Gradle 多模块：:core（IPC/进程管理，零 Bukkit API）+ :paper（Paper 适配，compileOnly）；不含协议逻辑
-   platforms/be   LSE TS（编译为 JS），复用 bridge/core（QuickJS 可跑）
+   platforms/be   LSE TS（编译为 JS，复用 bridge/core）+ Endstone C++ 薄壳（portable 层 + 内嵌 Node）
    ```
 
    > **koishi-plugin-kurobridge 是独立仓库**（ADR-018）：作为 `kurobridge-ws` 的官方参考对端，依赖 `@kuro-bridge/protocol` 发布版本，不在本仓库内开发。
 
-8. **IPC 唯一通道**：Java 薄壳 ↔ Node 子进程走 **stdin/stdout JSON-lines**，零端口零配置。Node 对外 WS 用动态端口（`listen(0)`），Java 侧不碰任何端口。
+8. **IPC 通道**：JE / Endstone 的薄壳 ↔ Node 子进程走 **stdin/stdout JSON-lines**，零端口零配置。Node 对外 WS 缺省动态端口（`listen(0)`），薄壳不监听对外端口。LSE 因 `newProcess` 不暴露 stdio，改用 127.0.0.1 回环 WS 游戏通道（ADR-037），帧方言与生命周期语义不变。
 9. **不做的事**：自研通用消息语义层（平台渲染交给独立仓库 koishi-plugin-kurobridge）、嵌入式 QQ 协议端（napukettoqq 只做协议端）、无理由的 `any`、Java 侧业务逻辑。
 
 ## 工作流
@@ -57,13 +57,13 @@ pnpm build:jar          # 全链路：TS 构建 → 嵌入式打包 → gradle :
 
 **构建顺序（硬约束）**：`pnpm -r build`（bridge/embedded 产物）→ `toolings/packaging/embed.ts` 嵌入式打包（node 官方 dist 下载校验 + napuketto 嵌包，产出进 `platforms/je/paper/src/main/resources/embedded/`）→ `gradle :paper:shadowJar`。本地 `pnpm build:jar` 经 `toolings/packaging/build-jar.mjs` 链式执行四步（TS 构建 → embed 嵌包 → shadowJar → fabric remapJar）。
 
-**CI（ADR-032，结构经 ADR-035 结论 4 简化）**：`.github/workflows/ci.yml` 三 job——ts job 只检出本仓，跑 `pnpm check && pnpm test`（check 链自含 build 首环，与本地 pre-commit 同构；lefthook 串行 check → test，ADR-035）；java job 经 mise 提供 JDK 25 跑 `gradlew build`；endstone job 于 windows runner 跑 portable 层 `cmake --preset core && cmake --build --preset core && ctest --preset core`（本地等价 = `pnpm build:endstone`）。push master / PR 触发。
+**CI（ADR-032，结构经 ADR-035 结论 4 简化）**：`.github/workflows/ci.yml` 三 job——ts job 只检出本仓，跑 `pnpm check && pnpm test`（check 链自含 build 首环，与本地 pre-commit 同构；lefthook 串行 check → test，ADR-035）；java job 经 mise 提供 JDK 25 跑 `gradlew build`；endstone job 于 windows runner 跑 portable 层 `cmake --preset core && cmake --build --preset core && ctest --preset core`（本地等价 = `pnpm build:endstone`）。push main / PR 触发。
 
 **多版本策略（ADR-021）**：`:core` 版本无关（零 MC API）；Paper 单 jar 通吃；Fabric/NeoForge 按版本矩阵构建（每 MC 版本一个 jar）；Velocity 单 jar。改版本只重编适配层，不动 `:core` 与 `bridge/core`。
 
 ## 代码风格（biome 已强制，手动也须遵守）
 
-- 缩进 **space+4**，行尾 **LF**，双引号 + 分号 + 尾逗号，行宽 100（对齐 NapukettoQQ 的 biome.json）。
+- 缩进 **space+4**，行尾 **LF**，双引号 + 分号 + 尾逗号，行宽 100（对齐 NapukettoQQ 的 biome.jsonc）。
 - 类型安全：`strict` 全家桶、`noUncheckedIndexedAccess`、`exactOptionalPropertyTypes`、`verbatimModuleSyntax`、`erasableSyntaxOnly`（产物可被 QuickJS 直接跑，不依赖 tslib/装饰器）、`noUnusedLocals/Parameters` 均为 error。
 - 类型导入一律 `import type`；禁止 `any`（例外必须注释说明原因）。
 - `noFloatingPromises` 为 error：异步调用必须 `await` 或显式 `.catch`。
@@ -72,12 +72,12 @@ pnpm build:jar          # 全链路：TS 构建 → 嵌入式打包 → gradle :
 
 ## 实现模式（重要）
 
-- **一个模块一个模块实现**：开工前先读 `docs/STATUS.md` 与 `docs/architecture.md`、对应包的 `docs/design.md`，按其中的「实现顺序」推进，不跨模块跳跃；每完成一个模块跑一次 `pnpm check`。
+- **一个模块一个模块实现**：开工前先读 `docs/status.md` 与 `docs/architecture/overview.md`、`docs/modules/` 下对应模块文档，按其中的实现顺序推进，不跨模块跳跃；每完成一个模块跑一次 `pnpm check`。
 - **core 无全局单例**：logger / connection / state 等都是实例化对象，由 `CoreContext` 持有——多连接多进程场景每份独立，避免状态污染。
 - **新增协议端**（如外部独立协议端）→ 在 `bridge/` 内新增包，复用 core 框架（握手/心跳/请求-响应），**不改 Java、不改协议**（协议演进的唯一路径是 KuroProtocol 仓四件套同改 + 发版，本仓只升依赖版本号，ADR-031/035）。
 - **新增平台适配**（Koishi adapter）→ 在独立仓库 koishi-plugin-kurobridge 内扩展；平台渲染（富文本/颜色码/长度收敛）只出现在那个仓库，本仓库不涉及。
-- **写代码前先更新对应包的 `docs/design.md`**，设计先行。
-- **文档归档**：阶段册（`*-PROMPT.md` / `*-NOTES.md`）收尾后移入 `docs/history/`（正文不改写，在 `history/README.md` 索引表加一行）；`docs/` 根只放活文档（STATUS / architecture / DECISIONS / config-schema / protocol/）。
+- **写代码前先更新对应模块文档**（`docs/modules/*.md`；平台包内 `docs/design.md` 只保留包级实现细节），设计先行。
+- **文档规范**：`docs/` 按主题分目录（architecture / modules / reference / guides），不写阶段史、任务书或交接册；决策结论追加到 `docs/decisions.md`，现状与缺口更新 `docs/status.md`。新增文档优先并入现有主题文件。
 
 ## 环境
 
