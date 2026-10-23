@@ -421,7 +421,7 @@ export async function collectZipEntries(nodeModulesDir: string): Promise<ZipInpu
     return entries;
 }
 
-/** 腾讯闭源件红线三类（红线 5 / ADR-014 / architecture.md §9 / ADR-029 嵌包边界）：
+/** 腾讯闭源件红线三类（红线 5 / ADR-014 / docs/guides/build.md 嵌入式打包 / ADR-029 嵌包边界）：
  *  wrapper.node（腾讯闭源 NAPI 模块）、QQNT 系二进制、QQ 安装包——绝不进 JAR 不进仓。 */
 const WRAPPER_NODE_FILE = "wrapper.node";
 const QQNT_BINARY_NAME = /^QQNT.+\.(dll|exe|so|dylib)$/i;
@@ -442,7 +442,7 @@ export function assertNoTencentClosedSource(entries: readonly string[]): void {
         ) {
             throw new Error(
                 `napuketto 嵌包含腾讯闭源件：${entry}` +
-                    "（红线 5 / ADR-014 / architecture.md §9：wrapper.node、QQNT 二进制与 QQ" +
+                    "（红线 5 / ADR-014 / docs/guides/build.md 嵌入式打包：wrapper.node、QQNT 二进制与 QQ" +
                     " 安装包绝不进 JAR 不进仓，napuketto 运行期自取；请检查依赖树里混入的来源）",
             );
         }
@@ -694,7 +694,7 @@ function readCentralDirectory(zip: Buffer): ZipEntry[] {
 
 /**
  * 嵌入目标清单（SSOT）：paper 与 fabric 各一份同内容产物——manifest 契约不变，
- * :core EmbeddedRuntime 原样消费（多平台共享同一解压链，docs/design.md §6 / fabric 任务书）。
+ * :core EmbeddedRuntime 原样消费（多平台共享同一解压链，platforms/je/fabric/docs/design.md §6）。
  * 新增平台 = 在此追加一行 + build-jar.mjs 追加对应 gradle 构件步骤。
  */
 export function defaultEmbedTargets(repoRoot: string): string[] {
