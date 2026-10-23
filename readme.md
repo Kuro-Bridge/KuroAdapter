@@ -2,7 +2,7 @@
 
 > 仓名 KuroAdapter，产品名 KuroBridge（ADR-030 品牌迁移后统一；本仓文档与代码标识均以产品名行文）。
 
-MC 服务器 ↔ 社交平台群服互通插件。丢进 `plugins/` 的 Paper JAR，通过 WebSocket 与机器人框架通信，实现「游戏 ↔ 社交平台」双向互通（QQ / Telegram / Discord / WhatsApp…）。
+MC 服务器 ↔ 社交平台群服互通插件。丢进 `plugins/` 的 Paper JAR（另有 Fabric、LeviLamina/LSE、Endstone 适配），通过 WebSocket 与协议端通信，实现「游戏 ↔ 社交平台」双向互通（QQ / Telegram / Discord / WhatsApp…）。
 
 > **全自研 · MIT 开源**。参考 **HuHoBot**（Python + ymbotpy）的「业务在机器人侧 + 自定义 WS 协议」思路，但不包含其任何代码（GPL-3.0 与 MIT 不兼容）。
 
@@ -25,11 +25,11 @@ kurobridge（Paper JAR，Java 薄壳）
 
 ```
 ├─ platforms/je/     # Java 服务端适配（Gradle 多模块：core + paper + fabric + 预留 neoforge/velocity）
-├─ platforms/be/     # BE 服务端家族：lse（LSE TS，R2′ WS 回环薄壳）+ endstone（C++ 薄壳，行走骨架已落地，dll 待 clang-cl 解锁）
+├─ platforms/be/     # BE 服务端家族：lse（TS，R2′ WS 回环薄壳）+ endstone（C++ 薄壳，portable 层与 clang-cl dll 已落地）
 ├─ bridge/
 │   ├── core/         # 业务核心 + 协议服务端（TS，平台无关）
 │   └── embedded/     # 嵌入式瘦身对端（打进 JAR，无 Koishi）
-├── docs/             # 架构书 / 决策记录 / 现状 / 协议文档 / 历史册归档（history/）
+├── docs/             # 文档中心：架构 / 模块 / 参考 / 指南 / 决策 / 现状
 └── sandbox/          # 运行产物（gitignore）
 
 > koishi-plugin-kurobridge（external 官方对端）在**独立仓库**开发（ADR-018）。
@@ -39,11 +39,13 @@ kurobridge（Paper JAR，Java 薄壳）
 
 ## 文档
 
-- [架构书](docs/architecture.md) —— 分层、进程模型、红线、工具链
-- [决策记录](docs/DECISIONS.md) —— 每项拍板的来龙去脉（ADR-001~037）
-- [现状与路线](docs/STATUS.md) —— 当前进度、卡点、债务索引
-- [对端接入指南](docs/protocol/peer-guide.md) —— 已移交姊妹仓 KuroProtocol（本仓该文件为迁移指针，ADR-031）；版本以其 `src/meta.ts` 为 SSOT
-- [历史册归档](docs/history/README.md) —— 已完成阶段的任务书/实录索引
+- [文档中心](docs/README.md) —— 按任务索引全部文档
+- [架构总览](docs/architecture/overview.md) —— 定位、拓扑、模块与依赖、红线
+- [运行时](docs/architecture/runtime.md) —— 启动、握手、转发、热载、看护与关停
+- [模块文档](docs/modules/bridge-core.md) —— core / embedded / JE / LSE / Endstone
+- [配置参考](docs/reference/config.md) · [协议参考](docs/reference/protocol.md)
+- [开发指南](docs/guides/development.md) · [构建与发布](docs/guides/build.md)
+- [决策台账](docs/decisions.md)（ADR-001~037）· [项目现状](docs/status.md)
 
 ## 工程约定
 
