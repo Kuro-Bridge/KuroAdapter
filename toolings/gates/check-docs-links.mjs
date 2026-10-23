@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // 文档死链门禁：扫描全仓 *.md 的相对链接，目标文件必须真实存在（目录也算有效目标）。
 // 只查相对路径链接；外部链接（http:/https:/mailto:/data: 等 URI scheme 形式）与
-// 纯页内锚点（#fragment）不校验。docs/history/ 是冻结归档（正文不改写约定），不扫。
+// 纯页内锚点（#fragment）不校验。
 // 遍历/跳过语义单一权威在 lib/repo-walk.mjs（与 check-docs-scope 共用）。
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -75,7 +75,6 @@ if (failures.length > 0) {
     for (const f of failures) {
         console.error(`  - ${f}`);
     }
-    console.error("[check-docs-links] docs/history/ 已豁免（冻结归档，正文不改写）。");
     process.exit(1);
 }
 

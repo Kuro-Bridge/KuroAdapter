@@ -1,8 +1,6 @@
 #!/usr/bin/env node
 // 文档口径门禁（ADR-030 品牌迁移的机械执行机构）：
-// 旧 npm scope 口径（见下方 LEGACY_SCOPE_PATTERN，正确写法 `@kuro-bridge/`）在 docs/history/
-// 归档之外全仓禁用。docs/history/ 是冻结归档（正文不改写约定），历史条目里的旧口径以
-// ADR-030 映射表为准，不门禁——只门禁本仓可自行修复的内容。
+// 旧 npm scope 口径（见下方 LEGACY_SCOPE_PATTERN，正确写法 `@kuro-bridge/`）全仓禁用。
 // 注意：本文件自身不得出现旧口径字面量（否则门禁打自己），展示串从正则 source 派生。
 // 遍历/跳过语义单一权威在 lib/repo-walk.mjs（与 check-docs-links 共用）。
 import { readFileSync } from "node:fs";
@@ -55,7 +53,6 @@ if (failures.length > 0) {
     for (const f of failures) {
         console.error(`  - ${f}`);
     }
-    console.error("[check-docs-scope] docs/history/ 已豁免（冻结归档）。");
     process.exit(1);
 }
 

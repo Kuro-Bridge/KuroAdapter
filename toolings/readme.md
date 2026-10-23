@@ -7,8 +7,8 @@
 
 | 脚本 | 入口 | 作用 |
 |---|---|---|
-| `gates/check-docs-scope.mjs` | `pnpm check:docs` | 旧 npm scope 口径门禁（ADR-030；docs/history/ 冻结归档豁免） |
-| `gates/check-docs-links.mjs` | `pnpm check:docs` | 全仓 `*.md` 相对链接死链门禁（docs/history/ 不扫） |
+| `gates/check-docs-scope.mjs` | `pnpm check:docs` | 旧 npm scope 口径门禁（ADR-030） |
+| `gates/check-docs-links.mjs` | `pnpm check:docs` | 全仓 `*.md` 相对链接死链门禁 |
 | `gates/check-versions.mjs` | `pnpm check:versions` | 版本对齐：bridge 六点 + 协议两份（锚 = 已安装 npm 包清单 version，ADR-034/035） |
 | `gates/lib/repo-walk.mjs` | ——（被两个 docs 门禁共用） | 遍历/跳过语义单一权威 |
 
