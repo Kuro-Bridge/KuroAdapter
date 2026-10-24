@@ -4,14 +4,14 @@
 
 <img src=".github/assets/wordmark.svg" alt="KuroBridge" width="800">
 
-<h3>Minecraft 服务器与社交平台群服互通 · 全量线服务端</h3>
+**Minecraft 服务器与社交平台群服互通 · 全量线服务端**
 
 <sub>基于 <b>Paper / 多平台薄壳</b> + <b>内嵌 Node 业务核心</b> + <b>kurobridge-ws 服务端</b> 构建</sub>
 
 <p>
-  <img src="https://img.shields.io/badge/角色-WS%20服务端-6366F1?style=flat-square&labelColor=18181B" alt="角色：WS 服务端">&nbsp;
-  <img src="https://img.shields.io/badge/协议-kurobridge--ws%20v0.4.0-0EA5E9?style=flat-square&labelColor=18181B" alt="协议：kurobridge-ws v0.4.0">&nbsp;
-  <img src="https://img.shields.io/badge/形态-embedded%20%7C%20external-10B981?style=flat-square&labelColor=18181B" alt="形态：embedded | external">&nbsp;
+  <img src="https://img.shields.io/badge/角色-WS%20服务端-6366F1?style=flat-square&labelColor=18181B" alt="角色：WS 服务端">&emsp;
+  <img src="https://img.shields.io/badge/协议-kurobridge--ws%20v0.4.0-0EA5E9?style=flat-square&labelColor=18181B" alt="协议：kurobridge-ws v0.4.0">&emsp;
+  <img src="https://img.shields.io/badge/形态-embedded%20%7C%20external-10B981?style=flat-square&labelColor=18181B" alt="形态：embedded | external">&emsp;
   <img src="https://img.shields.io/badge/许可-MIT-8B5CF6?style=flat-square&labelColor=18181B" alt="许可：MIT">
 </p>
 
