@@ -70,12 +70,25 @@ flowchart TB
 
 ### 边界与职责（身份卡）
 
-| 本仓负责 (In Scope) | 本仓不负责 (Out of Scope) |
-| :--- | :--- |
-| **`kurobridge-ws` 服务端**：握手、鉴权、心跳、帧收发与频道级路由分发 | **协议契约定义**：SSOT 位于 [KuroProtocol](https://github.com/Kuro-Bridge/KuroProtocol)，本仓仅经 npm 依赖消费 |
-| **平台无关业务核心 (`bridge/core`)**：频道绑定、聊天桥接、命令与状态查询转发 | **官方对端实现**：`Adapter-koishi` 独立成仓维护（详见 ADR-018） |
-| **JE / BE 跨平台薄壳**：Paper、Fabric、LSE 已落地；Endstone 待真机联调 | **聊天平台适配**：QQ / Telegram / Discord 等协议对接由对端侧框架承担 |
-| **双形态打包分发**：提供 `embedded`（内嵌 `napuketto 0.1.20`）与 `external` 形态 | **宿主运行环境**：MC 服务端本体、Java 运行时及外部机器人实例由用户自备 |
+**本仓负责**
+
+* **`kurobridge-ws` 服务端**：握手、鉴权、心跳、帧收发与频道级路由分发
+
+* **平台无关业务核心（`bridge/core`）**：频道绑定、聊天桥接、命令与状态查询转发
+
+* **JE / BE 跨平台薄壳**：Paper、Fabric、LSE 已落地；Endstone 待真机联调
+
+* **双形态打包分发**：提供 `embedded`（内嵌 `napuketto 0.1.20`）与 `external` 形态
+
+**本仓不负责**
+
+* **协议契约定义**：SSOT 位于 [KuroProtocol](https://github.com/Kuro-Bridge/KuroProtocol)，本仓仅经 npm 依赖消费
+
+* **官方对端实现**：`Adapter-koishi` 独立成仓维护（详见 ADR-018）
+
+* **聊天平台适配**：QQ / Telegram / Discord 等协议对接由对端侧框架承担
+
+* **宿主运行环境**：MC 服务端本体、Java 运行时及外部机器人实例由用户自备
 
 ---
 
@@ -124,29 +137,47 @@ flowchart TB
 
 ### 双形态对照（架构同源，仅打包与启用策略不同）
 
-| 维度 | `embedded`（内嵌开箱形态） | `external`（外部接入形态） |
-| :--- | :--- | :--- |
-| **适用场景** | 单机服主快速部署，无需额外部署机器人框架 | 已有独立 Koishi / NapukettoQQ 实例，或需跨机解耦部署 |
-| **内置组件** | 打包内嵌 `napuketto (0.1.20)`，开箱即可扫码登录 | 纯净服务端，不附带任何聊天平台协议端 |
-| **核心配置条件** | 显式开启 `embedded.napuketto.enabled: true`（默认关闭） | 必须在 `ws.port` 中指定固定监听端口供外部连入 |
-| **底层业务核心** | 运行同一套 `bridge/core` + `kurobridge-ws` | 运行同一套 `bridge/core` + `kurobridge-ws` |
+**`embedded` · 内嵌开箱形态**
 
-* **单一配置源**：统一读取 `plugins/kurobridge/config.json`（缺失时自动生成默认模板）。
-  * **热重载生效**：`channels` / `admins` 保存即热效（`embedded` 模式 2s 轮询，或执行 `/kurobridge reload` 触发；*注：LSE 平台无热载，需重启*）。
-  * **冷重启生效**：`token` / `ws` 网络段修改后需重启服务端。完整语义参见 [配置参考](docs/reference/config.md)。
+* 面向单机服主快速部署，无需额外部署机器人框架
+
+* 打包内嵌 `napuketto (0.1.20)`，开箱即可扫码登录
+
+* 需显式开启 `embedded.napuketto.enabled: true`（默认关闭）
+
+**`external` · 外部接入形态**
+
+* 面向已有独立 Koishi / NapukettoQQ 实例，或需跨机解耦部署
+
+* 纯净服务端，不附带任何聊天平台协议端
+
+* 需在 `ws.port` 指定固定监听端口，供外部对端连入
+
+**配置生效语义**
+
+* **单一配置源**：统一读取 `plugins/kurobridge/config.json`，缺失时自动生成默认模板。
+
+* **热重载**：`channels` / `admins` 保存即生效（`embedded` 模式 2s 轮询，或执行 `/kurobridge reload`；LSE 平台无热载，需重启）。
+
+* **冷重启**：`token` / `ws` 网络段修改后需重启。完整语义参见 [配置参考](docs/reference/config.md)。
 
 ---
 
 ## 平台矩阵
 
-| 家族 | 平台 | 状态 | 架构与实现说明 |
-| :---: | :--- | :---: | :--- |
-| **JE** | **Paper** | **已实现** | **主形态**：`kurobridge-0.1.0.jar`（shadowJar，内嵌 Node 运行时与业务核心） |
-| **JE** | **Fabric** | **已实现** | 首版 Mod 薄壳（五事件对齐 Paper，chat / status 存在微小注册差异） |
-| **JE** | NeoForge | `预留` | 模块工程骨架已就位（ADR-021） |
-| **JE** | Velocity | `预留` | 模块工程骨架已就位（ADR-021） |
-| **BE** | **LeviLamina / LSE** | **已实现** | TS 薄壳（R2′ WS 回环），不支持热重载，修改配置需重启 |
-| **BE** | **Endstone** | *已构建* | `portable` 层与 `clang-cl` DLL 编译全绿，真机联调待排期 |
+**JE 家族（Java 版）**
+
+* **Paper**（已实现 · 主形态）：`kurobridge-0.1.0.jar`（shadowJar，内嵌 Node 运行时与业务核心）
+
+* **Fabric**（已实现）：首版 Mod 薄壳，五事件对齐 Paper（chat / status 存在微小注册差异）
+
+* **NeoForge / Velocity**（预留）：模块工程骨架已就位（ADR-021）
+
+**BE 家族（基岩版）**
+
+* **LeviLamina / LSE**（已实现）：TS 薄壳（R2′ WS 回环），不支持热重载，修改配置需重启
+
+* **Endstone**（已构建）：`portable` 层与 `clang-cl` DLL 编译全绿，真机联调待排期
 
 ---
 
@@ -176,7 +207,8 @@ pnpm build:jar    # 流水线：TS 构建 → 资源内嵌 → shadowJar → Fab
 }
 ```
 
-* `channels`：WS 协议端绑定的目标频道列表（自动去重保序）。游戏事件按此列表广播（Fan-out），聊天平台消息仅在命中列表时转发入服。
+* `channels`：WS 协议端绑定的目标频道列表（自动去重保序）。游戏事件按此列表广播（Fan-out），命中列表的聊天消息才转发入服。
+
 * `ws.port`：建议避开 `25565`（MC 主端口）与 `25575`（RCON 端口）。
 
 > [!IMPORTANT]
@@ -185,7 +217,9 @@ pnpm build:jar    # 流水线：TS 构建 → 资源内嵌 → shadowJar → Fab
 ### 3. 连入聊天对端
 
 * **Koishi**：安装官方插件 [`koishi-plugin-kurobridge`](https://www.npmjs.com/package/koishi-plugin-kurobridge)，将 `url` 设为 `ws://<主机>:<端口>`，`token` 与服务端保持一致。
-* 再在Koishi上安装任意适配器，即可通过这些适配器向相关群聊群服互通
+
+  再在 Koishi 上安装任意聊天平台适配器，即可与对应群聊群服互通。
+
 * **联调验证**：对端日志打印握手成功及频道绑定快照后，即可测试「群聊消息进服」与「游戏内发言回群」。对端握手、关闭码及帧语义的完整规范请查阅 [Peer Guide](https://github.com/Kuro-Bridge/KuroProtocol/blob/main/docs/peer-guide.md)。
 
 ---
@@ -199,12 +233,12 @@ pnpm check:all    # 本地全量模拟 CI 三项 Job 合体检查
 pnpm build:all    # 编译打包全平台产物
 ```
 
-* **技术栈规格**：
-  * **TypeScript**：TS 7（Biome 格式化与检查 + 严格 `tsconfig` 全家桶）。
-  * **Java 宿主**：Toolchain 25 / 字节码 Target 21，开启 `-Xlint:all -Werror` + Spotless 规范（ADR-015），构建系统采用 Gradle 9.7。
-* **架构红线与依赖方向**：
-  * `bridge/core` 保持纯粹：**零 Node.js 原生 API、零外部重型框架**（确保可平替运行于 QuickJS 环境）。
-  * 平台薄壳仅做桥接，严禁染指协议解析；协议 SSOT 仅允许通过 npm 依赖单向消费（ADR-031 / ADR-035）。
+* **TypeScript**：TS 7，Biome 格式化与检查 + 严格 `tsconfig` 全家桶。
+
+* **Java 宿主**：Toolchain 25 / 字节码 Target 21，`-Xlint:all -Werror` + Spotless 规范（ADR-015），构建系统 Gradle 9.7。
+
+* **架构红线**：`bridge/core` 保持纯粹——零 Node.js 原生 API、零外部重型框架（可平替运行于 QuickJS）；平台薄壳仅做桥接，严禁染指协议解析，协议 SSOT 仅经 npm 依赖单向消费（ADR-031 / ADR-035）。
+
 * **工程台账**：研发规约与依赖白名单见 [AGENTS.md](AGENTS.md)；架构决策记录（ADR-001 ~ 037）见 [docs/decisions.md](docs/decisions.md)；当前里程碑与技术债见 [docs/status.md](docs/status.md)。
 
 ---
