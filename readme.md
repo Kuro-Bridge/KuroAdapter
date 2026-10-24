@@ -1,31 +1,30 @@
 <div align="center">
 
-<h1 id="kurobridge">
-  <img src=".github/assets/wordmark.svg" alt="KuroBridge" width="380">
-</h1>
+<img src=".github/assets/wordmark.svg" alt="KuroBridge" width="380">
 
-**Minecraft 服务器 ↔ 社交平台群服互通 · 全量线服务端 —— Paper JAR + 内嵌 Node 业务核心 + `kurobridge-ws` WS 服务端**
+**Minecraft 服务器与社交平台群服互通 · 全量线服务端**
+
+<small>基于 Paper JAR + 内嵌 Node 业务核心 + kurobridge-ws 服务端构建</small>
 
 <p>
-  <sub>角色</sub> <code>WS 服务端（对端连入）</code>
-  &emsp;<sub>协议</sub> <code>kurobridge-ws 0.4.0</code>
-  &emsp;<sub>打包</sub> <code>embedded · external</code>
-  &emsp;<sub>许可</sub> <code>MIT</code>
+  <img src="https://img.shields.io/badge/角色-WS%20服务端-57606A?style=flat" alt="角色：WS 服务端">
+  &emsp;
+  <img src="https://img.shields.io/badge/协议-kurobridge--ws%200.4.0-4C71A3?style=flat" alt="协议：kurobridge-ws 0.4.0">
+  &emsp;
+  <img src="https://img.shields.io/badge/打包-embedded%20·%20external-3E7C7C?style=flat" alt="打包：embedded · external">
+  &emsp;
+  <img src="https://img.shields.io/badge/许可-MIT-6E7781?style=flat" alt="许可：MIT">
 </p>
 
 <p>
-  <a href="#生态定位">生态定位</a> •
-  <a href="#形态与进程模型">形态与进程模型</a> •
-  <a href="#快速开始">快速开始</a> •
-  <a href="#文档导航">文档导航</a> •
+  <a href="#生态定位">生态定位</a> ·
+  <a href="#形态与进程模型">形态与进程模型</a> ·
+  <a href="#快速开始">快速开始</a> ·
+  <a href="#文档导航">文档导航</a> ·
   <a href="#english">English</a>
 </p>
 
 </div>
-
-> [!NOTE]
-> **品牌口径**：仓名 KuroAdapter，产品名 **KuroBridge**（ADR-030 品牌迁移后统一），本仓文档与代码标识均以产品名行文。\
-> 全自研实现，以 MIT 分发；思路参考 HuHoBot 的「业务在机器人侧 + 自定义 WS 协议」，不含其任何代码（GPL-3.0 与 MIT 不兼容）。
 
 ---
 

@@ -1,17 +1,17 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="380" height="96" viewBox="0 0 380 96" role="img" aria-label="KuroBridge">
+<svg xmlns="http://www.w3.org/2000/svg" width="380" height="72" viewBox="0 0 380 72" role="img" aria-label="KuroBridge">
   <title>KuroBridge</title>
   <style>
     text {
       font-family: 'Segoe UI Variable Display', 'Segoe UI', 'SF Pro Display', 'Inter', 'Helvetica Neue', Arial, sans-serif;
     }
     .brand {
-      fill: #18181B;
+      fill: #1f2328;
       font-size: 56px;
-      letter-spacing: -1px;
+      letter-spacing: 0;
     }
     @media (prefers-color-scheme: dark) {
-      .brand { fill: #ECECF0; }
+      .brand { fill: #f0f6fc; }
     }
   </style>
-  <text class="brand" x="190" y="62" text-anchor="middle"><tspan font-weight="300">Kuro</tspan><tspan font-weight="800">Bridge</tspan></text>
+  <text class="brand" x="190" y="46" text-anchor="middle"><tspan font-weight="400">Kuro</tspan><tspan font-weight="600">Bridge</tspan></text>
 </svg>
