@@ -257,6 +257,12 @@ pnpm build:all    # 编译打包全平台产物
 
 ---
 
+## 状态
+
+![Alt](https://repobeats.axiom.co/api/embed/d652042c307e1ff3e01d439a5efdbeaa623e73f3.svg "Repobeats analytics image")
+
+---
+
 ## English
 
 **KuroBridge** (repository name `KuroAdapter`) is the **full-line server** implementation of a bidirectional Minecraft ↔ Chat-Platform bridge. Distributed primarily as a Paper JAR, its lightweight Java thin shell supervises an embedded Node.js subprocess that powers the TypeScript business core and the `kurobridge-ws` WebSocket server.
