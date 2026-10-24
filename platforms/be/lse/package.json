@@ -13,7 +13,6 @@
         "ws": "^8.18.0"
     },
     "devDependencies": {
-        "@levimc-lse/types": "^2.18.0",
         "@types/node": "^26.6.1",
         "@types/ws": "^8.18.0",
         "esbuild": "^0.25.0",

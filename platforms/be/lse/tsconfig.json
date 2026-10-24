@@ -8,13 +8,15 @@
         "module": "ESNext",
         "moduleResolution": "bundler",
         "types": [
-            "@levimc-lse/types",
             "node"
         ],
         "noEmit": true,
         "allowImportingTsExtensions": false
     },
+    // LSE ambient 全局经 vendor 入口载入（registry 包 @levimc-lse/types 已下架，
+    // 副本说明见 vendor/lse-types/README.md）
     "include": [
-        "src"
+        "src",
+        "vendor/lse-types/src/index.d.ts"
     ]
 }

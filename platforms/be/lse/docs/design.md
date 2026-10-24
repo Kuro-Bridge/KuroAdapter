@@ -48,7 +48,8 @@ ADR-005 不变量保持：WS 服务端仍由游戏侧部署体宿主（shim 是�
 - **复用 `bridge/core` 零改动**（ADR-007）：core 仅被导入，`IpcChannel` 是传输无关接口；改 core 即越领地。
 - **QuickJS 侧禁 `node:` 内建**：壳 bundle 不允许任何 Node API（core 本身零 Node API），esbuild
   `--platform=neutral` 兜底拦截；shim（`src/runtime/`）跑在真实 Node，不受此限。
-- 使用官方 TS 声明 `@levimc-lse/types`（`newProcess` / `WSClient` / `mc.listen` 等的事实契约）。
+- 使用官方 TS 声明（原 npm 包 `@levimc-lse/types`，registry 下架后内嵌为 `vendor/lse-types/`
+  原样副本；`newProcess` / `WSClient` / `mc.listen` 等的事实契约）。
 
 ## 目录规划（实况）
 
@@ -88,7 +89,7 @@ src/                    # QuickJS 壳 → dist/index.js（esbuild IIFE / ES2020�
 - `@kuro-bridge/bridge-core`（workspace:*）——业务核心，壳与 shim 复用其导出面
   （`KurobridgeServer` / `Relay` / `CoreContext` / `parseConfig` / `defaultConfig`）。
 - `@kuro-bridge/protocol`（^0.4.0，npm 包，发布自姊妹仓 KuroProtocol，ADR-035）——消息 schema 与 `encodeFrame`。
-- `@levimc-lse/types`（devDep）——LSE 全局对象类型。
+- LSE 全局对象类型——原 devDep `@levimc-lse/types`（npm 已下架），现仓内 vendor 原样副本 `vendor/lse-types/`（2.18.7）。
 - `ws`（^8.18.0）+ `@types/ws`——shim 的 koishi WS 服务端实现（core `WsServer` 接口的宿主绑定，版本对齐 bridge/embedded）。
 - esbuild + typescript（devDep）——两份产物的打包与检查（壳 IIFE / ES2020 / `platform=neutral`；shim ESM）。
 - 运行期：Node ≥ 20（服主自备，置于 `plugins/kurobridge/bin/`，见包内 readme 部署清单）。

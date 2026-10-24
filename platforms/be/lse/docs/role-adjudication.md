@@ -39,7 +39,7 @@
 
 | 证据 | 原文 |
 | --- | --- |
-| `newProcess` 返回 `boolean`，非 Process 对象 | `@levimc-lse/types@2.18.7 src/SystemAPI/SystemCall.d.ts:40-51`：`function newProcess(process: string, callback: (exitcode: number, output: string) => void, timeLimit?: number): boolean`，JSDoc：「callback 程序进程**结束之后**返回数据使用的回调函数」 |
+| `newProcess` 返回 `boolean`，非 Process 对象 | `vendor/lse-types/src/SystemAPI/SystemCall.d.ts:40-51`（即原 `@levimc-lse/types@2.18.7`）：`function newProcess(process: string, callback: (exitcode: number, output: string) => void, timeLimit?: number): boolean`，JSDoc：「callback 程序进程**结束之后**返回数据使用的回调函数」 |
 | 无 stdin 写入 API | 全类型包 grep 无任何向子进程 stdin 写入的成员；无 `Process` 类（`class Process` 零命中） |
 | 无流式读子进程 stdout | 唯一输出通道是进程死后一次性 `output: string`（stdout/stderr 合流与否、编码、截断均未知） |
 

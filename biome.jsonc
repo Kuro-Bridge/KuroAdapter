@@ -11,6 +11,8 @@
             "bridge/**/src/**/*.{ts,tsx,mts,cts,js,mjs,cjs,jsx}",
             "bridge/**/stub/**/*.ts",
             "platforms/be/**/*.{ts,tsx,mts,cts,js,mjs,cjs,jsx}",
+            // 第三方原样副本不受本仓格式/lint 门禁（见 vendor/lse-types/README.md）
+            "!platforms/be/lse/vendor",
             "toolings/**/*.{ts,js,mjs}"
         ]
     },
