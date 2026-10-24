@@ -16,11 +16,8 @@
 </p>
 
 <p>
-  <a href="#生态定位">生态定位</a> &nbsp;·&nbsp;
-  <a href="#形态与进程模型">进程模型</a> &nbsp;·&nbsp;
-  <a href="#平台矩阵">平台矩阵</a> &nbsp;·&nbsp;
   <a href="#快速开始">快速开始</a> &nbsp;·&nbsp;
-  <a href="#工程与门禁">工程门禁</a> &nbsp;·&nbsp;
+  <a href="#参与贡献">参与开发</a> &nbsp;·&nbsp;
   <a href="#文档导航">文档导航</a> &nbsp;·&nbsp;
   <a href="#english">English</a>
 </p>
@@ -34,6 +31,9 @@
 ## 生态定位
 
 **KuroBridge** 是「Minecraft 服务器 ↔ 聊天平台」双向互通产品线，本仓（`KuroAdapter`）是其**全量线服务端**实现。全生态拓扑与协议消费关系如下：
+
+<details>
+<summary><b>点击展开：KuroBridge 全生态拓扑与协议消费关系图</b></summary>
 
 ```mermaid
 flowchart TB
@@ -65,6 +65,8 @@ flowchart TB
     style Nap fill:#18181B,stroke:#10B981,color:#E4E4E7,stroke-width:1.5px
 ```
 
+</details>
+
 * **永远作为 WS 服务端**：只认自研协议 `kurobridge-ws`，与对端框架彻底解耦；连接生命周期与断线重连由对端自担。
 * **单一事实来源（SSOT）**：帧名称与载荷结构严格以 `KuroProtocol` 的 Zod Schema 为准，**本仓任何位置禁止手写消息类型**。
 
@@ -80,6 +82,9 @@ flowchart TB
 ---
 
 ## 形态与进程模型
+
+<details>
+<summary><b>点击展开：宿主插件与内嵌 Node.js 子进程架构图</b></summary>
 
 ```mermaid
 flowchart TB
@@ -116,6 +121,8 @@ flowchart TB
     style Shell fill:#18181B,stroke:#52525B,color:#E4E4E7,stroke-width:1px
     style ExtPeer fill:#18181B,stroke:#8B5CF6,color:#E4E4E7,stroke-width:1.5px,stroke-dasharray: 4 4
 ```
+
+</details>
 
 ### 双形态对照（架构同源，仅打包与启用策略不同）
 
@@ -185,7 +192,7 @@ pnpm build:jar    # 流水线：TS 构建 → 资源内嵌 → shadowJar → Fab
 
 ---
 
-## 工程与门禁
+## 参与开发
 
 ```bash
 pnpm check        # 首环构建 + Biome 检查 + tsc + LSE 类型检查 + 文档门禁 + 版本号对齐
