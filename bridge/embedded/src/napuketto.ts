@@ -5,19 +5,20 @@
  * 进程树（ADR-022 换真身）：Java → node（本进程）→ napuketto CLI（supervisor）→
  * boot → self-host（最深四层）。
  *
- * 生命周期（NapukettoQQ 仓考据：boot 层无信号处理器、全链无父死监测——只杀 CLI 本体
- * 必留 self-host 孤儿持 instance.lock）：
- * - 优雅关停 stop()：Windows `taskkill /PID <pid> /T /F` 树杀（napuketto 自家
- *   `napuketto stop` 同款，/T 连带 boot/self-host）→ 有界等待 exit → resolve；
+ * 生命周期（napuketto 0.2.0 优雅关停契约）：哨兵优先、树杀兜底。
+ * - 优雅关停 stop()：写停止哨兵 <数据根>/napuketto.stop（内容 all；上游轮询 500ms、
+ *   mtime 守卫防陈旧误杀，有序清理后 exit 0）→ 有界等待 → 超时回退 Windows
+ *   `taskkill /PID <pid> /T /F` 树杀（boot 层无信号处理器、全链无父死监测——只杀 CLI
+ *   本体必留 self-host 孤儿持 instance.lock，兜底仍须整树）→ 停妥删除哨兵防残留；
  * - 意外退出 onUnexpectedExit：bootstrap 收到后 node exit(1)，交 Java 看护器退避重启
  *   （凭据在腾讯原生层，重启后 quick-login 自动恢复）；
  * - 强杀 node：CLI 树预期随 Node 26 Job Object 级联死亡（DEBT-2 发现，沙盒复验）。
  *
- * 全部副作用可注入（spawnFn / killTree / platform / cliExists），vitest 不发真进程。
+ * 全部副作用可注入（spawnFn / killTree / platform / cliExists / stopSentinel），vitest 不发真进程。
  */
 
 import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, rmSync, writeFileSync } from "node:fs";
 import { isAbsolute, join, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import type { Readable } from "node:stream";
@@ -101,8 +102,12 @@ export interface NapukettoDeps {
     spawnFn?: typeof spawn | undefined;
     /** 注入便于测试；缺省 Windows taskkill 树杀 / POSIX SIGTERM */
     killTree?: ((pid: number) => void) | undefined;
-    /** 优雅关停等待上限（对齐 napuketto FORCE_EXIT_MS=5000） */
+    /** 优雅关停等待上限（哨兵轮询 500ms + 上游 FORCE_EXIT_MS=5000 → 预期 5.5s 内退出，10s 裕量后回退树杀） */
     stopTimeoutMs?: number | undefined;
+    /** 停止哨兵写/删（注入便于测试；缺省写 <dataDir>/napuketto.stop 内容 all——napuketto 0.2.0 契约） */
+    stopSentinel?:
+        | { write: (dataDir: string) => void; remove: (dataDir: string) => void }
+        | undefined;
     /** 捕获流出现 QR URL 日志时回调（接线 QR 状态文件用）；缺省不检测 */
     onQrUrl?: ((url: string) => void) | undefined;
 }
@@ -118,12 +123,35 @@ export interface NapukettoHandle {
     onUnexpectedExit(cb: (info: UnexpectedExit) => void): void;
 }
 
-/** 拉起 napuketto CLI：stdio 全 pipe（绝不 inherit——node 的 stdout 是 IPC 通道），env 指路 + 原样透传 */
+/** 停止哨兵文件名（napuketto 0.2.0 优雅关停契约：置于数据根，内容 = 目标账号或 all） */
+const STOP_SENTINEL_FILENAME = "napuketto.stop";
+/** 哨兵写失败或优雅超时回退树杀后，等 exit 事件的兜底上限（防极端 wedged 挂死关停链） */
+const KILL_FALLBACK_MS = 3000;
+/** 缺省哨兵实现：写 all（全部账号）+ 删除残留（上游 mtime 守卫本已容忍残留，删除仅卫生） */
+const defaultStopSentinel = {
+    write(dataDir: string): void {
+        writeFileSync(join(dataDir, STOP_SENTINEL_FILENAME), "all\n", "utf8");
+    },
+    remove(dataDir: string): void {
+        try {
+            rmSync(join(dataDir, STOP_SENTINEL_FILENAME));
+        } catch {
+            // 删除失败不阻塞：上游 mtime 守卫使陈旧哨兵天然失效
+        }
+    },
+};
+
+/**
+ * 拉起 napuketto CLI：stdio 全 pipe（绝不 inherit——node 的 stdout 是 IPC 通道），env 指路 + 原样透传。
+ * 嵌入式控制台契约经 env 钉死（napuketto 0.2.0 [log] 覆盖，优先级 env > toml）：单行记录 + 关 banner——
+ * 非 TTY 自动降级本已同效，显式设定使其不随上游缺省漂移；level 不设，保留服主经 toml 调 debug 的自由。
+ */
 export function spawnNapuketto(spec: NapukettoSpawnSpec, deps: NapukettoDeps): NapukettoHandle {
     const logger = deps.logger;
     const platform = deps.platform ?? process.platform;
     const spawnFn = deps.spawnFn ?? spawn;
-    const stopTimeoutMs = deps.stopTimeoutMs ?? 5000;
+    const stopTimeoutMs = deps.stopTimeoutMs ?? 10_000;
+    const sentinelFn = deps.stopSentinel ?? defaultStopSentinel;
     const killTreeFn =
         deps.killTree ??
         ((pid: number) => {
@@ -143,6 +171,8 @@ export function spawnNapuketto(spec: NapukettoSpawnSpec, deps: NapukettoDeps): N
         ...process.env,
         NAPKETTO_CONFIG: spec.configPath,
         NAPKETTO_DATA: spec.dataDir,
+        NAPUKETTO_LOG_FORMAT: "single-line",
+        NAPUKETTO_NO_BANNER: "1",
     };
     const child = spawnFn(process.execPath, [spec.cliEntry], {
         env,
@@ -151,6 +181,7 @@ export function spawnNapuketto(spec: NapukettoSpawnSpec, deps: NapukettoDeps): N
     logger.info(`napuketto CLI 已拉起（pid=${child.pid ?? "?"}）：${spec.cliEntry}`);
 
     let stopping = false;
+    let killedByFallback = false;
     let reported = false;
     const exitCbs: Array<(info: UnexpectedExit) => void> = [];
 
@@ -163,9 +194,13 @@ export function spawnNapuketto(spec: NapukettoSpawnSpec, deps: NapukettoDeps): N
         }
         reported = true;
         if (stopping) {
-            // taskkill /T /F 树杀的退出码恒为 1（机制产物，非结果信号）——不展示 code，
-            // 等 napuketto 上游落地优雅退出（退出码契约）后再恢复语义
-            logger.info("napuketto CLI 已关停（树杀）");
+            if (killedByFallback) {
+                // taskkill /T /F 树杀兜底的退出码恒为 1（机制产物，非结果信号）——不展示 code
+                logger.info("napuketto CLI 已关停（树杀兜底）");
+            } else {
+                // 哨兵优雅关停路径退出码有契约语义（0 = 请求式正常退出），如实展示
+                logger.info(`napuketto CLI 已优雅关停（exit ${code ?? "?"}）`);
+            }
             return;
         }
         for (const cb of exitCbs) {
@@ -183,17 +218,48 @@ export function spawnNapuketto(spec: NapukettoSpawnSpec, deps: NapukettoDeps): N
         stop: () => {
             stopping = true;
             return new Promise<void>((resolveStop) => {
-                if (child.pid === undefined || child.exitCode !== null) {
+                const pid = child.pid;
+                if (pid === undefined || child.exitCode !== null) {
                     resolveStop();
                     return;
                 }
-                const timer = setTimeout(resolveStop, stopTimeoutMs);
-                timer.unref();
-                child.once("exit", () => {
-                    clearTimeout(timer);
+                let finished = false;
+                let gracefulTimer: NodeJS.Timeout | undefined;
+                let fallbackTimer: NodeJS.Timeout | undefined;
+                const finish = (): void => {
+                    if (finished) {
+                        return;
+                    }
+                    finished = true;
+                    if (gracefulTimer !== undefined) {
+                        clearTimeout(gracefulTimer);
+                    }
+                    if (fallbackTimer !== undefined) {
+                        clearTimeout(fallbackTimer);
+                    }
+                    sentinelFn.remove(spec.dataDir);
                     resolveStop();
-                });
-                killTreeFn(child.pid);
+                };
+                child.once("exit", () => finish());
+                const fallbackKill = (): void => {
+                    killedByFallback = true;
+                    killTreeFn(pid);
+                    // 树杀后 exit 事件预期随即到达；再兜一层定时，防极端 wedged 挂死关停链
+                    fallbackTimer = setTimeout(finish, KILL_FALLBACK_MS);
+                    fallbackTimer.unref();
+                };
+                try {
+                    sentinelFn.write(spec.dataDir);
+                } catch (error) {
+                    logger.warn(`停止哨兵写入失败，直接回退树杀：${String(error)}`);
+                    fallbackKill();
+                    return;
+                }
+                gracefulTimer = setTimeout(() => {
+                    logger.warn("napuketto CLI 优雅关停超时，回退树杀兜底");
+                    fallbackKill();
+                }, stopTimeoutMs);
+                gracefulTimer.unref();
             });
         },
         onUnexpectedExit: (cb) => {
@@ -210,7 +276,7 @@ const LOG_LEVEL_WARN = /\bWARN\b/;
 const QR_URL_LOG = /请扫描二维码登录（保存:\s*.+?\s*\|\s*URL:\s*(\S+?)）/;
 /** 级别字样 + QR 日志匹配在行级热路径，预编译为顶层常量（lint/performance/useTopLevelRegex） */
 
-/** ANSI 颜色转义（napuketto 无 TTY 检测，pipe 下仍带颜色码） */
+/** ANSI 颜色转义（napuketto 0.2.0 起 pipe 下自动无色；保留剥离作防御层——pretty 覆写或上游回归时不失效） */
 // biome-ignore lint/suspicious/noControlCharactersInRegex: 匹配 ANSI 转义序列本就依赖 ESC 控制字符，合法目标
 const ANSI_ESCAPE = /\u001B\[[0-9;]*m/g;
 /** Unicode 块元素区段（U+2580–U+259F：▀▄█░▒▓ 等）——终端二维码的全部构成字符 */
@@ -252,9 +318,10 @@ const BANNER_ART_CHARS = /^[_/\\|(),<.`· ]+$/;
 /** 重组后单条记录的长度上限：超长（如 raw hex 转储）截断，全文留 napuketto 自己的日志侧 */
 const RECORD_TRUNCATE_LIMIT = 300;
 /**
- * 已知遥测噪音（证据：Paper 26.3 干跑台 latest.log）→ 降 debug（宿主控制台默认不显示）：
+ * 已知遥测噪音 → 降 debug（宿主控制台默认不显示）。napuketto 0.2.0 已在源头把这三类
+ * 降 debug（默认 level=info 下不再输出）；本表保留作第二道防御（级别被服主调低或旧版输出时兜底）：
  * - onRecvSysMsg 校准数据（协议逆向/校准用，非运行状态，登录后一分钟能刷数百行 hex）
- * - `loader | 接收 <- 群聊`（收包遥测；绑定过滤在 bridge/core，转发结果另有广播行可见）
+ * - `loader | 接收` 收包遥测（绑定过滤在 bridge/core，转发结果另有广播行可见）
  * - mmkv loadFromFile（第三方底层库透传）
  */
 const NOISE_PATTERNS = [/校准数据/, /接收 <- 群聊/, /loadFromFile/];

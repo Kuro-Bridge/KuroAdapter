@@ -25,6 +25,7 @@ interface Harness {
     logs: Array<{ level: string; message: string }>;
     spawns: RecordedSpawn[];
     killed: number[];
+    sentinelOps: Array<{ op: "write" | "remove"; dataDir: string }>;
     child: {
         pid: number;
         stdout: PassThrough;
@@ -48,6 +49,7 @@ function makeHarness(overrides?: Partial<NapukettoDeps>): Harness {
     };
     const spawns: RecordedSpawn[] = [];
     const killed: number[] = [];
+    const sentinelOps: Harness["sentinelOps"] = [];
     const stdout = new PassThrough();
     const stderr = new PassThrough();
     const exitListeners: Array<(code: number | null) => void> = [];
@@ -91,9 +93,13 @@ function makeHarness(overrides?: Partial<NapukettoDeps>): Harness {
         spawnFn,
         killTree: (pid) => killed.push(pid),
         stopTimeoutMs: 1000,
+        stopSentinel: {
+            write: (dataDir) => sentinelOps.push({ op: "write", dataDir }),
+            remove: (dataDir) => sentinelOps.push({ op: "remove", dataDir }),
+        },
         ...overrides,
     };
-    return { deps, logs, spawns, killed, child };
+    return { deps, logs, spawns, killed, sentinelOps, child };
 }
 
 const SPEC = {
@@ -239,6 +245,9 @@ describe("spawnNapuketto", () => {
         expect(call.options.stdio).toEqual(["pipe", "pipe", "pipe"]);
         expect(call.options.env?.["NAPKETTO_CONFIG"]).toBe(SPEC.configPath);
         expect(call.options.env?.["NAPKETTO_DATA"]).toBe(SPEC.dataDir);
+        // 嵌入式控制台契约（napuketto 0.2.0 env 覆盖）：单行记录 + 关 banner
+        expect(call.options.env?.["NAPUKETTO_LOG_FORMAT"]).toBe("single-line");
+        expect(call.options.env?.["NAPUKETTO_NO_BANNER"]).toBe("1");
         expect(call.options.env?.["KUROBRIDGE_NK_TEST_PASS"]).toBe("keep-me");
     });
 
@@ -304,20 +313,28 @@ describe("spawnNapuketto", () => {
         await stopped;
     });
 
-    it("stop()：树杀 + 等待 exit → resolve；关停路径的 exit 不触发 onUnexpectedExit", async () => {
+    it("stop()：写停止哨兵 + 等优雅 exit 0 → resolve 并清理哨兵；不树杀、不触发 onUnexpectedExit", async () => {
         const h = makeHarness();
         const handle = spawnNapuketto(SPEC, h.deps);
         const unexpected: UnexpectedExit[] = [];
         handle.onUnexpectedExit((info) => unexpected.push(info));
 
         const stopped = handle.stop();
-        expect(h.killed).toEqual([4242]);
+        expect(h.sentinelOps).toEqual([{ op: "write", dataDir: SPEC.dataDir }]);
+        expect(h.killed).toEqual([]);
         h.child.emitExit(0);
         await stopped;
         expect(unexpected).toEqual([]);
+        expect(h.sentinelOps).toEqual([
+            { op: "write", dataDir: SPEC.dataDir },
+            { op: "remove", dataDir: SPEC.dataDir },
+        ]);
+        expect(
+            h.logs.some((l) => l.level === "info" && l.message.includes("已优雅关停（exit 0）")),
+        ).toBe(true);
     });
 
-    it("stop() 超时也 resolve（树杀失败不挂死关停链）", async () => {
+    it("stop() 哨兵超时 → warn 后回退树杀；树杀的机制性 code=1 不展示，措辞为树杀兜底", async () => {
         vi.useFakeTimers();
         const h = makeHarness({ stopTimeoutMs: 500 });
         const handle = spawnNapuketto(SPEC, h.deps);
@@ -326,7 +343,61 @@ describe("spawnNapuketto", () => {
             resolved = true;
         });
         await vi.advanceTimersByTimeAsync(600);
+        expect(h.killed).toEqual([4242]);
+        expect(h.logs.some((l) => l.level === "warn" && l.message.includes("优雅关停超时"))).toBe(
+            true,
+        );
+        h.child.emitExit(1);
+        await vi.advanceTimersByTimeAsync(0);
         expect(resolved).toBe(true);
+        expect(
+            h.logs.some((l) => l.level === "info" && l.message.includes("已关停（树杀兜底）")),
+        ).toBe(true);
+        expect(h.logs.some((l) => l.message.includes("code=1"))).toBe(false);
+    });
+
+    it("stop() 树杀后进程仍不退出 → KILL_FALLBACK 定时兜底 resolve（关停链不挂死）", async () => {
+        vi.useFakeTimers();
+        const h = makeHarness({ stopTimeoutMs: 500 });
+        const handle = spawnNapuketto(SPEC, h.deps);
+        let resolved = false;
+        void handle.stop().then(() => {
+            resolved = true;
+        });
+        await vi.advanceTimersByTimeAsync(600);
+        expect(h.killed).toEqual([4242]);
+        // 不 emitExit：树杀失效的极端场景
+        await vi.advanceTimersByTimeAsync(3000);
+        expect(resolved).toBe(true);
+    });
+
+    it("停止哨兵写入失败 → 立即回退树杀（不等优雅超时）", async () => {
+        const h = makeHarness({
+            stopSentinel: {
+                write: () => {
+                    throw new Error("EACCES");
+                },
+                remove: () => undefined,
+            },
+        });
+        const handle = spawnNapuketto(SPEC, h.deps);
+        const stopped = handle.stop();
+        expect(h.killed).toEqual([4242]);
+        h.child.emitExit(1);
+        await stopped;
+        expect(h.logs.some((l) => l.level === "warn" && l.message.includes("哨兵写入失败"))).toBe(
+            true,
+        );
+        expect(h.logs.some((l) => l.level === "info" && l.message.includes("树杀兜底"))).toBe(true);
+    });
+
+    it("stop() 时子进程已退出 → 直接 resolve（不写哨兵）", async () => {
+        const h = makeHarness();
+        const handle = spawnNapuketto(SPEC, h.deps);
+        h.child.emitExit(1);
+        await handle.stop();
+        expect(h.sentinelOps).toEqual([]);
+        expect(h.killed).toEqual([]);
     });
 
     it("非关停路径 exit → onUnexpectedExit 携带退出码；exit/error 双事件只报告一次", () => {
@@ -350,16 +421,15 @@ describe("spawnNapuketto", () => {
         expect(h.logs.some((l) => l.level === "error" && l.message.includes("ENOENT"))).toBe(true);
     });
 
-    it("关停路径 exit 不展示 taskkill 机制性的 code=1，措辞为树杀关停", async () => {
+    it("关停路径 exit 不触发 onUnexpectedExit（哨兵与树杀兜底同此语义）", async () => {
         const h = makeHarness();
         const handle = spawnNapuketto(SPEC, h.deps);
+        const unexpected: UnexpectedExit[] = [];
+        handle.onUnexpectedExit((info) => unexpected.push(info));
         const stopped = handle.stop();
         h.child.emitExit(1);
         await stopped;
-        expect(h.logs.some((l) => l.level === "info" && l.message.includes("已关停（树杀）"))).toBe(
-            true,
-        );
-        expect(h.logs.some((l) => l.message.includes("code=1"))).toBe(false);
+        expect(unexpected).toEqual([]);
     });
 });
 
@@ -508,6 +578,34 @@ describe("pipeLines 记录重组与降噪（Paper 26.3 干跑台 latest.log 取�
             (l) => l.level === "debug" && l.message.includes("banner 已折叠"),
         );
         expect(bannerDebugs).toHaveLength(1);
+        const stopped = handle.stop();
+        h.child.emitExit(0);
+        await stopped;
+    });
+
+    it("napuketto 0.2.0 single-line 形态：单行单条、时间戳/级别/name-pid 剥离、account 内联、close 冲刷末条", async () => {
+        const h = makeHarness();
+        const handle = spawnNapuketto(SPEC, h.deps);
+        // 0.2.0 非单行禁用时的输出形态：[时间] LEVEL (name/pid): 消息 k=v（无 ANSI、无多行展开）
+        h.child.stdout.write(
+            "[16:00:46.712] INFO (cli/26088): 启动账号 service=cli account=3567141148\n",
+        );
+        h.child.stdout.write(
+            "[16:00:47.100] WARN (kernel/27256): 请扫描二维码登录（保存: C:\\cache\\qrcode.png | URL: https://txz.qq.com/p?k=abc）\n",
+        );
+        // 末条无后续头行，只能靠流 close 冲刷转发
+        h.child.stdout.write("[16:03:37.609] ERROR (loader/27256): ob11 推送失败 retry=1\n");
+        h.child.stdout.end();
+        await drain();
+        const infos = h.logs.filter((l) => l.level === "info").map((l) => l.message);
+        const warns = h.logs.filter((l) => l.level === "warn").map((l) => l.message);
+        const errors = h.logs.filter((l) => l.level === "error").map((l) => l.message);
+        expect(infos.some((m) => m.includes("启动账号 service=cli account=3567141148"))).toBe(true);
+        expect(warns.some((m) => m.includes("请扫描二维码登录"))).toBe(true);
+        expect(errors.some((m) => m.includes("ob11 推送失败 retry=1"))).toBe(true);
+        // 头行元数据不重复出现
+        expect(infos.some((m) => m.includes("16:00:46"))).toBe(false);
+        expect(infos.some((m) => m.includes("(cli/26088)"))).toBe(false);
         const stopped = handle.stop();
         h.child.emitExit(0);
         await stopped;
