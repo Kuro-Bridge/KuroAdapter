@@ -1,0 +1,4 @@
+# 关闭空白 issue：强制走模板，保证类型标签（bug / feature）不缺席；
+# 经 API/CLI 直建的 issue 由 triage workflow 的 status: needs-triage 兜底。
+
+blank_issues_enabled: false

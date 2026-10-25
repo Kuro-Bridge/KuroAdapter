@@ -1,0 +1,73 @@
+# 自动分诊流水线（assign + labeler），路径规则见 .github/labeler.yml。
+#
+# 三个独立 job：
+# - triage-issue 新 issue 自动分诊：assign 给维护者并打 status: needs-triage
+#   作为待处理队列的初始状态；类型标签（bug / feature）由 issue 模板自带，
+#   此处兜底覆盖经 API/CLI 直建的 issue。assignee 写死 Oppenheymu
+#   （repository_owner 是组织名，不能作 assignee）。
+# - assign-pr 新 PR 自动 assign 给维护者。挂 pull_request_target 而非
+#   pull_request：fork PR 在 pull_request 事件下拿到的 GITHUB_TOKEN 只读，
+#   assign 必然 403；pull_request_target 在 base 上下文授予写权限，对
+#   fork PR 同样可用。安全前提：本 job 不 checkout PR 的 head 代码，只经
+#   gh 调 API，PR 内容不进入执行路径——改这个 job 时不得破坏该前提。
+#   同样跳过 Dependabot PR（理由见 label-pr）。
+# - label-pr 按 .github/labeler.yml 的路径规则自动打「范围 / 平台」与
+#   「文档 / 工具链」标签，只增不减（sync-labels 关闭），手动摘除不会被
+#   后续 push 加回。Dependabot PR 显式跳过：Dependabot 触发的 workflow
+#   按 fork 处理（GITHUB_TOKEN 只读），actions/labeler 必然失败；其标签
+#   改由 dependabot.yml 的 labels 字段直接指定。
+
+name: Triage
+
+on:
+  issues:
+    types: [opened]
+  pull_request:
+    types: [opened, synchronize, reopened]
+  # 只为 assign-pr 存在：该事件在 base 上下文运行且授予写权限，
+  # 是 fork PR 唯一能 assign 的入口；types 收窄到 opened，重新指派无意义。
+  pull_request_target:
+    types: [opened]
+
+jobs:
+  triage-issue:
+    if: github.event_name == 'issues'
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: 自动指派并标记待分诊
+        run: |
+          gh issue edit "${{ github.event.issue.number }}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --add-assignee "Oppenheymu" \
+            --add-label "status: needs-triage"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+  assign-pr:
+    if: github.event_name == 'pull_request_target' && github.actor != 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - name: 自动指派维护者
+        run: |
+          gh pr edit "${{ github.event.pull_request.number }}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --add-assignee "Oppenheymu"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+  label-pr:
+    if: github.event_name == 'pull_request' && github.actor != 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: 按路径自动打标
+        uses: actions/labeler@v7
+        with:
+          configuration-path: .github/labeler.yml
+          sync-labels: false

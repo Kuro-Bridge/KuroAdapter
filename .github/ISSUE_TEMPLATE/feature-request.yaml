@@ -1,0 +1,38 @@
+# 功能请求模板：类型标签 feature 自带；改进与性能类由维护者调整标签。
+
+name: 功能请求
+description: 为 KuroBridge 全量线提议新功能或改进
+title: "Feature: "
+labels:
+  - feature
+body:
+  - type: dropdown
+    attributes:
+      label: 请求类型
+      description: 改进与性能类提交后由维护者把标签调整为 enhancement / performance。
+      options:
+        - 全新的功能
+        - 对现有功能的改进
+        - 性能与优化
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: 要解决的问题
+      description: 请简要说明是什么问题让你想要这个功能。
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: 期望的解决方案
+      description: 请说明你希望如何解决，例如新增什么能力、作用在哪个平台或模块。
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: 考虑过的替代方案
+      description: 除上述方案外，你还考虑过哪些实现方式？
+  - type: textarea
+    attributes:
+      label: 补充信息
+      description: 其他需要补充的上下文或截图。

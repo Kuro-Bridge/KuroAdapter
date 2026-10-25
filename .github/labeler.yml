@@ -1,0 +1,84 @@
+# PR 自动打标配置（actions/labeler v5，由 triage workflow 消费）。
+#
+# 仅覆盖「范围 / 平台」与「文档 / 工具链」维度：类型标签由 issue 模板自带，
+# 优先级 / 破坏性 / 状态维度由维护者手动维护。glob 未命中时不出标签；
+# sync-labels 关闭，只增不减，手动摘除不会被后续 push 加回。
+#
+# 前导 / 锚定仓库根级文件（否则会匹配到各子包内的同名文件）。
+# platform: * 与 module: platform-shell 会同时命中：改平台壳的 PR 两个都打。
+
+"module: bridge-core":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "bridge/core/**"
+
+"module: embedded":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "bridge/embedded/**"
+
+"module: platform-shell":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "platforms/**"
+
+"module: toolings":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "toolings/**"
+
+"platform: paper":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "platforms/je/paper/**"
+
+"platform: fabric":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "platforms/je/fabric/**"
+
+"platform: neoforge":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "platforms/je/neoforge/**"
+
+"platform: velocity":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "platforms/je/velocity/**"
+
+"platform: lse":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "platforms/be/lse/**"
+
+"platform: endstone":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "platforms/be/endstone/**"
+
+"documentation":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "**/*.md"
+
+"chore":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "/*.json*"
+          - "/tsconfig.json"
+          - "/vitest.config.ts"
+          - "/biome.jsonc"
+          - "/mise.toml"
+          - "/lefthook.yml"
+          - "/pnpm-workspace.yaml"
+
+"dependencies":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "/pnpm-lock.yaml"
+
+"ci":
+  - changed-files:
+      - any-glob-to-any-file:
+          - ".github/**"
