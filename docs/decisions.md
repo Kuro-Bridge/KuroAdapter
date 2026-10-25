@@ -1,4 +1,4 @@
-# 决策台账（ADR-001 ~ ADR-038）
+# 决策台账（ADR-001 ~ ADR-039）
 
 只保留结论与理由。代码注释中的 ADR 编号以本表为准；KuroProtocol 仓另有独立的 ADR-001~003 序列，与本表**无编号对应关系**。
 
@@ -31,6 +31,7 @@
 | ADR-035 | 2026-09-18 | 门禁链 build 前置；协议镜像退役；版本锚改为已安装 npm 包 | 校验在发布面进行；消除仓内协议副本 |
 | ADR-036 | 2026-09-19 | 主仓金样本 fixture-driven 双层检查；删除 embedded 悬空 `types` | 协议消费正确性有机器防线；诚实导出面 |
 | ADR-038 | 2026-10-25 | Java 字节码基线降 8（`--release 8`，取代 ADR-002/015 的 target 21）：Paper 单 jar universal 覆盖 1.12.2 ~ 26.3。经典 `plugin.yml`（1.19.4+ 专属 `paper-plugin.yml` 弃用）；新增 `:paper-legacy` 模块隔离旧 Adventure 序列化器（`PlainTextComponentSerializer` → `PlainComponentSerializer` 兼容链）；`Compat` 运行期探测（`AsyncChatEvent` 有无 → 现代或 legacy 聊天监听，不双注册）；死亡/广播走全版本 String 路径；IPC 日志展示层剥传输前缀（`IpcLogLines`） | Paper 26.3 捆绑 Adventure 5.2 删除 `PlainComponentSerializer`，静态初始化失败致聊天/死亡监听全崩（QQ→MC 正常、MC→QQ 崩）；1.16.5/1.12.2 运行 Java 8，字节码与 SE API 双锁；ADR-034 传输契约不变，套娃前缀只在「中继到控制台」最后一跳剥离 |
+| ADR-039 | 2026-10-25 | 消费 napuketto 0.2.0（`@napuketto/cli` 精确 pin 0.1.20 → 0.2.0）：宿主 env 钉 `NAPUKETTO_LOG_FORMAT=single-line` + `NAPUKETTO_NO_BANNER=1`；关停改「停止哨兵 `<数据根>/napuketto.stop`（内容 all）优先、taskkill 树杀兜底（10s 超时）」，哨兵路径恢复退出码展示（exit 0），树杀兜底仍不展示机制性 code=1；ANSI 剥离/QR 折叠/banner 丢弃/噪音表保留为防御层 | 上游 0.2.0 落地日志可配置化与优雅关停契约（NapukettoQQ PR #22）：非 TTY 自动 single-line 无色、默认级别重分配（校准/接收/mmkv 降 debug）源头降噪；子协议 `kurobridge-ws.v1` 与 PROTOCOL_VERSION 0.4.0 不变，仅自报身份变 `napukettoqq/0.4.0` |
 
 ## 协议
 

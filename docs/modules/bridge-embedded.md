@@ -27,7 +27,7 @@
 | `logger.ts` | Node 侧日志唯一 writer，格式 `[KuroBridge][node][LEVEL]`；只写 stderr |
 | `node-platform.ts` | `Clock` / `TimerScheduler` 的 Node 实现；所有定时器 `unref()` |
 | `ws-server.ts` | `ws` 库实现 `WsServer`/`WsConnection`；子协议 `kurobridge-ws.v1`；绑定失败 `WsBindError` |
-| `napuketto.ts` | napuketto CLI 拉起、stdio 捕获、QR URL 探测、`taskkill /T /F` 树杀 |
+| `napuketto.ts` | napuketto CLI 拉起（env 钉 single-line + 关 banner）、stdio 捕获与记录重组、QR URL 探测、停止哨兵优雅关停 + `taskkill /T /F` 树杀兜底（ADR-039） |
 | `qr-watcher.ts` | 扫 napuketto 数据目录的 `cache/qrcode.png`，拷贝为 `qr.png` 并原子写 `qr.json` |
 | `version.ts` | `BRIDGE_VERSION` 单点；与根 `package.json` 等六点由门禁对齐 |
 
@@ -68,7 +68,7 @@ napuketto 的登录二维码以文件形式交接，零协议变更：
 
 1. `relay.dispose()`（拒绝在途 IPC 请求）。
 2. 停 QR watcher。
-3. `napuketto.stop()`（树杀 + 有界等待）。
+3. `napuketto.stop()`（停止哨兵优先，10s 超时回退树杀）。
 4. 杀 stub（若有），最多等 3s，然后 `process.exit`。
 
 触发源：Java/C++ 发的 `shutdown` 帧、stdin EOF、`SIGTERM`。Java 侧 `NodeIpc.shutdown` 在发帧后还会关 stdin，并在 5s 后 `destroyForcibly()` 兜底。
@@ -100,4 +100,4 @@ Endstone 平台不自动接入该链路：Endstone 的 `bin/` 由真机 SOP 手�
 
 ## 测试
 
-vitest 覆盖 `logger`（行格式/级别）、`napuketto`（守卫决策、spawn/树杀/QR URL、异常退出）、`qr-watcher`（PNG 轮询、原子写、多账号取最新）、`ws-server`（动态/固定端口、绑定失败、子协议）。
+vitest 覆盖 `logger`（行格式/级别）、`napuketto`（守卫决策、spawn/env 契约/哨兵关停与树杀兜底/QR URL/记录重组/异常退出）、`qr-watcher`（PNG 轮询、原子写、多账号取最新）、`ws-server`（动态/固定端口、绑定失败、子协议）。

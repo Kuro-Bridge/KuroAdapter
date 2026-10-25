@@ -118,7 +118,7 @@ Node  ── broadcast {channel, message} / execute_command {command} ──▶ 
 | JE | 插件 disable / 服务器停服 | `supervisor.stop()` 取消挂起重启 → 发 `shutdown` 帧 → 关 stdin → 等 5s → `destroyForcibly()` → 再等 2s |
 | Endstone | `onDisable` | 同上（portable 层双路径收敛） |
 | LSE | BDS 停服 / 崩溃 / 通道断 | 游戏通道断开即 shim 自杀（无孤儿）；壳无杀子进程 API，卡死进程需等 BDS 退出或手动结束 |
-| embedded napuketto | Node 关停 | `taskkill /PID <pid> /T /F` 树杀（CLI → boot → self-host），有界等待 5s |
+| embedded napuketto | Node 关停 | 写停止哨兵 `<数据根>/napuketto.stop`（内容 all，napuketto 0.2.0 契约：轮询 500ms、有序清理后 exit 0）→ 有界等待 10s → 超时回退 `taskkill /PID <pid> /T /F` 树杀（CLI → boot → self-host）；停妥删除哨兵（ADR-039） |
 
 JE / Endstone 的 `node.pid` 在 spawn 时写入、优雅关停时删除；异常退出的残留会在下次启动打 WARN，作为“上次可能异常退出”的证据。LSE 不写 PID 文件。
 

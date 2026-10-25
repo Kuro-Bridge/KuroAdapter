@@ -9,7 +9,7 @@
 | bridge | `0.1.0`（根 package / embedded / plugin.yml / Gradle 六点对齐） |
 | 协议 | `0.4.0`（`@kuro-bridge/protocol`，主版本兼容区间 `0.x`） |
 | 内嵌 Node | `26.7.0`（win-x64） |
-| napuketto | `@napuketto/cli` 0.1.20（精确 pin） |
+| napuketto | `@napuketto/cli` 0.2.0（精确 pin；哨兵优雅关停 + single-line env 契约，ADR-039） |
 | Java | 工具链 25，字节码 `--release 8`（ADR-038 universal：1.12.2 ~ 26.3 单 jar） |
 | Fabric | MC 1.21.4 / loader 0.19.5 / fabric-api 0.119.4 |
 | Endstone | API v0.11 补丁线（CMake FetchContent） |
@@ -85,6 +85,7 @@
 - Paper 26.3 聊天/死亡监听崩溃已修（ADR-038：Adventure 5.2 删除旧序列化器，兼容链 + release 8 universal）；控制台 IPC 日志套娃前缀在展示层剥离，napuketto 多行记录（含 ANSI 色码形态）重组为单行、遥测噪音降 debug、banner/终端二维码折叠、关停日志收敛为单条。
 - Paper 26.x vanilla 命令拒绝自定义 sender 的回退修复：异常类型随版本漂移（26.x 不再是 bukkit CommandException / IllegalArgumentException），判据改为消息链匹配（2026-10-25 cleanroom 实证，version/tps/list/kurobridge qr 四命令回执成功）。
 - shadowJar 重复 META-INF 条目（Jackson 三件的 LICENSE/NOTICE）触发 Paper 1.20.5+ PluginRemapper 拒绝（经典 plugin.yml 的 api-version 1.13 触发重映射），已加 `duplicatesStrategy = EXCLUDE`（2026-10-25 Paper-1.21.11 实证）。
+- napuketto 已消费 0.2.0（ADR-039）：宿主 env 钉 single-line + 关 banner，关停改停止哨兵优先（`<数据根>/napuketto.stop`）、树杀 10s 兜底，哨兵路径展示 exit 0；上游默认级别重分配后校准/接收/mmkv 噪音在源头即 debug，宿主侧降噪层保留为防御。协议面零变化（`kurobridge-ws.v1` / 0.4.0），自报身份 `napukettoqq/0.4.0`。
 
 ## 下一步优先级
 
