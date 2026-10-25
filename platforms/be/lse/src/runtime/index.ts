@@ -29,7 +29,7 @@ import { NodeWsServer } from "./ws-server.js";
 
 /**
  * kurobridge 版本（hello_ack 上报唯一取值点）。
- * 与 platforms/be/lse/package.json / plugin.json 版本联动（当前 0.1.0；
+ * 与 platforms/be/lse/package.json / manifest.json 版本联动（当前 0.1.0；
  * lse 包暂未纳入 check-versions 六点门禁，改动须手动同步）。
  */
 const BRIDGE_VERSION = "0.1.0";
@@ -142,6 +142,11 @@ async function main(): Promise<void> {
     gate.onChannelLost(() => {
         logger.info("游戏通道断开（脐带断），退出");
         shutdown(0);
+    });
+    gate.onNeverPaired(() => {
+        // 配对期限届满：壳从未完成令牌握手（壳已放弃或死亡），非零退出收敛于看护器退避；
+        // 退出同时释放固定 koishi WS 端口，避免孤儿占位致后续 spawn 全部 EADDRINUSE
+        shutdown(1);
     });
     gate.onChannel((ipc) => {
         relay = new Relay({

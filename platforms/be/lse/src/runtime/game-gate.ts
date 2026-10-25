@@ -6,6 +6,10 @@
  *   只服务一个通道；通道随脐带语义断开即关机）。
  * - 鉴权：首帧必须等于令牌原文（明文，非 JSON），不匹配 close(1008, "unauthorized")；
  *  限时未交令牌也关闭（防僵尸连接长期占位）。
+ * - 配对期限（真机 2026-10-25 增设）：启动后期限内无任何已鉴权通道 → onNeverPaired
+ *   （引导层退出进程）。壳握手总上限 30s，期限内正常配对远早于期限；期限只收割
+ *   「壳已放弃/死亡」的孤儿——否则孤儿进程占住固定 koishi WS 端口，看护器后续每轮
+ *   spawn 全部 EADDRINUSE（裁决册 §4.5 已记载的占位风险，此为收口）。
  * - 脐带语义（D-08）：仅已鉴权连接断开 → IpcChannel onClose + onChannelLost → 引导层
  *   关机（等价 embedded 的 stdin EOF 自杀）；未鉴权连接的断开（端口扫描/令牌不匹配/
  *   鉴权超时）只清租户槽位，绝不触发脐带。
@@ -22,27 +26,36 @@ export interface GameGateOptions {
     readonly logger: Logger;
     /** 鉴权时限毫秒（缺省 10s；测试注入短时限以确定性覆盖超时路径） */
     readonly authTimeoutMs?: number | undefined;
+    /** 配对期限毫秒（缺省 35s = 壳握手总上限 30s + 5s 余量；测试注入短时限覆盖期限路径） */
+    readonly pairGraceMs?: number | undefined;
 }
 
-/** 鉴权时限缺省：壳 connectAsync 成功后立即发令牌，超时视为对端异常 */
+/** 鉴权时限缺省：壳连上后立即发令牌，超时视为对端异常 */
 const DEFAULT_AUTH_TIMEOUT_MS = 10_000;
+/** 配对期限缺省：壳侧 READY_TIMEOUT_MS（30s）+ 余量；期限内无已鉴权通道则退出 */
+const DEFAULT_PAIR_GRACE_MS = 35_000;
 
 export class GameGate {
     private server: WebSocketServer | null = null;
     private current: WebSocket | null = null;
     private channelHandler: ((ipc: IpcChannel) => void) | null = null;
     private lostHandler: (() => void) | null = null;
+    private neverPairedHandler: (() => void) | null = null;
     private closing = false;
+    private everAuthenticated = false;
+    private pairTimer: ReturnType<typeof setTimeout> | null = null;
     private readonly port: number;
     private readonly token: string;
     private readonly logger: Logger;
     private readonly authTimeoutMs: number;
+    private readonly pairGraceMs: number;
 
     constructor(options: GameGateOptions) {
         this.port = options.port;
         this.token = options.token;
         this.logger = options.logger;
         this.authTimeoutMs = options.authTimeoutMs ?? DEFAULT_AUTH_TIMEOUT_MS;
+        this.pairGraceMs = options.pairGraceMs ?? DEFAULT_PAIR_GRACE_MS;
     }
 
     onChannel(handler: (ipc: IpcChannel) => void): void {
@@ -52,6 +65,11 @@ export class GameGate {
     /** 已鉴权通道断开（脐带断）的关机通知点 */
     onChannelLost(handler: () => void): void {
         this.lostHandler = handler;
+    }
+
+    /** 配对期限届满（启动后从未有已鉴权通道）的退出通知点 */
+    onNeverPaired(handler: () => void): void {
+        this.neverPairedHandler = handler;
     }
 
     async start(): Promise<void> {
@@ -71,6 +89,18 @@ export class GameGate {
                     this.logger.error(`游戏通道运行期错误：${error.message}`);
                 });
                 this.server = server;
+                // 配对期限从监听建立起算：期限内无已鉴权通道 → 退出（防孤儿占固定端口）
+                this.pairTimer = setTimeout(() => {
+                    this.pairTimer = null;
+                    if (this.closing || this.everAuthenticated) {
+                        return;
+                    }
+                    this.logger.error(
+                        "游戏通道配对期限届满（壳从未完成令牌握手），进程应退出以释放端口",
+                    );
+                    this.neverPairedHandler?.();
+                }, this.pairGraceMs);
+                this.pairTimer.unref();
                 resolve();
             };
             server.once("error", onBindFailure);
@@ -80,6 +110,10 @@ export class GameGate {
 
     async close(): Promise<void> {
         this.closing = true;
+        if (this.pairTimer !== null) {
+            clearTimeout(this.pairTimer);
+            this.pairTimer = null;
+        }
         const current = this.current;
         this.current = null;
         if (current !== null) {
@@ -154,6 +188,11 @@ export class GameGate {
 
     /** 鉴权通过：包装 core IpcChannel（onClose 由游戏通道断开触发，即脐带信号） */
     private openChannel(ws: WebSocket): void {
+        this.everAuthenticated = true;
+        if (this.pairTimer !== null) {
+            clearTimeout(this.pairTimer);
+            this.pairTimer = null;
+        }
         this.logger.info("游戏通道已鉴权（QuickJS 壳接入）");
         let open = true;
         const messageHandlers: ((text: string) => void)[] = [];

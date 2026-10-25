@@ -22,11 +22,11 @@ const BIN = "/srv/bds/plugins/kurobridge/bin";
 const GUID = "abcd-1234-efgh";
 const TOKEN = "abcd1234efgh";
 
-// 注意（见报告「疑似缺陷」）：bridge-host 的 root = dirname(dirname(filePath)) 只有在
-// filePath 取「插件目录」时才得到 §4.1 部署布局的 <BDS 根>；裁决册 §4.2 把该公式与
-// 「部署布局 <root>/plugins/kurobridge/index.js」（主脚本绝对路径）并写，两者互相矛盾
-// （按主脚本解释会推出 <root>/plugins/plugins/kurobridge/bin）。此处按插件目录解释锚定
-// （该解释与 §4.1 布局自洽）；公式本身已按裁决册 §4.2 原文锁定。
+// 路径锚点真机裁定（2026-10-25，裁决册 §4.2/§6.4）：LSE-nodejs 的 ll…filePath 返回
+// manifest entry 原文（相对名 "index.js"），非插件目录亦非绝对路径；lse-env 的
+// pluginFilePath 改优先取 __dirname（该后端 CJS 装载注入，= 插件目录绝对路径）。
+// dirname² 公式按「锚点 = 插件目录」保持不变，测试以 __dirname 桩锚定 PLUGIN_FILE
+// （无 __dirname 的后端回落 ll…filePath，桩值一致故断言不随分支变化）。
 
 type ClientListener = (payload: never) => void;
 
@@ -98,7 +98,7 @@ interface LseStubs {
     };
 }
 
-/** 打桩 lse-env 全部 LSE 全局触点（ll/system/file/WSClient/mc）；newProcess 可编程返回值 */
+/** 打桩 lse-env 全部 LSE 全局触点（ll/system/File/WSClient/mc/__dirname）；newProcess 可编程返回值 */
 function stubLse(options: { newProcessResult: boolean; nodeExeExists: boolean }): LseStubs {
     let onExit: ((code: number, output: string) => void) | null = null;
     const newProcess = vi.fn(
@@ -108,14 +108,16 @@ function stubLse(options: { newProcessResult: boolean; nodeExeExists: boolean })
         },
     );
     const listenEvents: string[] = [];
+    vi.stubGlobal("__dirname", PLUGIN_FILE);
     vi.stubGlobal("ll", {
-        getCurrentPluginInfo: (): { filePath: string } => ({ filePath: PLUGIN_FILE }),
+        // LSE-nodejs 真机实测：filePath = manifest entry 原文（相对名），仅作回落分支桩
+        getCurrentPluginInfo: (): { filePath: string } => ({ filePath: "index.js" }),
     });
     vi.stubGlobal("system", {
         newProcess,
         randomGuid: (): string => GUID,
     });
-    vi.stubGlobal("file", { exists: vi.fn((): boolean => options.nodeExeExists) });
+    vi.stubGlobal("File", { exists: vi.fn((): boolean => options.nodeExeExists) });
     vi.stubGlobal("WSClient", FakeWSClient);
     vi.stubGlobal("mc", {
         listen: (event: string, _listener: (...args: unknown[]) => void): boolean => {

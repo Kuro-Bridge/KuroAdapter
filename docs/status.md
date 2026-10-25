@@ -57,7 +57,7 @@
 | Fabric 缺 relay 权限门、`/kurobridge` 为 op level 近似 | 无法按玩家静音 |
 | Fabric 单 MC 版本、SERVER_STOPPING 早于玩家断开 | 多版本矩阵未做；关停时序有差异 |
 | LSE 无杀子进程 API、无 status、无 reload、死亡文案恒空 | 卡死进程需等 BDS 退出/手动结束 |
-| LSE 未纳入版本门禁 | `plugin.json` / `BRIDGE_VERSION` 需手动同步 |
+| LSE 未纳入版本门禁 | `manifest.json` / `BRIDGE_VERSION` 需手动同步 |
 | Endstone 无命令面、`bin/` 手动预置、tps=0.0 | 升级与运维靠 SOP；状态数据不完整 |
 | Endstone 真机未联调 | ABI 构建成功 ≠ 行为已背书 |
 

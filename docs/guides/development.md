@@ -51,7 +51,7 @@ bridge 版本族（当前 `0.1.0`）共六点，改版本必须同改：
 1. `bridge/core/node_modules/@kuro-bridge/protocol/package.json` 的 `version`（实际安装版本）
 2. `platforms/je/core/.../KurobridgeVersions.java` 的 `PROTOCOL_VERSION`
 
-LSE 的 `plugin.json` / `BRIDGE_VERSION` 与 Endstone 的插件版本当前**不在**门禁内，改动需手动同步。
+LSE 的 `manifest.json`（`version` 为字符串）/ `BRIDGE_VERSION` 与 Endstone 的插件版本当前**不在**门禁内，改动需手动同步。
 
 ## 代码规范
 

@@ -26,9 +26,12 @@ interface GateHarness {
     readonly port: number;
     readonly channels: IpcChannel[];
     readonly lost: number;
+    readonly neverPaired: number;
 }
 
-async function startedGate(options: { authTimeoutMs?: number } = {}): Promise<GateHarness> {
+async function startedGate(
+    options: { authTimeoutMs?: number; pairGraceMs?: number } = {},
+): Promise<GateHarness> {
     // GameGate.start() 不回报端口（端口由壳下发）：先占一个空闲端口再绑定（对齐 embedded 测试手法）
     const port = await freePort();
     const gate = new GameGate({
@@ -36,15 +39,20 @@ async function startedGate(options: { authTimeoutMs?: number } = {}): Promise<Ga
         token: TOKEN,
         logger: fakeLogger(),
         authTimeoutMs: options.authTimeoutMs,
+        pairGraceMs: options.pairGraceMs,
     });
     gates.push(gate);
     const channels: IpcChannel[] = [];
     let lost = 0;
+    let neverPaired = 0;
     gate.onChannel((ipc) => {
         channels.push(ipc);
     });
     gate.onChannelLost(() => {
         lost += 1;
+    });
+    gate.onNeverPaired(() => {
+        neverPaired += 1;
     });
     await gate.start();
     return {
@@ -53,6 +61,9 @@ async function startedGate(options: { authTimeoutMs?: number } = {}): Promise<Ga
         channels,
         get lost() {
             return lost;
+        },
+        get neverPaired() {
+            return neverPaired;
         },
     };
 }
@@ -176,6 +187,40 @@ describe("鉴权握手（首帧 = 令牌明文，裁决册 §4.2）", () => {
         expect(harness.channels).toHaveLength(0);
         expect(harness.lost).toBe(0); // 超时关停 ≠ 脐带断
         await authenticatedChannel(harness); // 槽位已释放
+    }, 5_000);
+});
+
+describe("配对期限（防孤儿占固定端口，真机 2026-10-25 增设）", () => {
+    it("期限内无已鉴权通道 → onNeverPaired 触发一次，不触发脐带", async () => {
+        const harness = await startedGate({ pairGraceMs: 100 });
+        await new Promise<void>((resolve) => {
+            setTimeout(resolve, 250);
+        });
+        expect(harness.neverPaired).toBe(1);
+        expect(harness.lost).toBe(0); // 期限退出 ≠ 脐带断
+    }, 5_000);
+
+    it("期限内完成鉴权 → 期限届满不再触发（正常配对不受期限影响）", async () => {
+        const harness = await startedGate({ pairGraceMs: 150 });
+        await authenticatedChannel(harness);
+        await new Promise<void>((resolve) => {
+            setTimeout(resolve, 300);
+        });
+        expect(harness.neverPaired).toBe(0);
+        expect(harness.channels).toHaveLength(1);
+    }, 5_000);
+
+    it("单次鉴权失败不吃掉期限：期限内的后续连接仍可完成配对", async () => {
+        const harness = await startedGate({ authTimeoutMs: 100, pairGraceMs: 400 });
+        const ws = rawConnect(harness.port);
+        await opened(ws);
+        const closed = clientClose(ws);
+        expect(await closed).toEqual({ code: 1008, reason: "unauthorized" });
+        await authenticatedChannel(harness);
+        await new Promise<void>((resolve) => {
+            setTimeout(resolve, 500);
+        });
+        expect(harness.neverPaired).toBe(0);
     }, 5_000);
 });
 

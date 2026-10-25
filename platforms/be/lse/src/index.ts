@@ -4,7 +4,7 @@
  * 顶层只做插件注册（LSE 装载期要求，经 lse-env 走全局唯一触点）；看护器引导收进
  * bootstrap 并 try/catch 包裹——任何异常只记日志不上抛，绝不崩 BDS（插件保持加载，
  * 功能降级）。其余模块顶层不触碰任何 LSE 全局，测试块可先 stub 再导入。
- * 构建产物 dist/index.js（IIFE，target es2020）由 plugin.json 的 modules[].entry 加载。
+ * 构建产物 dist/index.js（IIFE，target es2020）由 manifest.json 的 entry 加载。
  */
 import { attemptOnce } from "./bridge-host.js";
 import { createShellLogger, logError, registerConsoleCommand, registerPlugin } from "./lse-env.js";

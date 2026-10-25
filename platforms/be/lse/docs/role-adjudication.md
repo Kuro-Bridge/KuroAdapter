@@ -13,7 +13,7 @@
   fire-and-forget 拉起，宿主 **bridge/core 的 `KurobridgeServer` + `Relay`**（对 koishi 的真 WS 服务端），
   游戏通道 WS 连接包装为 core 的 `IpcChannel` 注入 Relay。
 - 生命周期脐带：游戏通道 WS 断开 ⇔ shim 自杀（等价 JE 的 stdin-EOF 自杀，D-08）。
-- 部署契约与 paper 同目录：`<BDS 根>/plugins/kurobridge/`（plugin.json + index.js）+
+- 部署契约与 paper 同目录：`<BDS 根>/plugins/kurobridge/`（manifest.json + index.js）+
   `bin/node.exe` + `bin/index.mjs`。
 
 对任务书 R2 的两处**显式偏离**（诚实记录）：
@@ -68,7 +68,7 @@
 | --- | --- | --- |
 | `system.newProcess`（fire-and-forget，`timeLimit` 缺省 -1 不限时） | `SystemCall.d.ts:40-51` | 拉起 node shim 长驻进程；退出回调 `(exitcode, output)` 恰好充当崩溃通知 |
 | `WSClient` 全双工客户端 | `Network.d.ts:62-147`：`connect/connectAsync/send/listen('onTextReceived'/'onError'/'onLostConnection')/close` | 壳 ↔ shim 游戏通道（127.0.0.1 回环）；`onLostConnection` 充当管道断裂信号 |
-| `file.readAllSync` / `ll.getCurrentPluginInfo().filePath` | `File.d.ts` 静态方法；`ScriptAPI/Li.d.ts:27` `filePath: string`（插件路径） | 读 config.json token（若采配置令牌方案）；推导 BDS 根路径 |
+| `File.exists` / `__dirname`（真机修正 2026-10-25） | `File.d.ts` 静态方法；`File` 类全后端注册（nodejs 后端不加载 BaseLib，遗留小写 `file` 别名不存在，直用即 ReferenceError）；`ll…filePath` 真机实测为 manifest entry 原文（相对名），路径锚点取 CJS 装载注入的 `__dirname`（插件目录绝对路径） | node.exe 部署探测；推导 BDS 根路径（读 config.json 由 node shim 侧承担，不经壳） |
 | `mc.runcmd` / `mc.runcmdEx` | `GameAPI/Command/mc.d.ts:11-29`，Ex 返回 `{success, output}`（隐藏执行） | broadcast → `say`；execute_command → `runcmdEx` 回执 |
 | `mc.listen` 四事件 + `Player.realName` + `mc.getOnlinePlayers()` | `PlayerEvents.d.ts:11/14/20-23/32-35`；`Player.d.ts:28/1019` | 事件桥接 |
 | QuickJS 可跑 zod + protocol + core | core「零 Node API」（`transport.ts` 头注）；`@kuro-bridge/protocol` dist 无 `node:` 导入（zod 为 external 但 zod 本体纯 JS，实测 0 处 Node API 引用） | 帧编解码、业务核心整包进 QuickJS 侧 bundle 与 node 侧 bundle |
@@ -95,9 +95,11 @@ koishi(WS 客户端) ──WS──> Node shim ──IpcChannel(游戏通道 WS,
 
 ### 4.2 拉起与鉴权
 
-- 壳推导路径：假设 `ll.getCurrentPluginInfo().filePath` = **插件目录** `<root>/plugins/kurobridge`
-  （语义待真机核实，§6.4 首项）：`root = dirname(dirname(filePath))`；`binDir = <root>/plugins/kurobridge/bin`；
-  node = `<binDir>/node.exe`（Linux `node`）。若真机实证 filePath 是主脚本文件路径，则多取一层 dirname。
+- 壳推导路径（真机裁定 2026-10-25，LSE-nodejs 0.22.3）：`ll.getCurrentPluginInfo().filePath` 实际返回
+  manifest entry 原文（相对名 `index.js`），非插件目录亦非绝对路径，不能作推导基准；锚点改取
+  `__dirname`（nodejs 后端 CJS 装载注入，真机实测 = 插件目录绝对路径，即本条原「目录」假设成立），
+  无 `__dirname` 的后端回落 `ll…filePath`。`root = dirname(dirname(锚点))`；
+  `binDir = <root>/plugins/kurobridge/bin`；node = `<binDir>/node.exe`（Linux `node`）。
   实现与测试按「目录」解释锚定（与部署布局 §4.1 自洽；实现期勘误 2026-09-19）。
 - 拉起：`system.newProcess("<node> <binDir>/index.mjs --server-root <root> --game-port N --game-token T>", exitCb, -1)`；
   `N` = 壳每轮尝试随机选的临时端口（20000-40000），`T` = 壳每轮生成的会话令牌（`system.randomGuid()` 去连字符；
@@ -156,7 +158,10 @@ koishi(WS 客户端) ──WS──> Node shim ──IpcChannel(游戏通道 WS,
 1. `newProcess` 参数串解析/quoting 规则、子进程工作目录与环境继承（shim 已用 `--server-root` 显式传参消解 cwd 依赖，但 argv 切分规则未证实）。
 2. `WSClient` 回环连接（`ws://127.0.0.1:<port>` 目标串格式）与 `listen` 回调线程语义（游戏主线程还是网络线程；若后者，`mc.runcmd` 安全性需实测）。
 3. `runcmdEx` 输出串的编码/合流/截断语义；`mc.runcmd("say …")` 广播的实际呈现。
-4. `ll.getCurrentPluginInfo().filePath` 在 LSE 下的实际取值（主脚本绝对路径假设）与 `system.randomGuid` 格式。
+4. `ll.getCurrentPluginInfo().filePath` 在 LSE 下的实际取值与 `system.randomGuid` 格式。
+   已真机裁定（2026-10-25，LSE-nodejs 0.22.3）：filePath = manifest entry 原文（相对名
+   `index.js`，非插件目录亦非绝对路径），路径锚点改取 `__dirname`（§4.2 已同步修正）；
+   randomGuid 返回带连字符 GUID，去连字符后作会话令牌（拉起链真机验证通过）。
 5. BDS 硬杀时游戏通道断开能否及时触发 shim 自杀（TCP RST 时序）；LeviLamina 是否替子进程兜底 reap。
 6. 长驻 node 进程在 `newProcess` 下无回调期内是否被 LSE/BDS 干扰（信号、控制台）。
 7. `ready` 前退出回调的 `output` 内容可读性（引导失败的 stderr 是否并入）。

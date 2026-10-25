@@ -17,7 +17,7 @@ BDS
 ```
 
 - **shim 宿主 core**：`platforms/be/lse/src/runtime/`，产物 `dist/bin/index.mjs`，跑在真实 Node。
-- **壳**：`platforms/be/lse/src/`，产物 `dist/index.js`（IIFE，target ES2020），由 `plugin.json` 的 `modules[].entry` 加载。
+- **壳**：`platforms/be/lse/src/`，产物 `dist/index.js`（IIFE，target ES2020），由 `manifest.json` 的 `entry` 加载。
 - 对外角色不变：koishi 仍连 shim 的 WS 服务端；shim 仍是游戏侧部署体的一部分。
 
 ## 启动与握手
@@ -63,14 +63,14 @@ BDS
 
 ```
 plugins/kurobridge/
-├── plugin.json          # 与 index.js 同目录
+├── manifest.json        # LeviLamina 插件清单（扁平格式），与 index.js 同目录
 ├── index.js             # 壳（dist/index.js）
 ├── bin/index.mjs        # Node shim（dist/bin/index.mjs）
 ├── bin/node.exe         # Windows 随包；其它平台用 PATH 上的 node（≥20，建议 26）
 └── config.json          # 首次运行生成默认，服主编辑
 ```
 
-`plugin.json` 的版本三元组、`src/runtime/index.ts` 的 `BRIDGE_VERSION` 与包版本当前均为 `0.1.0`，但 **LSE 未纳入 `check-versions` 六点门禁**，升级时需手动同步。
+`manifest.json` 的 `version`（字符串）、`src/runtime/index.ts` 的 `BRIDGE_VERSION` 与包版本当前均为 `0.1.0`，但 **LSE 未纳入 `check-versions` 六点门禁**，升级时需手动同步。
 
 ## 配置
 

@@ -169,6 +169,8 @@ describe("open：令牌明文首帧 + ready 握手（裁决册 §4.2 鉴权序�
         // 先挂 reject 断言再推时钟：拒绝发生在定时器 tick 内，避免无主 rejection
         const rejection = expect(opening).rejects.toThrow("重试耗尽");
         const client = lastClient();
+        // 连接从未建立：send 恒 false（泵不误投令牌，状态与 connectAsync 失败自洽）
+        client.sendResult = false;
         await vi.advanceTimersByTimeAsync(2_000);
         expect(client.connectAsyncCalls).toBe(5); // t=0,500,1000,1500,2000；尚未失败
         await vi.advanceTimersByTimeAsync(500);
@@ -185,6 +187,39 @@ describe("open：令牌明文首帧 + ready 握手（裁决册 §4.2 鉴权序�
         const rejection = expect(opening).rejects.toThrow("握手超时");
         await vi.advanceTimersByTimeAsync(30_000);
         await rejection;
+    });
+
+    it("connectAsync 回调不触发（nodejs 后端实测形态）：令牌泵在 200ms 送达令牌，ready 后 resolve", async () => {
+        vi.useFakeTimers();
+        vi.stubGlobal("WSClient", FakeWSClient);
+        const channel = new GameChannel();
+        const opening = channel.open("ws://127.0.0.1:23456", "tok", 30_000);
+        const client = lastClient();
+        expect(client.connectAsyncCalls).toBe(1); // 启动成功但不自动应答（回调永不触发）
+        await vi.advanceTimersByTimeAsync(200);
+        expect(client.sent).toEqual(["tok"]); // 泵送达且仅此一帧（tokenSent 守卫防双发）
+        client.emitText(readyText(34567));
+        await expect(opening).resolves.toBeUndefined();
+        expect(channel.isOpen).toBe(true);
+        channel.close();
+    });
+
+    it("令牌未送达期 onError：按连接尝试失败推进 500ms 重试（不悬挂至 deadline）", async () => {
+        vi.useFakeTimers();
+        vi.stubGlobal("WSClient", FakeWSClient);
+        const channel = new GameChannel();
+        const opening = channel.open("ws://127.0.0.1:23456", "tok", 30_000);
+        const client = lastClient();
+        client.sendResult = false; // 未连接期 send 一律失败（泵探测不误投令牌）
+        client.emitError("conn refused");
+        await vi.advanceTimersByTimeAsync(500);
+        expect(client.connectAsyncCalls).toBe(2);
+        // 重试后走通握手收尾，避免悬挂定时器与无主 rejection
+        client.sendResult = true;
+        client.answerConnect(true);
+        client.emitText(readyText(1));
+        await expect(opening).resolves.toBeUndefined();
+        channel.close();
     });
 
     it("令牌已发（connected）后 onError → reject「WS 错误」", async () => {

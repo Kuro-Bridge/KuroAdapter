@@ -1,8 +1,12 @@
 /**
  * 游戏通道：壳 ↔ node shim 的回环 WS 客户端封装（WSClient）。
  *
- * open = connectAsync 重试（固定间隔）→ 连上即发令牌明文首帧 → 等 ready 帧，
- * 总 deadline 由调用方给定（看护器对齐 30s，裁决册 §4.4）；任一环节失败 reject。
+ * open = connectAsync 重试（固定间隔）→ 令牌明文首帧 → 等 ready 帧，总 deadline 由
+ * 调用方给定（看护器对齐 30s，裁决册 §4.4）；任一环节失败 reject。
+ * 令牌投递双路（真机 2026-10-25 裁定，裁决册 §6.2）：connectAsync 回调路径
+ * （QuickJS 等后端，连上即发）+ 令牌泵（LSE-nodejs 的 connectAsync 回调实测不触发，
+ * 事件面正常；泵每 200ms 试 send，连接建立即成功送达，tokenSent 守卫保证只发一次）。
+ * 未送达令牌期的 onError / onLostConnection 按连接尝试失败推进重试，不悬挂至 deadline。
  * 握手完成后每个文本帧经 decodeHostInbound 分派给 onFrame 注册方（ready 帧同样投递，
  * 看护器据其读取 autoRestart）；onError / onLostConnection 均视为失连，通知 onLost 注册方。
  * 实例单次使用（每轮看护尝试新建），close 后不得复用。
@@ -17,6 +21,8 @@ import {
 } from "./lse-env.js";
 
 const CONNECT_RETRY_DELAY_MS = 500;
+/** 令牌泵间隔：send 即时返回（未连接 false / 已连接 true），以此探测连接就绪 */
+const TOKEN_PUMP_INTERVAL_MS = 200;
 
 /** open 等待期的事件汇（握手结算入口；open 后置回 null，改走 frameHandlers 分派） */
 type SinkEvent = { kind: "text"; text: string } | { kind: "error"; message: string };
@@ -50,14 +56,23 @@ export class GameChannel {
         return await new Promise<void>((resolve, reject) => {
             let settled = false;
             let connected = false;
+            let tokenSent = false;
             let retryTimer: TimerHandle | null = null;
+            let pumpTimer: TimerHandle | null = null;
             const startedAt = Date.now();
+            const stopPump = (): void => {
+                if (pumpTimer !== null) {
+                    cancelTimer(pumpTimer);
+                    pumpTimer = null;
+                }
+            };
             const cleanup = (): void => {
                 cancelTimer(deadlineTimer);
                 if (retryTimer !== null) {
                     cancelTimer(retryTimer);
                     retryTimer = null;
                 }
+                stopPump();
                 this.sink = null;
             };
             const fail = (reason: string): void => {
@@ -80,6 +95,11 @@ export class GameChannel {
             const deadlineTimer = scheduleTimer(() => {
                 fail(`游戏通道握手超时（${deadlineMs}ms 内未完成令牌与 ready 握手）`);
             }, deadlineMs);
+            const markTokenSent = (): void => {
+                tokenSent = true;
+                connected = true;
+                stopPump();
+            };
             const scheduleRetry = (): void => {
                 if (settled || retryTimer !== null) {
                     return;
@@ -93,33 +113,52 @@ export class GameChannel {
                     attemptConnect();
                 }, CONNECT_RETRY_DELAY_MS);
             };
+            const pump = (): void => {
+                pumpTimer = null;
+                if (settled || tokenSent) {
+                    return;
+                }
+                if (client.send(token)) {
+                    markTokenSent();
+                    return;
+                }
+                pumpTimer = scheduleTimer(pump, TOKEN_PUMP_INTERVAL_MS);
+            };
             const attemptConnect = (): void => {
                 if (settled) {
                     return;
                 }
                 const launched = client.connectAsync(url, (success) => {
-                    if (settled) {
+                    if (settled || tokenSent) {
                         return;
                     }
                     if (!success) {
                         scheduleRetry();
                         return;
                     }
-                    connected = true;
+                    // 回调路径（QuickJS 等后端）：连上即发令牌；nodejs 后端回调不触发，由泵补位
                     if (!client.send(token)) {
                         fail("游戏通道令牌首帧发送失败");
+                        return;
                     }
+                    markTokenSent();
                 });
                 if (!launched) {
                     scheduleRetry();
                 }
+                if (pumpTimer === null && !tokenSent) {
+                    pumpTimer = scheduleTimer(pump, TOKEN_PUMP_INTERVAL_MS);
+                }
             };
             this.sink = (event) => {
                 if (event.kind === "error") {
-                    // 连接建立前的传输错误交 connectAsync 回调裁决，避免双重重试
+                    // 令牌已送达：连接已建立后的传输错误按握手失败结算
                     if (connected) {
                         fail(event.message);
+                        return;
                     }
+                    // 令牌未送达：该次连接尝试已死，推进重试（不悬挂至 deadline）
+                    scheduleRetry();
                     return;
                 }
                 const frame = decodeHostInbound(event.text);

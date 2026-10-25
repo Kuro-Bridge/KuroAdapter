@@ -1,5 +1,5 @@
 /**
- * LSE 全局（ll / mc / system / file / logger / WSClient / 定时器）的唯一触点。
+ * LSE 全局（ll / mc / system / File / logger / WSClient / 定时器）的唯一触点。
  *
  * 其余模块只 import 本模块，不直接触碰任何 LSE 全局；且全部访问延迟到函数内
  * （模块顶层不读全局），保证测试块可先 stub globalThis 再导入。
@@ -79,7 +79,7 @@ export function logDebug(message: string): void {
 
 /**
  * 插件注册（LSE 装载期要求）：index.ts 顶层经此调用，ll 全局触点仍收敛本模块。
- * 版本三元组与 plugin.json / 包版本联动（0.1.0）。
+ * ll.registerPlugin 的版本三元组与 manifest.json 的 version 字符串 / 包版本联动（0.1.0）。
  */
 export function registerPlugin(name: string, description: string): void {
     // 第 4 参按类型契约是 Record<string, string>（附加信息，如作者/许可证），不能传裸字符串
@@ -139,11 +139,35 @@ export function randomToken(): string {
     return system.randomGuid().split("-").join("");
 }
 
-/** 主脚本绝对路径（路径推导基准：dirname(dirname(...)) = BDS 根） */
+/**
+ * 路径推导锚点 = 插件目录（bridge-host 取 dirname(dirname(...)) = BDS 根）。
+ * LSE-nodejs 的 ll…filePath 返回 manifest entry 原文（相对名，真机实测 "index.js"，
+ * 裁决册 §6.4 已裁定），不能作推导基准；该后端经 CJS 装载注入词法 __dirname =
+ * 插件目录绝对路径（真机实测）。__dirname 是模块包装的词法变量（不在 globalThis 上，
+ * 真机 globalThis 键面已证），故取值顺序：globalThis 注入（测试钩子，vitest 会给模块
+ * 注入自身目录的词法 __dirname，globalThis 桩须先于它生效）→ 词法 __dirname（生产）
+ * → ll…filePath（无 __dirname 的后端回落，行为同修复前）。
+ */
 export function pluginFilePath(): string {
+    const injected: unknown = Reflect.get(globalThis, "__dirname");
+    if (typeof injected === "string") {
+        return injected;
+    }
+    if (typeof __dirname !== "undefined") {
+        return __dirname;
+    }
     return ll.getCurrentPluginInfo().filePath;
 }
 
+/**
+ * 文件存在性探测（node.exe 部署契约用）。遗留小写 file 全局来自 BaseLib 预置层的
+ * file = File 别名，而 LSE-nodejs 不加载 BaseLib（真机实测 file undefined，引导即抛
+ * ReferenceError）；File 类为全后端无条件注册（上游 BindAPIs），故走 File.exists。
+ * 经 globalThis 窄接口访问：vendor 类型无大写 File 声明，直写会撞 @types/node 的
+ * 全局 File（WHATWG 形状）。File 不可用时返回 false（等价「无随包 node」，回落
+ * PATH 上的 node），保证本函数永不抛错。
+ */
 export function fileExists(path: string): boolean {
-    return file.exists(path);
+    const fileApi = (globalThis as unknown as { File?: { exists(path: string): boolean } }).File;
+    return fileApi === undefined ? false : fileApi.exists(path);
 }

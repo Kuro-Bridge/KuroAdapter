@@ -24,16 +24,32 @@ LSE 壳（QuickJS，mc.listen / mc.runcmd）
 ## 部署清单
 
 LeviLamina 与 LSE 本身的安装见官方文档（[docs.levimc.org](https://docs.levimc.org)，LiteLDev），此处不复制。
+安装时各组件的版本须逐线配对（依据 LeviLamina 官方 tooth.json 依赖图；下表三线均已实装验证，2026-10-24）：
+
+| LeviLamina | LSE-nodejs | LegacyRemoteCall | LegacyMoney | iListenAttentively | node prebuilt |
+| --- | --- | --- | --- | --- | --- |
+| 26.51.8 | 0.22.3 | 0.22.0 | 0.22.0 | 0.17.2 | v22.12.0 |
+| 26.40.6 | 0.21.3 | 0.21.1 | 0.21.0 | 0.16.2 | v22.12.0 |
+| 26.32.4 | 0.20.0 | 0.20.0 | 0.20.0 | 不需要 | v22.12.0 |
 
 构建产物位于本仓 `platforms/be/lse/dist/`，按下表布局放入 `<BDS 根>/plugins/kurobridge/`：
 
 | 路径 | 说明 |
 | --- | --- |
-| `plugins/kurobridge/plugin.json` | LeviLamina 插件清单（与 `index.js` 同目录） |
+| `plugins/kurobridge/manifest.json` | LeviLamina 插件清单（扁平格式，与 `index.js` 同目录） |
 | `plugins/kurobridge/index.js` | QuickJS 壳（本仓 esbuild 产物） |
 | `plugins/kurobridge/bin/index.mjs` | Node shim（本仓 esbuild 产物） |
 | `plugins/kurobridge/bin/node.exe`（Windows）/ `bin/node`（Linux） | Node ≥ 20 运行时，服主自备（建议 Node 26，与内嵌形态基线一致，ADR-015） |
 | `plugins/kurobridge/config.json` | 配置；首次运行缺失时自动生成默认，服主手工编辑 |
+
+清单三要点（LeviLamina 26.51.8 线真机验证，2026-10-24；旧版 `plugin.json` 格式已被现行 LeviLamina 拒绝）：
+
+- 文件名必须是 `manifest.json`：沿用旧名 `plugin.json` 时 PreLoader 报
+  `Invalid manifest.json in ./plugins/kurobridge: missing name or entry`。
+- `type` 必须写 LSE 管理器名 `lse-nodejs`：写 `script` 会报「无法识别的模组类型：script」
+  （LeviLamina 按 `manifest.type` 路由到已注册的 ModManager）。
+- `dependencies` 须声明 `legacy-script-engine-nodejs`，保证 LSE 引擎先于本 mod 加载注册；
+  `version` 为字符串（如 `0.1.0`），不是旧格式的三元组数组。
 
 ## 配置（config.json 契约）
 
@@ -111,5 +127,5 @@ pnpm install && pnpm -r build
 ```
 
 产物：`platforms/be/lse/dist/index.js`（壳）与 `platforms/be/lse/dist/bin/index.mjs`（node shim）。
-连同 `plugin.json` 按上面部署清单布局拷入 `<BDS 根>/plugins/kurobridge/`
+连同 `manifest.json` 按上面部署清单布局拷入 `<BDS 根>/plugins/kurobridge/`
 （`dist/index.js` → `plugins/kurobridge/index.js`，`dist/bin/index.mjs` → `plugins/kurobridge/bin/index.mjs`）。
