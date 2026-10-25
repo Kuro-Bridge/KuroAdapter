@@ -95,7 +95,7 @@ std::unique_ptr<ManagedIpc> NodeRuntime::createIpc(NodeIpcListener& observedList
     auto ipc = std::make_unique<NodeIpc>(resolvedNode_.string(), resolvedBundle_.string(),
                                          observedListener, log_);
     ipc->setPidFile(cwd_ / "plugins" / "kurobridge" / "node.pid");  // DEBT-2 进程卫生，BDS 根相对
-    ipc->setWorkingDirectory(cwd_);  // Node 侧据此定位 plugins/kurobridge/config.json
+    ipc->setWorkingDirectory(cwd_);  // Node 侧据此定位 plugins/kurobridge/config.jsonc
     return ipc;
 }
 

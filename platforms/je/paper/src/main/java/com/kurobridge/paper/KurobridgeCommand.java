@@ -51,6 +51,9 @@ public final class KurobridgeCommand {
             String text = String.join(" ", Arrays.copyOfRange(args, 1, args.length));
             if (ipc.sendGameChat(sender.getName(), text)) {
                 sender.sendMessage("已发送");
+            } else if (plugin.isSupervisorBlockedOnConfig()) {
+                sender.sendMessage(
+                        "发送失败：Node 因配置未就绪退出（exit=2），已停止自动重启（修复 plugins/kurobridge/config.jsonc 后重启服务器或重载插件）");
             } else if (plugin.isSupervisorGivenUp()) {
                 sender.sendMessage("发送失败：Node 进程反复崩溃，自动重启已放弃（需修复后重启服务器或重载插件）");
             } else {
@@ -66,6 +69,9 @@ public final class KurobridgeCommand {
             }
             if (ipc.sendConfigReload()) {
                 sender.sendMessage("已通知重载");
+            } else if (plugin.isSupervisorBlockedOnConfig()) {
+                sender.sendMessage(
+                        "重载失败：Node 因配置未就绪退出（exit=2），已停止自动重启（修复 plugins/kurobridge/config.jsonc 后重启服务器或重载插件）");
             } else if (plugin.isSupervisorGivenUp()) {
                 sender.sendMessage("重载失败：Node 进程反复崩溃，自动重启已放弃（需修复后重启服务器或重载插件）");
             } else {

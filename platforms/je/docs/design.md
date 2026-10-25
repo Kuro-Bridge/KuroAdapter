@@ -32,7 +32,7 @@
 
 ## 运行期目录
 
-`plugins/kurobridge/`：`config.json`、`bin/`、`node.pid`、`napuketto.toml`、`napuketto-data/`、`qr.png` / `qr.json`。统一以服务器根（cwd）为基准，不用 `getDataFolder()`。
+`plugins/kurobridge/`：`config.jsonc`（JSONC，首启生成注释模板 + 随机 token；旧 `config.json` 回退）、`bin/`、`node.pid`、`napuketto.toml`（仅旧版 CLI 回退使用，0.3.0+ 连接参数走内联注入）、`napuketto-data/`、`qr.png` / `qr.json`。统一以服务器根（cwd）为基准，不用 `getDataFolder()`。
 
 ## 测试边界
 

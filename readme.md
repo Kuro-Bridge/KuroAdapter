@@ -155,7 +155,7 @@ flowchart TB
 
 **配置生效语义**
 
-* **单一配置源**：统一读取 `plugins/kurobridge/config.json`，缺失时自动生成默认模板。
+* **单一配置源**：统一读取 `plugins/kurobridge/config.jsonc`（JSONC，注释即文档），首启自动生成带注释模板并写入随机 token。
 
 * **热重载**：`channels` / `admins` 保存即生效（`embedded` 模式 2s 轮询，或执行 `/kurobridge reload`；LSE 平台无热载，需重启）。
 
@@ -194,12 +194,14 @@ pnpm build:jar    # 流水线：TS 构建 → 资源内嵌 → shadowJar → Fab
 
 ### 2. 最小化配置
 
-首次启动会在 `plugins/kurobridge/config.json` 生成默认配置（`external` 形态下必须固定 `port`）：
+首次启动会在 `plugins/kurobridge/config.jsonc` 生成带注释的默认配置，`token` 已自动生成随机值——服主只需填频道列表（`embedded` 形态下还须填 `embedded.napuketto.qq`）。手工示例（`external` 形态下必须固定 `port`）：
 
-```json
+```jsonc
 {
+  // 绑定频道：命中列表的群聊消息才进服
   "channels": ["123456789"],
-  "token": "change-me",
+  // 首启已自动生成随机值；对端连入须携带同一令牌
+  "token": "3f9a1c7e5b2d48a0b6c1d4e7f8a9b0c3",
   "ws": {
     "host": "127.0.0.1",
     "port": 25580

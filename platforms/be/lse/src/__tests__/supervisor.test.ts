@@ -11,7 +11,12 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { type AttemptHandle, type AttemptOutcome, Supervisor } from "../supervisor.js";
+import {
+    AttemptFailure,
+    type AttemptHandle,
+    type AttemptOutcome,
+    Supervisor,
+} from "../supervisor.js";
 
 /** 日志桩：各方法为带类型 mock，可断言调用（形状满足 ShellLogger） */
 function makeLogger(): {
@@ -87,6 +92,56 @@ const OK: AttemptOutcome = { autoRestart: true };
 
 afterEach(() => {
     vi.useRealTimers();
+});
+
+describe("配置未就绪退出（exit 2 契约，ADR-041）", () => {
+    it("ready 前 shim exit 2 → 放弃态：不排退避重试，error 单条给出恢复路径", async () => {
+        vi.useFakeTimers();
+        const { attempt, rejectReadyWith } = makeAttempt();
+        const logger = makeLogger();
+        const supervisor = new Supervisor({ logger, attempt });
+        supervisor.start();
+        rejectReadyWith(
+            new AttemptFailure("node shim 进程退出（code=2，输出前 200 字符：配置未就绪）", 2),
+        );
+        await vi.advanceTimersByTimeAsync(0);
+        expect(attempt).toHaveBeenCalledTimes(1); // 不重试
+        await vi.advanceTimersByTimeAsync(60_000);
+        expect(attempt).toHaveBeenCalledTimes(1);
+        const errors = logger.error.mock.calls.map(([text]) => String(text));
+        expect(
+            errors.some((text) => text.includes("配置未就绪") && text.includes("kurobridgeretry")),
+        ).toBe(true);
+    });
+
+    it("up 态生命线 exit 2 同样命中不重启；普通退出（exit 1）仍走退避", async () => {
+        vi.useFakeTimers();
+        const { attempt, resolveWith, rejectDoneWith } = makeAttempt();
+        const logger = makeLogger();
+        const supervisor = new Supervisor({ logger, attempt });
+        supervisor.start();
+        resolveWith(OK);
+        await vi.advanceTimersByTimeAsync(0);
+        rejectDoneWith(new AttemptFailure("node shim 进程退出（code=2）", 2));
+        await vi.advanceTimersByTimeAsync(60_000);
+        expect(attempt).toHaveBeenCalledTimes(1); // exit 2：不重生
+        // 放弃态后普通失败被状态护栏忽略（不复活；恢复路径 = kurobridgeretry）
+        rejectDoneWith(new Error("node shim 进程退出（code=1）"));
+        await vi.advanceTimersByTimeAsync(60_000);
+        expect(attempt).toHaveBeenCalledTimes(1);
+    });
+
+    it("放弃态（配置未就绪）后 manualRetry 仍可手动拉起", async () => {
+        vi.useFakeTimers();
+        const { attempt, rejectReadyWith } = makeAttempt();
+        const logger = makeLogger();
+        const supervisor = new Supervisor({ logger, attempt });
+        supervisor.start();
+        rejectReadyWith(new AttemptFailure("exit 2", 2));
+        await vi.advanceTimersByTimeAsync(0);
+        supervisor.manualRetry();
+        expect(attempt).toHaveBeenCalledTimes(2);
+    });
 });
 
 describe("启动与立即尝试", () => {

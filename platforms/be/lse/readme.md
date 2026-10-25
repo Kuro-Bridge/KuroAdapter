@@ -40,7 +40,7 @@ LeviLamina 与 LSE 本身的安装见官方文档（[docs.levimc.org](https://do
 | `plugins/kurobridge/index.js` | QuickJS 壳（本仓 esbuild 产物） |
 | `plugins/kurobridge/bin/index.mjs` | Node shim（本仓 esbuild 产物） |
 | `plugins/kurobridge/bin/node.exe`（Windows）/ `bin/node`（Linux） | Node ≥ 20 运行时，服主自备（建议 Node 26，与内嵌形态基线一致，ADR-015） |
-| `plugins/kurobridge/config.json` | 配置；首次运行缺失时自动生成默认，服主手工编辑 |
+| `plugins/kurobridge/config.jsonc` | 配置（JSONC：注释 + 行尾逗号）；首次运行缺失时自动生成带注释模板（含随机 token），服主手工编辑；旧 `config.json` 仍可回退读取 |
 
 清单三要点（LeviLamina 26.51.8 线真机验证，2026-10-24；旧版 `plugin.json` 格式已被现行 LeviLamina 拒绝）：
 
@@ -51,10 +51,12 @@ LeviLamina 与 LSE 本身的安装见官方文档（[docs.levimc.org](https://do
 - `dependencies` 须声明 `legacy-script-engine-nodejs`，保证 LSE 引擎先于本 mod 加载注册；
   `version` 为字符串（如 `0.1.0`），不是旧格式的三元组数组。
 
-## 配置（config.json 契约）
+## 配置（config.jsonc 契约）
 
-首次运行缺失时由 shim 生成默认（无绑定、不鉴权、无管理员、动态端口）。语义权威是
-`bridge/core/src/business/config.ts` 的 `KurobridgeConfig` 注释：
+配置文件是 `plugins/kurobridge/config.jsonc`：严格 JSON 的超集，支持行/块注释与行尾逗号
+（ADR-040）。首次运行两文件皆缺时由 shim 生成带注释模板，并写入 32 位 hex 随机 token
+（缺省无绑定、无管理员、动态端口）；已存在旧 `config.json` 时按原样回退读取，不迁移不重命名，
+启动日志提示改名。语义权威是 `bridge/core/src/business/config.ts` 的 `KurobridgeConfig` 注释：
 
 | 字段 | 语义 |
 | --- | --- |
@@ -93,6 +95,8 @@ LeviLamina 与 LSE 本身的安装见官方文档（[docs.levimc.org](https://do
 
 - 退避序列 1s / 5s / 15s；**10 分钟滑动窗累计 3 次失败 → 放弃**：停止自动重启，游戏事件静默丢弃，
   BDS 继续正常跑。控制台命令 `kurobridgeretry` 手动重新看护。
+- **exit 2（配置未就绪，ADR-041）**：shim 以 exit 2 退出时看护器记单条 error，**不重启、不进失败退避**
+  （blocked-on-config，避免无意义风暴）；修复 `config.jsonc` 后控制台 `kurobridgeretry` 手动恢复。
 - `runtime.autoRestart = false`：崩溃只记 WARN，不自动重启。
 
 ## 已知限制（与 JE/paper 的差异）
@@ -101,7 +105,7 @@ LeviLamina 与 LSE 本身的安装见官方文档（[docs.levimc.org](https://do
   退出才消失（可手工 taskkill）。显式固定 `ws.port` 时，卡死的旧进程会占住端口导致后续绑定失败。
 - **无 status 帧**：LSE 无 TPS API（不造假数据），koishi 侧在线人数等状态不更新。
 - **死亡消息恒为空串**：LSE 死亡事件无死亡文案参数。
-- **无 config_reload**：LSE 无插件重载触发点；修改 config.json 需重启 BDS 生效。
+- **无 config_reload**：LSE 无插件重载触发点；修改 config.jsonc 需重启 BDS 生效。
 - **停服通知靠通道断开兜底**：LSE 无停服事件；BDS 停服/崩溃 → 游戏通道断 → shim 自杀（等价 JE 的
   stdin-EOF 脐带，无孤儿）。
 

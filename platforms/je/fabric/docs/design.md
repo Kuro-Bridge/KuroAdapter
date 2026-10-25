@@ -65,7 +65,7 @@ loom 只发布在 Fabric maven（Gradle Plugin Portal 无此插件，实测 meta
 
 ## 7. 目录契约、环境变量与降级语义（照抄 :paper）
 
-- 目录契约：`<服务器根>/plugins/kurobridge/`（bin/、node.pid、qr.json），子进程 cwd = 服务器根。**不用** fabric 的 config/ 目录——Node 侧按 paper 时代契约定位 config.json，壳侧换目录即制造双权威（任务书红线）。
+- 目录契约：`<服务器根>/plugins/kurobridge/`（bin/、node.pid、qr.json），子进程 cwd = 服务器根。**不用** fabric 的 config/ 目录——Node 侧按 paper 时代契约定位 config.jsonc（旧 config.json 回退），壳侧换目录即制造双权威（任务书红线）。
 - 三环境变量语义不变：`KUROBRIDGE_BUNDLE` 设=开发覆盖（node 缺省 "node"，stub 从 bundle 相对推导 `../stub/peer.ts`）；未设=JAR 自含（EmbeddedRuntime.install → bin/node.exe，stub 仅显式注入）；`KUROBRIDGE_NODE` 覆盖 node 路径；`KUROBRIDGE_STUB_PEER` 显式 stub 路径。
 - 降级语义：install 失败 → SEVERE 日志 + 插件保持加载但无 IPC，不崩服（paper 同语义）。PID 文件写入/残留提示语义由 :core 承担。
 

@@ -19,7 +19,7 @@ KuroBridge 的 LeviLamina（BDS）平台适配：QuickJS 壳只做事件桥接�
 ```
 koishi(WS 客户端) ──WS──> Node shim ──游戏通道 WS(127.0.0.1 回环)──> QuickJS 壳(WSClient)
                             │  KurobridgeServer + Relay               │ mc.listen / mc.runcmd
-                            └─ config.json(parseConfig)               └─ BDS
+                            └─ config.jsonc(parseConfig)              └─ BDS
 ```
 
 ADR-005 不变量保持：WS 服务端仍由游戏侧部署体宿主（shim 是壳拉起的子进程，与 JE 的 node 子进程
@@ -30,7 +30,7 @@ ADR-005 不变量保持：WS 服务端仍由游戏侧部署体宿主（shim 是�
 - **拉起与鉴权**：壳每轮随机选游戏端口 N（20000-40000）、生成会话令牌 T（`system.randomGuid` 去连
   字符），`newProcess("<node> <bin>/index.mjs --server-root <root> --game-port N --game-token T")`
   拉起 shim；游戏通道首帧必须等于 T（明文，非 JSON），错误令牌 → close 1008。koishi 侧鉴权走
-  config.json 的 `token`（hello 帧比对），与本会话令牌无关。
+  config.jsonc 的 `token`（hello 帧比对），与本会话令牌无关。
 - **帧面**：全部为 `@kuro-bridge/protocol` 现成 schema（`encodeFrame` 编码，KuroProtocol 0.4.0）。
   上行 `game_chat` / `player_join` / `player_quit` / `player_death`（死亡文案恒空串）；下行
   `broadcast`（→ `mc.runcmd("say …")`，立即回 `broadcast_result`）与 `execute_command`（→
@@ -66,7 +66,7 @@ src/                    # QuickJS 壳 → dist/index.js（esbuild IIFE / ES2020�
     ├── index.ts        # argv 解析（--server-root/--game-port/--game-token）、core 组装、ready 帧、脐带
     ├── ws-server.ts    # core WsServer 接口的 ws 包实现（koishi 侧，kurobridge-ws.v1 子协议）
     ├── game-gate.ts    # 游戏通道 WS 服务端（127.0.0.1:N，单租户，首帧令牌，错→1008）→ core IpcChannel
-    ├── config-store.ts # plugins/kurobridge/config.json 读取（parseConfig，缺失写默认）+ watch（core ConfigStore）
+    ├── config-store.ts # plugins/kurobridge/config.jsonc 读取（JSONC，缺失写注释模板含随机 token；旧 config.json 回退；watch 空实现）
     ├── platform.ts     # NodeClock / NodeScheduler（定时器 unref）
     └── logger.ts       # stderr 日志（[KuroBridge][node][level] 行格式，对齐 embedded）
 ```

@@ -42,7 +42,7 @@ cwd 契约与 JE 相同：以 BDS 根为基准定位 `plugins/kurobridge/`。
 
 ```
 plugins/kurobridge/
-├── config.json    # 同 schema；Node 按 cwd 定位
+├── config.jsonc   # 同 schema；Node 按 cwd 定位
 ├── node.pid
 └── bin/           # 手动预置四件（当前 embed 链未接 endstone，R3）
     ├── node.exe

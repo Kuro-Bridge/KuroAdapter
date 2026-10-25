@@ -92,7 +92,7 @@ Gradle 多模块，一个服务端 = 一个模块。Java 只做平台桥接；�
 
 ```
 plugins/kurobridge/
-├── config.json          # Node 读写；缺失生成默认
+├── config.jsonc         # Node 读写；缺失生成注释模板（随机 token）
 ├── bin/                 # 从 JAR 解压/复用
 │   ├── node.exe
 │   ├── index.mjs
@@ -100,7 +100,7 @@ plugins/kurobridge/
 │   ├── manifest.json
 │   ├── napuketto.zip    # 仅 JE 嵌包
 │   └── napuketto/
-├── napuketto.toml       # 服主维护（embedded 形态）
+├── napuketto.toml       # 仅旧版 CLI 回退形态使用（ADR-041 内联注入后服主无需维护）
 ├── napuketto-data/
 ├── node.pid             # 优雅关停删除；异常退出残留
 ├── qr.png / qr.json     # embedded 形态的扫码交接

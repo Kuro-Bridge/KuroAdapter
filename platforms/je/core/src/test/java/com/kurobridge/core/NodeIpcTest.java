@@ -25,6 +25,9 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -520,6 +523,78 @@ class NodeIpcTest {
         assertNull(listener.exitCalls.poll(300, TimeUnit.MILLISECONDS), "通道终结幂等：不重复通知");
     }
 
+    @Test
+    void exitCodeObservedWhenProcessLagsPipeEof() throws Exception {
+        FakeProcess process = new FakeProcess();
+        NodeIpc ipc = launchReady(process);
+        // stubborn：tearDown 会先关 stdin（FakeProcess 语义下会立刻 exit(0)），
+        // stubborn 让进程存活到本测试自驱的 exit(78) 才翻转状态
+        process.setStubborn(true);
+        Thread laggingExit = new Thread(
+                () -> {
+                    try {
+                        Thread.sleep(200);
+                    } catch (InterruptedException e) {
+                        return;
+                    }
+                    process.exit(78);
+                },
+                "lagging-exit");
+        laggingExit.setDaemon(true);
+        laggingExit.start();
+
+        process.stdout.closeWrite(); // 先断流，进程状态 200ms 后才翻转（真实竞态形态）
+        RecordingListener.ExitCall call = listener.exitCalls.poll(5, TimeUnit.SECONDS);
+        assertNotNull(call, "EOF 应触发退出通知");
+        assertEquals(78, call.exitCode(), "EOF 后应有界等待真实退出码（ADR-041）");
+        assertEquals("stdout EOF", call.cause());
+        ipc.setShutdownGrace(Duration.ofMillis(300));
+        ipc.shutdown("done");
+    }
+
+    @Test
+    void exitBeforeReadyNotifiesListenerBeforeFailingStartFuture() throws Exception {
+        FakeProcess process = new FakeProcess();
+        AtomicReference<CompletableFuture<Integer>> startRef = new AtomicReference<>();
+        AtomicBoolean startDoneAtNotify = new AtomicBoolean(true);
+        AtomicInteger notifiedCode = new AtomicInteger(-1);
+        NodeIpc ipc = new NodeIpc(
+                "node",
+                Path.of("bundle.mjs"),
+                null,
+                new NodeIpcListener() {
+                    @Override
+                    public void onReady(int wsPort, boolean autoRestart) {}
+
+                    @Override
+                    public void onBroadcast(String message, IpcResult result) {}
+
+                    @Override
+                    public void onExecuteCommand(String command, IpcResult result) {}
+
+                    @Override
+                    public void onStderrLine(String line) {}
+
+                    @Override
+                    public void onProcessExited(Integer exitCode, String cause) {
+                        CompletableFuture<Integer> start = startRef.get();
+                        notifiedCode.set(exitCode == null ? -1 : exitCode);
+                        startDoneAtNotify.set(start != null && start.isDone());
+                    }
+                },
+                logs::add,
+                (command, extraEnv, workingDirectory) -> process);
+        CompletableFuture<Integer> start = ipc.start();
+        startRef.set(start);
+
+        process.exit(2);
+
+        assertThrows(ExecutionException.class, () -> start.get(5, TimeUnit.SECONDS), "ready 前退出 start 应异常完成");
+        assertEquals(2, notifiedCode.get(), "退出通知应携带真实退出码");
+        assertFalse(startDoneAtNotify.get(), "退出通知应先于 start future 失败（看护器须先拿到退出码，ADR-041）");
+        ipc.shutdown("done");
+    }
+
     // ---- PID 文件（DEBT-2 进程卫生）----
 
     @Test
@@ -559,7 +634,7 @@ class NodeIpcTest {
     }
 
     @Test
-    void pidFileKeptAfterCrashAsResidueEvidence(@TempDir Path tempDir) throws Exception {
+    void pidFileDeletedAfterObservedCrash(@TempDir Path tempDir) throws Exception {
         Path pidFile = tempDir.resolve("node.pid");
         FakeProcess process = new FakeProcess();
         NodeIpc ipc = newIpc(process, null);
@@ -571,9 +646,31 @@ class NodeIpcTest {
         process.exit(9);
         assertNotNull(listener.exitCalls.poll(5, TimeUnit.SECONDS));
 
-        assertTrue(Files.exists(pidFile), "异常退出不删 PID 文件（残留即证据）");
-        assertEquals("424242", Files.readString(pidFile).trim());
+        assertFalse(Files.exists(pidFile), "已观察到退出的异常退出同样删除 PID 文件（ADR-041：pid 指向死进程即误导）");
         ipc.shutdown("done");
+    }
+
+    @Test
+    void pidFileKeptWhenExitNeverObserved(@TempDir Path tempDir) throws Exception {
+        Path pidFile = tempDir.resolve("node.pid");
+        FakeProcess process = new FakeProcess();
+        NodeIpc ipc = newIpc(process, null);
+        ipc.setPidFile(pidFile);
+        ipc.setExitCodeWait(Duration.ofMillis(150));
+        CompletableFuture<Integer> future = ipc.start();
+        process.stdout.write(readyFrame(READY_PORT));
+        future.get(5, TimeUnit.SECONDS);
+
+        // 僵尸形态：先断流（EOF）但进程不退、强杀也不生效——连退出都未观察到
+        process.setStubborn(true);
+        process.stdout.closeWrite();
+        RecordingListener.ExitCall call = listener.exitCalls.poll(5, TimeUnit.SECONDS);
+        assertNotNull(call, "EOF 应触发退出通知");
+        assertNull(call.exitCode(), "未观察到退出 → 退出码 null");
+        assertTrue(Files.exists(pidFile), "未观察到退出不删 PID 文件（残留即证据）");
+        assertTrue(logs.stream().anyMatch(line -> line.contains("放弃获取退出码")), "放弃获取退出码应有告警：" + logs);
+        ipc.setShutdownGrace(Duration.ofMillis(150));
+        ipc.shutdown("cleanup");
     }
 
     // ---- shutdown() ----

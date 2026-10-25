@@ -17,7 +17,7 @@ import {
     type ShellLogger,
     spawnProcess,
 } from "./lse-env.js";
-import type { AttemptHandle, AttemptOutcome } from "./supervisor.js";
+import { AttemptFailure, type AttemptHandle, type AttemptOutcome } from "./supervisor.js";
 
 /** 握手总上限（newProcess → 连接 → 令牌 → ready），对齐 JE startTimeout（裁决册 §4.4） */
 const READY_TIMEOUT_MS = 30_000;
@@ -54,10 +54,11 @@ export function attemptOnce(logger: ShellLogger): AttemptHandle {
         let autoRestart = true;
         // 单一 fail 出口：promise「先结算优先、后结算 no-op」——ready 前失败由 ready 拒绝
         // 结算；up 态（ready 已 resolve）失败由 done 拒绝结算 + 事件桥停用。
-        const fail = (message: string): void => {
+        // exitCode 仅进程退出回调携带（AttemptFailure.exitCode，看护器识别配置未就绪用）。
+        const fail = (message: string, exitCode?: number): void => {
             bridge.uninstall();
             channel.close();
-            const error = new Error(message);
+            const error: AttemptFailure = new AttemptFailure(message, exitCode);
             reject(error);
             rejectDone?.(error);
         };
@@ -76,7 +77,7 @@ export function attemptOnce(logger: ShellLogger): AttemptHandle {
         });
         const launched = spawnProcess(command, (exitCode, output) => {
             const tail = output === "" ? "" : `，输出前 200 字符：${output.slice(0, 200)}`;
-            fail(`node shim 进程退出（code=${exitCode}${tail}）`);
+            fail(`node shim 进程退出（code=${exitCode}${tail}）`, exitCode);
         });
         if (!launched) {
             fail("newProcess 拉起 node shim 失败（bin/node.exe 缺失或被拦截？）");

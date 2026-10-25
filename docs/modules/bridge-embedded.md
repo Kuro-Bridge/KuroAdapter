@@ -7,7 +7,7 @@
 [`src/index.ts`](../../bridge/embedded/src/index.ts)：
 
 1. 创建 stderr logger 与 stdin/stdout IPC 通道。
-2. 读取 `plugins/kurobridge/config.json`（相对 `process.cwd()`，即服务器根）。缺失 → 生成默认配置；非法 → 记 error 后以默认配置降级运行，等服主修复。
+2. 读取 `plugins/kurobridge/config.jsonc`（相对 `process.cwd()`，即服务器根；JSONC，ADR-040）。缺失 → 生成带注释模板（含随机 token）；旧 `config.json` 回退读取不迁移；非法 → 记 error 后以默认配置降级运行，等服主修复。
 3. 组装 `CoreContext`（`serverId` = `config.server.id ?? "kurobridge"`，`version` = `BRIDGE_VERSION`，`token` = `config.token`，Node 版 `Clock`/`Scheduler`，`randomUUID`）。
 4. 创建 `BindingTable`、`AdminTable`、`KurobridgeServer`、`Relay`。
 5. `server.start()`：按 `config.ws` 绑 WS 服务端（缺省 `listen(0)` + 全接口）。失败 → 明确 error + `exit(1)`，由薄壳看护器退避重试。
@@ -22,7 +22,7 @@
 
 | 文件 | 职责 |
 | --- | --- |
-| `config-store.ts` | `ConfigStore` 的 Node 实现：读 `plugins/kurobridge/config.json`；缺失写默认（`wx`，不覆盖）；mtime+size 轮询（缺省 2s，`unref`）；解析失败保留旧配置 |
+| `config-store.ts` | `ConfigStore` 的 Node 实现：读 `plugins/kurobridge/config.jsonc`（JSONC 解析，ADR-040）；缺失写注释模板（`wx`，含随机 token，不覆盖）；旧 `config.json` 回退；mtime+size 轮询（缺省 2s，`unref`）；解析失败保留旧配置 |
 | `ipc-stdio.ts` | `IpcChannel` 的 stdin/stdout 实现；stdout 只写 JSON-lines；stdin EOF 触发 `onClose` |
 | `logger.ts` | Node 侧日志唯一 writer，格式 `[KuroBridge][node][LEVEL]`；只写 stderr |
 | `node-platform.ts` | `Clock` / `TimerScheduler` 的 Node 实现；所有定时器 `unref()` |
@@ -38,17 +38,17 @@
 | 条件 | 结果 |
 | --- | --- |
 | 非 Windows | `skip`：记 error，继续做纯 WS 服务端（external 对端不受影响） |
-| `ws.port` 未配置 | `fatal`：napuketto TOML 的 `url` 是静态的，动态端口无法告知；进程 `exit(1)` |
-| CLI 入口 `<bin>/napuketto/node_modules/@napuketto/cli/dist/index.mjs` 不存在 | `fatal`：`exit(1)` |
+| `ws.port` 未配置 | `fatal`：连接 url 静态拼入，动态端口无法告知；配置未就绪语义，进程 `exit(2)`（ADR-041） |
+| CLI 入口 `<bin>/napuketto/node_modules/@napuketto/cli/dist/index.mjs` 不存在 | `fatal`：配置要求嵌入形态而产物缺失，`exit(2)`（ADR-041） |
 | 其余 | `spawn`：解析 configPath / dataDir 后拉起 |
 
 拉起行为：
 
 - 用当前 `process.execPath` 执行 CLI 入口，`stdio: ["pipe","pipe","pipe"]`（不能 inherit，stdout 是 IPC 通道）。
-- 注入 `NAPKETTO_CONFIG`、`NAPKETTO_DATA`，其余环境原样透传。
-- 配置路径缺省 `plugins/kurobridge/napuketto.toml`，数据目录缺省 `plugins/kurobridge/napuketto-data`；相对路径以服务器根为基准，也接受绝对路径。
+- 注入 `NAPKETTO_DATA` 与日志 env；配置注入按 CLI 版本分流（ADR-041）：支持内联注入的版本（0.3.0+）经 `NAPKETTO_CONFIG_JSON` 整包注入（qq/url/token，token 即主配置值），旧版回退 `NAPKETTO_CONFIG` 指路 TOML 并 WARN 提示升级。其余环境原样透传。
+- 数据目录缺省 `plugins/kurobridge/napuketto-data`；TOML 路径仅旧版 CLI 回退形态使用；相对路径以服务器根为基准，也接受绝对路径。
 - stdout/stderr 逐行捕获，带 `[napuketto]` 前缀写入 stderr logger；顺带 best-effort 识别 QR URL。
-- CLI 意外退出 → bootstrap `exit(1)`，交薄壳看护器重启（quick-login 由 napuketto 侧恢复）。
+- CLI 配置校验失败（上游 `exit 78`）→ bootstrap `exit(2)`，看护器不重启（ADR-041）；其余意外退出 → bootstrap `exit(1)`，交薄壳看护器退避重启（quick-login 由 napuketto 侧恢复）。
 - 优雅关停：Windows `taskkill /PID <pid> /T /F`，等退出最多 5s；强杀本 Node 进程时，CLI 树随 Node 26 的 Job Object 级联结束。
 
 ## QR 交接

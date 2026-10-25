@@ -102,7 +102,7 @@
 1. §4 工具链解锁（clang-cl）→ `cmake --preset windows-clang-cl` 构建出 `endstone_kurobridge.dll`。
 2. endstone 服务端：GitHub release 下载 `endstone-0.11.11-windows-x86_64.zip`（插件 API 版本必须与构建时 `ENDSTONE_API_VERSION` 一致）。
 3. 预置 `<BDS 根>/plugins/kurobridge/bin/`：`node.exe`、`index.mjs`（bridge/embedded esbuild 产物）、`NODE_LICENSE`、`manifest.json`（清单契约与 paper 一致，见 [构建与发布](../../../../docs/guides/build.md) 的嵌入式打包节；产物可复用 `toolings/packaging` 输出，embed targets 增 endstone 属 R3 接管点）。
-4. `plugins/kurobridge/config.json` 按 token 契约预置（cwd=BDS 根，node 侧按 cwd 定位）。
+4. `plugins/kurobridge/config.jsonc` 按 token 契约预置（可省略：缺失时 node 首启生成带注释模板 + 随机 token；cwd=BDS 根，node 侧按 cwd 定位）。
 5. dll 放入 `<BDS 根>/plugins/`，启动 endstone 服务端，核对：插件加载日志 → `[NodeIpc][INFO]` 拉起 → `[KuroBridge][node][info]` ready（含 wsPort）→ 四事件触发出现 `game_chat/player_join/player_quit/player_death` 出帧。
 6. 关停语义验证：停服 → shutdown 帧 + stdin EOF 双路径收敛、node 退出码 0、`plugins/kurobridge/node.pid` 被清理。
 

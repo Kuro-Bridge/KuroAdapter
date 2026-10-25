@@ -35,8 +35,9 @@ Release/RelWithDebInfo（`endstone.hpp` 对 MSVC Debug 有静态断言）。
    `toolings/packaging` embed 链）。endstone target 接入 embed 链是 **R3 接管点**，当前手动拷。
    开发覆盖：设 `KUROBRIDGE_NODE` / `KUROBRIDGE_BUNDLE` 环境变量可指向任意 node + bundle
    （与 Java 侧同语义）。
-4. **预置 `<BDS 根>/plugins/kurobridge/config.json`**：token 契约与 paper 一致（node 侧按
-   cwd 定位；cwd = BDS 根，插件以进程工作目录为基准解析 bin/、node.pid 与 config 路径）。
+4. **预置 `<BDS 根>/plugins/kurobridge/config.jsonc`**（可省略：首启缺失时 node 侧自动生成
+   带注释模板与随机 token）：token 契约与 paper 一致（node 侧按 cwd 定位；cwd = BDS 根，插件以
+   进程工作目录为基准解析 bin/、node.pid 与 config 路径）。
 5. **启动核对清单**：dll 放 `<BDS 根>/plugins/`，启动服务端，依次核对——
    - 插件加载日志（`[KuroBridge]` 前缀）；
    - `[NodeIpc][INFO] Node 进程已拉起` → `[NodeIpc][INFO] Node ready` →

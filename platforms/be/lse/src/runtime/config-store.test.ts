@@ -1,16 +1,16 @@
 /**
- * FileConfigStore 读写契约（对齐 bridge/embedded/config-store 策略）：
- * - 路径 <serverRoot>/plugins/kurobridge/config.json。
- * - 缺失 → 写默认落盘（4 空格缩进 JSON + 尾随换行）并返回 defaultConfig()。
- * - 合法文件 → parseConfig 通路（去重保序 / 缺省字段补齐）。
- * - 非法 JSON / 非法形状 → load 以 ConfigError 拒绝（分层：调用方 catch 后降级空绑定，
+ * FileConfigStore 读写契约（对齐 bridge/embedded/config-store 策略；ADR-040 起 JSONC 化）：
+ * - 路径优先 <serverRoot>/plugins/kurobridge/config.jsonc；旧版 config.json 回退读取
+ *   （不迁移不重命名）；两文件都缺 → 生成带注释 JSONC 模板（含随机 token）。
+ * - 合法文件 → parseJsonc + parseConfig 通路（去重保序 / 缺省字段补齐）。
+ * - 非法 JSONC / 非法形状 → load 以 ConfigError 拒绝（分层：调用方 catch 后降级空绑定，
  *   runtime/index.ts 已如此编排；本测试断言该分层边界），且不覆盖盘上文件。
  * - watch 返回可调用函数（no-op 订阅：lse 无配置重载触发点，裁决册 §4.3 差异项）。
  */
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ConfigError, type KurobridgeConfig, type Logger } from "@kuro-bridge/bridge-core";
+import { ConfigError, defaultConfig, type Logger, parseJsonc } from "@kuro-bridge/bridge-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { FileConfigStore } from "./config-store.js";
@@ -25,6 +25,10 @@ const logger: Logger = {
 };
 
 function configPath(): string {
+    return join(serverRoot, "plugins", "kurobridge", "config.jsonc");
+}
+
+function legacyConfigPath(): string {
     return join(serverRoot, "plugins", "kurobridge", "config.json");
 }
 
@@ -42,22 +46,32 @@ afterEach(async () => {
 });
 
 describe("缺失 → 生成默认并返回 defaultConfig（'wx' 落盘语义）", () => {
-    it("load 返回默认配置，且盘上出现默认配置文件（含父目录递归创建）", async () => {
+    it("load 返回默认配置（含随机 token），盘上出现带注释 JSONC 模板（含父目录递归创建）", async () => {
         const loaded = await makeStore().load();
-        expect(loaded).toEqual({
-            channels: [],
-            token: "",
-            admins: [],
-            runtime: { autoRestart: true },
-        } satisfies KurobridgeConfig);
         const text = await readFile(configPath(), "utf8");
-        expect(JSON.parse(text)).toEqual(loaded);
+        expect(parseJsonc(text)).toEqual(loaded);
+        expect(loaded).toEqual(defaultConfig(loaded.token));
+        expect(loaded.token).toMatch(/^[0-9a-f]{32}$/); // 首启随机 token（ADR-040，对齐 embedded/Pure）
+        expect(text).toContain("KuroBridge 配置文件"); // 注释即文档（模板头）
         expect(text.endsWith("\n")).toBe(true);
-        expect(text.includes('\n    "channels"')).toBe(true); // 4 空格缩进（对齐 embedded）
         expect(
             vi
                 .mocked(logger.info)
                 .mock.calls.some(([text]) => String(text).includes("生成默认配置")),
+        ).toBe(true);
+    });
+
+    it("仅有旧版 config.json → 回退读取（JSON 超集），不生成 jsonc、不迁移", async () => {
+        await mkdir(join(serverRoot, "plugins", "kurobridge"), { recursive: true });
+        await writeFile(legacyConfigPath(), '{"channels":["114514"],"token":"legacy"}', "utf8");
+        const loaded = await makeStore().load();
+        expect(loaded.channels).toEqual(["114514"]);
+        expect(loaded.token).toBe("legacy");
+        await expect(readFile(configPath(), "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+        expect(
+            vi
+                .mocked(logger.info)
+                .mock.calls.some(([text]) => String(text).includes("旧版 config.json")),
         ).toBe(true);
     });
 
@@ -109,7 +123,7 @@ describe("非法配置 → ConfigError 拒绝（上层降级分层），盘上�
         await mkdir(join(serverRoot, "plugins", "kurobridge"), { recursive: true });
         await writeFile(configPath(), "{nope", "utf8");
         await expect(makeStore().load()).rejects.toThrow(ConfigError);
-        await expect(makeStore().load()).rejects.toThrow("不是合法 JSON");
+        await expect(makeStore().load()).rejects.toThrow("不是合法 JSONC");
     });
 
     it("非法形状（channels 非数组）：reject ConfigError（来自 parseConfig）", async () => {

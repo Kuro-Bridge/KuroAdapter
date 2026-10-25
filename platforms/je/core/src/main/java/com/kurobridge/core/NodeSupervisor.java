@@ -12,9 +12,12 @@ import java.util.function.LongSupplier;
  * Node 进程看护器（DEBT-2）：异常退出后按退避自动重启，失败密集时放弃——宿主进程管理职责
  * （AGENTS.md 硬约束 3），零业务、零 Bukkit API。
  *
- * <p>状态机：{@code running → restarting → running → …}，终态两个：
- * {@code stopped}（{@link #stop(String)}，onDisable 停看护 + 优雅关停当前实例）与
- * {@code given-up}（放弃终态：滑动窗口内累计失败达上限，SEVERE 提示手动恢复路径）。
+ * <p>状态机：{@code running → restarting → running → …}，终态三个：
+ * {@code stopped}（{@link #stop(String)}，onDisable 停看护 + 优雅关停当前实例）、
+ * {@code given-up}（放弃终态：滑动窗口内累计失败达上限，SEVERE 提示手动恢复路径）与
+ * {@code blocked-on-config}（配置未就绪终态：Node 以 exit 2 退出——含上游 napuketto
+ * exit 78 的映射，ADR-041；确定性配置错误退避重启无意义，不计失败窗口，单条 SEVERE
+ * 指明修复路径）。
  *
  * <p>失败的两个来源去重后等价处理：start future 异常完成（拉起失败/ready 前断开/超时）与
  * {@link NodeIpcListener#onProcessExited}（ready 后异常退出）——每次尝试只处理一次。
@@ -26,6 +29,13 @@ import java.util.function.LongSupplier;
  * 放弃终态用 SEVERE 级别前缀，宿主（:paper）据前缀分流到对应日志级别。
  */
 public final class NodeSupervisor {
+
+    /**
+     * Node 侧「配置未就绪」退出码（bridge/core CONFIG_NOT_READY_EXIT_CODE 的对表副本，
+     * ADR-041）：确定性配置错误（含上游 napuketto exit 78 的映射）——退避重启无意义，
+     * 看护器直接进入 {@code blocked-on-config} 终态。
+     */
+    static final int EXIT_CONFIG_NOT_READY = 2;
 
     /** 每次重启新建 NodeIpc（参数由宿主闭包固化；listener 参数传看护器包装后的观察者）。 */
     @FunctionalInterface
@@ -109,6 +119,7 @@ public final class NodeSupervisor {
 
     private final AtomicBoolean stopped = new AtomicBoolean();
     private final AtomicBoolean givenUp = new AtomicBoolean();
+    private final AtomicBoolean blockedOnConfig = new AtomicBoolean();
     private final AtomicBoolean attemptActive = new AtomicBoolean();
     /** 失败时间戳滑动窗口（synchronized(this) 保护）。 */
     private final ArrayDeque<Long> failureTimestamps = new ArrayDeque<>();
@@ -173,6 +184,11 @@ public final class NodeSupervisor {
         return givenUp.get();
     }
 
+    /** 是否已进入「配置未就绪」终态（exit 2 契约，ADR-041；宿主可据此调整命令报错文案）。 */
+    public boolean isBlockedOnConfig() {
+        return blockedOnConfig.get();
+    }
+
     /**
      * 退避间隔（纯函数，可 JUnit 直接断言）：第 n 次连续失败取 {@code backoffDelaysMs[n-1]}，
      * 越界取末档封顶；n &lt; 1 视为 1。
@@ -185,7 +201,7 @@ public final class NodeSupervisor {
     // ---- 内部 ----
 
     private void spawnAttempt() {
-        if (stopped.get() || givenUp.get()) {
+        if (stopped.get() || givenUp.get() || blockedOnConfig.get()) {
             return;
         }
         attemptActive.set(true);
@@ -197,16 +213,24 @@ public final class NodeSupervisor {
                 logInfo("Node 进程就绪（wsPort=" + wsPort + "），看护中");
                 return;
             }
-            handleAttemptFailure("启动失败（" + describeThrowable(error) + "）");
+            handleAttemptFailure("启动失败（" + describeThrowable(error) + "）", null);
         });
     }
 
-    private void handleAttemptFailure(String cause) {
-        if (stopped.get() || givenUp.get()) {
+    private void handleAttemptFailure(String cause, Integer exitCode) {
+        if (stopped.get() || givenUp.get() || blockedOnConfig.get()) {
             return;
         }
         if (!attemptActive.compareAndSet(true, false)) {
             return; // 同一次尝试的失败已处理（start 失败与退出通知只取其一）
+        }
+        if (exitCode != null && exitCode == EXIT_CONFIG_NOT_READY) {
+            // ADR-041：确定性配置错误（含上游 exit 78 映射），退避重启必然复现同样失败——
+            // 不计失败窗口、不排重启，单条 SEVERE 指明修复路径即进入终态
+            blockedOnConfig.set(true);
+            logSevere("Node 因配置未就绪退出（exit=" + exitCode
+                    + "），不自动重启——修复 plugins/kurobridge/config.jsonc 后重启服务器，或 /reload confirm 重载插件");
+            return;
         }
         consecutiveFailures++;
         long now = options.clock().getAsLong();
@@ -265,7 +289,7 @@ public final class NodeSupervisor {
 
         @Override
         public void onProcessExited(Integer exitCode, String cause) {
-            handleAttemptFailure(describeExit(exitCode, cause));
+            handleAttemptFailure(describeExit(exitCode, cause), exitCode);
             userListener.onProcessExited(exitCode, cause);
         }
     };

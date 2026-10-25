@@ -9,10 +9,11 @@
 | bridge | `0.1.0`（根 package / embedded / plugin.yml / Gradle 六点对齐） |
 | 协议 | `0.4.0`（`@kuro-bridge/protocol`，主版本兼容区间 `0.x`） |
 | 内嵌 Node | `26.7.0`（win-x64） |
-| napuketto | `@napuketto/cli` 0.2.0（精确 pin；哨兵优雅关停 + single-line env 契约，ADR-039） |
+| napuketto | `@napuketto/cli` 0.2.0（精确 pin；哨兵优雅关停 + single-line env 契约，ADR-039）。内联注入门槛 0.3.0+（ADR-041）：当前 pin 走 `NAPKETTO_CONFIG` 回退 + WARN，升级嵌包即转宿主托管 |
 | Java | 工具链 25，字节码 `--release 8`（ADR-038 universal：1.12.2 ~ 26.3 单 jar） |
 | Fabric | MC 1.21.4 / loader 0.19.5 / fabric-api 0.119.4 |
 | Endstone | API v0.11 补丁线（CMake FetchContent） |
+| 测试基线 | TS vitest 298 用例（25 文件）/ Java JUnit 90 用例（`:core` 84 + `:fabric` 6），2026-10-25 本地门禁 |
 
 ## 平台支持
 
@@ -32,6 +33,8 @@
 - `status` / `bindings` 查询（core 本地作答）。
 - token 鉴权、主版本协商、未知帧容忍、心跳/空闲检测。
 - 配置热载（embedded：轮询 + `/kurobridge reload`）。
+- 配置面 JSONC（ADR-040）：`config.jsonc` 支持注释与行尾逗号；首启生成带注释模板并写入 32 位 hex 随机 token；旧 `config.json` 回退读取、不迁移。
+- onboarding 闭环与退出码契约（ADR-041）：`embedded.napuketto.qq/logLevel` 上浮主配置，连接参数按内嵌 CLI 版本注入（0.3.0+ `NAPKETTO_CONFIG_JSON` 内联，旧版回退 `NAPKETTO_CONFIG` + WARN）；Node exit 0/1/2，看护器对 exit 2 记单条 error 且不重启不退避；上游 napuketto exit 78 映射 2。
 - embedded 形态：JAR 内 node + napuketto、固定端口、QR 文件交接。
 - 看护器：1s/5s/15s 退避，10 分钟窗 3 次放弃，`autoRestart` 可关。
 - 门禁：build 前置、biome、tsc、LSE typecheck、docs 口径/死链、版本对齐、金样本契约/行为。
@@ -66,6 +69,8 @@
 | 缺口 | 影响 |
 | --- | --- |
 | Node 仅 win-x64 嵌包 | Linux/macOS 需自行提供 node |
+| 内嵌 napuketto pin 0.2.0 无内联注入 | 内嵌形态回退 `NAPKETTO_CONFIG` + WARN，仍需手工 napuketto.toml；升级嵌包即启用宿主托管 |
+| 旧版 CLI 配置校验失败仍 exit 1（非 78） | 内嵌形态（0.2.0）qq 占位模板会走三次退避后才放弃；exit 78→2 契约待上游发版 |
 | napuketto 仅 Windows | wine / Linux QQ 宿主未支持 |
 | JAR 约 48 MB，无分层下载/升级提示 | 分发体积大 |
 | QR URL 正则 best-effort | napuketto 改日志文案会失效（PNG 路径不受影响） |
@@ -86,6 +91,8 @@
 - Paper 26.x vanilla 命令拒绝自定义 sender 的回退修复：异常类型随版本漂移（26.x 不再是 bukkit CommandException / IllegalArgumentException），判据改为消息链匹配（2026-10-25 cleanroom 实证，version/tps/list/kurobridge qr 四命令回执成功）。
 - shadowJar 重复 META-INF 条目（Jackson 三件的 LICENSE/NOTICE）触发 Paper 1.20.5+ PluginRemapper 拒绝（经典 plugin.yml 的 api-version 1.13 触发重映射），已加 `duplicatesStrategy = EXCLUDE`（2026-10-25 Paper-1.21.11 实证）。
 - napuketto 已消费 0.2.0（ADR-039）：宿主 env 钉 single-line + 关 banner，关停改停止哨兵优先（`<数据根>/napuketto.stop`）、树杀 10s 兜底，哨兵路径展示 exit 0；上游默认级别重分配后校准/接收/mmkv 噪音在源头即 debug，宿主侧降噪层保留为防御。协议面零变化（`kurobridge-ws.v1` / 0.4.0），自报身份 `napukettoqq/0.4.0`。
+- 配置面 JSONC 化（ADR-040）：`jsonc.ts` 剥离器与 `config.jsonc` 注释模板在 `bridge/core`，embedded 与 LSE 共用；首启随机 token 落地，旧 `config.json` 回退路径有单测与集成测试覆盖。
+- embedded onboarding 闭环（ADR-041）：qq/logLevel 上浮、按 CLI 版本内联注入/旧版回退、exit 0/1/2 契约、看护器 blocked-on-config（exit 2 不重启）、NodeIpc EOF 竞态修复与观察到退出即清 pid 文件；paper/fabric/lse 命令文案区分「配置未就绪」与「反复崩溃」。
 
 ## 下一步优先级
 

@@ -25,8 +25,9 @@ import org.junit.jupiter.api.io.TempDir;
  * Java 发 game_chat / player_join / status → 按绑定频道 fan-out → stub stderr 打印
  * 「收到游戏聊天 / 收到进服 / 收到状态」→ 经 onStderrLine 中继回 Java 断言。
  *
- * <p>配置：MVP 阶段一起 Node 侧读 {@code plugins/kurobridge/config.json}（相对子进程 cwd）
- * 做绑定过滤——本测试把子进程 cwd 指到 {@link TempDir} 并预置绑定 stub 频道（"stub-channel"），
+ * <p>配置：Node 侧读 {@code plugins/kurobridge/config.jsonc}（相对子进程 cwd）做绑定过滤——
+ * 本测试刻意保留旧版 {@code config.json} fixture（不写 config.jsonc），正好覆盖 ADR-040 的
+ * 旧文件回退 E2E；本测试把子进程 cwd 指到 {@link TempDir} 并预置绑定 stub 频道（"stub-channel"），
  * 空绑定会把 stub 消息丢弃导致用例失败。
  *
  * <p>前置：`mise exec -- pnpm -r build` 已产出 bundle（未构建时本测试自动跳过，不失败）；

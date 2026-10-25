@@ -19,7 +19,7 @@ public interface ProcessFactory {
      * @param command 完整命令行（如 {@code [node, bundle.js]}）
      * @param extraEnv 需额外注入的环境变量（如 {@code KUROBRIDGE_STUB_PEER}）
      * @param workingDirectory 子进程工作目录；null = 继承当前进程（生产形态：服务器根目录，
-     *     Node 侧据此定位 plugins/kurobridge/config.json）
+     *     Node 侧据此定位 plugins/kurobridge/config.jsonc）
      * @throws IOException 拉起失败（找不到可执行文件等）
      */
     Process start(List<String> command, Map<String, String> extraEnv, Path workingDirectory) throws IOException;

@@ -56,7 +56,7 @@ import org.slf4j.LoggerFactory;
  * </ul>
  *
  * <p>目录契约（docs/design.md §7）：bin/PID 文件钉在相对服务器根的
- * {@code plugins/kurobridge/}（cwd = 服务器根）——与 Node 侧 config.json 同基，不用
+ * {@code plugins/kurobridge/}（cwd = 服务器根）——与 Node 侧 config.jsonc 同基，不用
  * fabric 的 config/ 目录（Node 侧按 paper 时代契约定位，壳侧换目录即制造双权威）。
  */
 public final class KuroBridgeMod implements ModInitializer {
@@ -244,6 +244,12 @@ public final class KuroBridgeMod implements ModInitializer {
     public boolean isSupervisorGivenUp() {
         NodeSupervisor current = supervisor;
         return current != null && current.isGivenUp();
+    }
+
+    /** 看护器是否因配置未就绪进入不重启终态（exit 2 契约，ADR-041）；null 安全。 */
+    public boolean isSupervisorBlockedOnConfig() {
+        NodeSupervisor current = supervisor;
+        return current != null && current.isBlockedOnConfig();
     }
 
     /** TPS 自测器；SERVER_STOPPING 后为 null（采样注册处容忍）。 */

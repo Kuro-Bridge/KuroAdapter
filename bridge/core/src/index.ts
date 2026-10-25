@@ -21,8 +21,15 @@
 import { AdminTable } from "./business/admins.js";
 import { BindingTable } from "./business/bindings.js";
 import type { AdminMapping, ConfigStore, KurobridgeConfig } from "./business/config.js";
-import { ConfigError, defaultConfig, parseConfig } from "./business/config.js";
+import {
+    CONFIG_NOT_READY_EXIT_CODE,
+    ConfigError,
+    defaultConfig,
+    defaultConfigJsonc,
+    parseConfig,
+} from "./business/config.js";
 import { gameEventChannels, platformChatTarget } from "./business/forwarding.js";
+import { parseJsonc } from "./business/jsonc.js";
 import type { CancelFn, Clock, TimerScheduler } from "./clock.js";
 import { ManualClock, ManualScheduler } from "./clock.js";
 import type { CoreOptions } from "./context.js";
@@ -52,18 +59,21 @@ export type {
 export {
     AdminTable,
     BindingTable,
+    CONFIG_NOT_READY_EXIT_CODE,
     ConfigError,
     CoreContext,
     DEFAULT_HELLO_TIMEOUT_MS,
     DEFAULT_IDLE_TIMEOUT_MS,
     DEFAULT_IPC_REQUEST_TIMEOUT_MS,
     defaultConfig,
+    defaultConfigJsonc,
     gameEventChannels,
     IpcRequestError,
     KurobridgeServer,
     ManualClock,
     ManualScheduler,
     parseConfig,
+    parseJsonc,
     platformChatTarget,
     Relay,
 };

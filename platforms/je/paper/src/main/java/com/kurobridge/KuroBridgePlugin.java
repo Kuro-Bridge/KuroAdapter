@@ -62,7 +62,7 @@ import org.bukkit.plugin.java.JavaPlugin;
  * </ul>
  *
  * <p>bin 目录推导：相对服务器根的 {@code plugins/kurobridge/bin/}（小写 kurobridge，与 Node 侧
- * 配置目录 {@code plugins/kurobridge/config.json} 同基，均以 cwd=服务器根 为基准）。不用
+ * 配置目录 {@code plugins/kurobridge/config.jsonc} 同基，均以 cwd=服务器根 为基准）。不用
  * {@code getDataFolder()}——plugin.yml 的 name 是 {@code KuroBridge}，大小写敏感文件系统
  * 上会得到另一个目录（MVP2-NOTES 取舍记录）。PID 文件 {@code plugins/kurobridge/node.pid}
  * 同基（DEBT-2 进程卫生，写入/清理语义见 NodeIpc；Java 8 宿主取不到 PID 时降级不写）。
@@ -244,6 +244,12 @@ public final class KuroBridgePlugin extends JavaPlugin {
     public boolean isSupervisorGivenUp() {
         NodeSupervisor current = supervisor;
         return current != null && current.isGivenUp();
+    }
+
+    /** 看护器是否因配置未就绪进入不重启终态（exit 2 契约，ADR-041）；null 安全。 */
+    public boolean isSupervisorBlockedOnConfig() {
+        NodeSupervisor current = supervisor;
+        return current != null && current.isBlockedOnConfig();
     }
 
     /** 就绪汇总行的 node 版本（JAR 模式 = manifest 值，开发覆盖 = dev）。 */

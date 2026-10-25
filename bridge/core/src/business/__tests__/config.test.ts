@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { ConfigError, defaultConfig, parseConfig } from "../config.ts";
+import { ConfigError, defaultConfig, defaultConfigJsonc, parseConfig } from "../config.ts";
+import { parseJsonc } from "../jsonc.ts";
 
 describe("parseConfig", () => {
     it("合法配置通过并去重保序（channels 与 admins 各自去重）", () => {
@@ -184,5 +185,65 @@ describe("parseConfig", () => {
         });
         expect(defaultConfig()).not.toHaveProperty("ws");
         expect(defaultConfig()).not.toHaveProperty("embedded");
+    });
+});
+
+describe("parseConfig embedded.napuketto.qq / logLevel（ADR-041）", () => {
+    it("qq / logLevel 合法值保留，缺省不出键", () => {
+        expect(
+            parseConfig({
+                channels: [],
+                embedded: { napuketto: { enabled: true, qq: "10001", logLevel: "warn" } },
+            }),
+        ).toEqual({
+            channels: [],
+            token: "",
+            admins: [],
+            runtime: { autoRestart: true },
+            embedded: { napuketto: { enabled: true, qq: "10001", logLevel: "warn" } },
+        });
+        expect(parseConfig({ channels: [], embedded: { napuketto: { enabled: true } } })).toEqual({
+            channels: [],
+            token: "",
+            admins: [],
+            runtime: { autoRestart: true },
+            embedded: { napuketto: { enabled: true } },
+        });
+    });
+
+    it("qq / logLevel 空串或非字符串 → ConfigError", () => {
+        expect(() =>
+            parseConfig({ channels: [], embedded: { napuketto: { enabled: true, qq: "" } } }),
+        ).toThrow(ConfigError);
+        expect(() =>
+            parseConfig({ channels: [], embedded: { napuketto: { enabled: true, qq: 10001 } } }),
+        ).toThrow(ConfigError);
+        expect(() =>
+            parseConfig({ channels: [], embedded: { napuketto: { enabled: true, logLevel: "" } } }),
+        ).toThrow(ConfigError);
+    });
+
+    it("defaultConfig 接受 token 参数（首启随机生成场景，ADR-040）", () => {
+        expect(defaultConfig("abc123").token).toBe("abc123");
+        expect(defaultConfig().token).toBe("");
+    });
+});
+
+describe("defaultConfigJsonc 模板回环（ADR-040）", () => {
+    it("模板经 parseJsonc + parseConfig 解析等于 defaultConfig(token)（形状漂移即红）", () => {
+        const token = "0123456789abcdef0123456789abcdef";
+        expect(parseConfig(parseJsonc(defaultConfigJsonc(token)))).toEqual(defaultConfig(token));
+    });
+
+    it("模板注释齐全且 token 注入到位", () => {
+        const template = defaultConfigJsonc("abc");
+        expect(template).toContain("配置文件");
+        expect(template).toContain('"token": "abc"');
+        expect(template).toContain("qq");
+        expect(template).toContain("logLevel");
+        // 可选段以注释形态给出（生成件保持安全默认：无 ws / embedded / server 实键）
+        expect(template).toContain('// "ws"');
+        expect(template).toContain('// "embedded"');
+        expect(template).toContain('// "server"');
     });
 });

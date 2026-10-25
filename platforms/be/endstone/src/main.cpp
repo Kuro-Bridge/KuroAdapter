@@ -10,8 +10,8 @@
 //
 // cwd 契约：endstone 以服务端根为进程工作目录（BDS 启动目录），与 paper 侧「相对服务器根
 // 定位 plugins/kurobridge/」同契约——core 据此解析 bin/、写 node.pid，node 子进程继承该
-// cwd 定位 config.json。开发覆盖：KUROBRIDGE_NODE / KUROBRIDGE_BUNDLE 环境变量（core
-// resolveNodeRuntimePaths 语义，与 Java 逐字一致）。
+// cwd 定位 config.jsonc（首启生成注释模板；旧 config.json 回退）。开发覆盖：KUROBRIDGE_NODE /
+// KUROBRIDGE_BUNDLE 环境变量（core resolveNodeRuntimePaths 语义，与 Java 逐字一致）。
 
 #include <filesystem>
 #include <memory>

@@ -68,7 +68,7 @@
 | --- | --- | --- |
 | `system.newProcess`（fire-and-forget，`timeLimit` 缺省 -1 不限时） | `SystemCall.d.ts:40-51` | 拉起 node shim 长驻进程；退出回调 `(exitcode, output)` 恰好充当崩溃通知 |
 | `WSClient` 全双工客户端 | `Network.d.ts:62-147`：`connect/connectAsync/send/listen('onTextReceived'/'onError'/'onLostConnection')/close` | 壳 ↔ shim 游戏通道（127.0.0.1 回环）；`onLostConnection` 充当管道断裂信号 |
-| `File.exists` / `__dirname`（真机修正 2026-10-25） | `File.d.ts` 静态方法；`File` 类全后端注册（nodejs 后端不加载 BaseLib，遗留小写 `file` 别名不存在，直用即 ReferenceError）；`ll…filePath` 真机实测为 manifest entry 原文（相对名），路径锚点取 CJS 装载注入的 `__dirname`（插件目录绝对路径） | node.exe 部署探测；推导 BDS 根路径（读 config.json 由 node shim 侧承担，不经壳） |
+| `File.exists` / `__dirname`（真机修正 2026-10-25） | `File.d.ts` 静态方法；`File` 类全后端注册（nodejs 后端不加载 BaseLib，遗留小写 `file` 别名不存在，直用即 ReferenceError）；`ll…filePath` 真机实测为 manifest entry 原文（相对名），路径锚点取 CJS 装载注入的 `__dirname`（插件目录绝对路径） | node.exe 部署探测；推导 BDS 根路径（读 config.jsonc 由 node shim 侧承担，不经壳） |
 | `mc.runcmd` / `mc.runcmdEx` | `GameAPI/Command/mc.d.ts:11-29`，Ex 返回 `{success, output}`（隐藏执行） | broadcast → `say`；execute_command → `runcmdEx` 回执 |
 | `mc.listen` 四事件 + `Player.realName` + `mc.getOnlinePlayers()` | `PlayerEvents.d.ts:11/14/20-23/32-35`；`Player.d.ts:28/1019` | 事件桥接 |
 | QuickJS 可跑 zod + protocol + core | core「零 Node API」（`transport.ts` 头注）；`@kuro-bridge/protocol` dist 无 `node:` 导入（zod 为 external 但 zod 本体纯 JS，实测 0 处 Node API 引用） | 帧编解码、业务核心整包进 QuickJS 侧 bundle 与 node 侧 bundle |
@@ -90,7 +90,7 @@
 ```
 koishi(WS 客户端) ──WS──> Node shim ──IpcChannel(游戏通道 WS, 127.0.0.1)──> QuickJS 壳(WSClient)
                             │  KurobridgeServer + Relay + WsServer-over-ws        │ mc.listen / mc.runcmd
-                            └─ config.json(parseConfig)                          └─ BDS
+                            └─ config.jsonc(parseConfig)                          └─ BDS
 ```
 
 ### 4.2 拉起与鉴权

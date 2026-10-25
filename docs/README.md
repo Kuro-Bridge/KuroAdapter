@@ -12,7 +12,7 @@ KuroBridge（仓名 KuroAdapter）：Minecraft 服务器 ↔ 社交平台群服�
 | 改 JAR 内引导层或 napuketto 嵌入 | [bridge/embedded](modules/bridge-embedded.md) |
 | 改 Java 薄壳（Paper / Fabric） | [JE 平台](modules/je.md) |
 | 改基岩版适配（LSE / Endstone） | [LSE](modules/be-lse.md) · [Endstone](modules/be-endstone.md) |
-| 配置服务器 | [config.json 参考](reference/config.md) |
+| 配置服务器 | [config.jsonc 参考](reference/config.md) |
 | 对接协议端 | [协议参考](reference/protocol.md) |
 | 本地开发、门禁、提交 | [开发指南](guides/development.md) |
 | 构建 JAR / mod / dll、发版 | [构建与发布](guides/build.md) |
@@ -34,7 +34,7 @@ docs/
 │   ├── be-lse.md              # platforms/be/lse：WS 回环薄壳
 │   └── be-endstone.md         # platforms/be/endstone：C++ 薄壳
 ├── reference/
-│   ├── config.md              # config.json 逐字段说明
+│   ├── config.md              # config.jsonc 逐字段说明
 │   └── protocol.md            # kurobridge-ws 与 IPC 帧面速查
 ├── guides/
 │   ├── development.md         # 环境、命令、代码规范、扩展方式

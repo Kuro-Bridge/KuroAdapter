@@ -1,9 +1,13 @@
 /**
- * napuketto CLI spawner（MVP-4，ADR-029）：以子进程拉起 @napuketto/cli。
+ * napuketto CLI spawner（MVP-4，ADR-029；ADR-041 起内联注入托管）：以子进程拉起 @napuketto/cli。
  * KuroAdapter 不重造 supervisor/QR/凭据，只做拉起、stdio 捕获→logger、生命周期接线。
  *
  * 进程树（ADR-022 换真身）：Java → node（本进程）→ napuketto CLI（supervisor）→
  * boot → self-host（最深四层）。
+ *
+ * 配置托管（ADR-041，fix4 P0-A 契约）：业务字段（qq）上浮主配置，连接参数（url/token）
+ * 由本进程组装为内联 JSON 经 NAPKETTO_CONFIG_JSON 注入——napuketto.toml 不再是服主交互面。
+ * 旧版 CLI（无内联能力）回退 NAPKETTO_CONFIG 指路（上游首启生成模板，需手工配置）。
  *
  * 生命周期（napuketto 0.2.0 优雅关停契约）：哨兵优先、树杀兜底。
  * - 优雅关停 stop()：写停止哨兵 <数据根>/napuketto.stop（内容 all；上游轮询 500ms、
@@ -11,14 +15,16 @@
  *   `taskkill /PID <pid> /T /F` 树杀（boot 层无信号处理器、全链无父死监测——只杀 CLI
  *   本体必留 self-host 孤儿持 instance.lock，兜底仍须整树）→ 停妥删除哨兵防残留；
  * - 意外退出 onUnexpectedExit：bootstrap 收到后 node exit(1)，交 Java 看护器退避重启
- *   （凭据在腾讯原生层，重启后 quick-login 自动恢复）；
+ *   （凭据在腾讯原生层，重启后 quick-login 自动恢复）；fix4 P0-B：上游配置校验失败
+ *   专用退出码 78 → 本进程以配置未就绪语义退出（exit 2），看护器不重启；
  * - 强杀 node：CLI 树预期随 Node 26 Job Object 级联死亡（DEBT-2 发现，沙盒复验）。
  *
- * 全部副作用可注入（spawnFn / killTree / platform / cliExists / stopSentinel），vitest 不发真进程。
+ * 全部副作用可注入（spawnFn / killTree / platform / cliExists / cliVersion / stopSentinel），
+ * vitest 不发真进程。
  */
 
 import { spawn } from "node:child_process";
-import { existsSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { isAbsolute, join, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import type { Readable } from "node:stream";
@@ -27,12 +33,38 @@ import type { KurobridgeConfig, Logger } from "@kuro-bridge/bridge-core";
 
 /** CLI 嵌包在 bin 目录下的固定布局（toolings/packaging/embed.ts 产 zip、:core EmbeddedRuntime 解压共同约定） */
 const CLI_ENTRY_PARTS = ["napuketto", "node_modules", "@napuketto", "cli", "dist", "index.mjs"];
+/** CLI npm 包清单（版本探测用，内联注入能力门槛） */
+const CLI_PACKAGE_JSON_PARTS = ["napuketto", "node_modules", "@napuketto", "cli", "package.json"];
 const DEFAULT_CONFIG_RELATIVE = join("plugins", "kurobridge", "napuketto.toml");
 const DEFAULT_DATA_RELATIVE = join("plugins", "kurobridge", "napuketto-data");
 
+/**
+ * fix4 P0-B：上游配置校验失败的专用退出码（sysexits EX_CONFIG 惯例）。
+ * 宿主消费：映射为本进程 exit 2（配置未就绪，看护器不重启）。
+ */
+export const NAPUKETTO_EXIT_CONFIG_INVALID = 78;
+
+/**
+ * TODO(fix4)：内联注入（NAPKETTO_CONFIG_JSON）随上游发版的最低版本门槛——上游合入后
+ * 按实际发布号核对（当前嵌包 0.2.0 无此能力，走 NAPKETTO_CONFIG 回退）。
+ */
+const INLINE_CONFIG_MIN_VERSION: readonly [number, number, number] = [0, 3, 0];
+
+/** 上游首启模板的 qq 占位值（守卫拦截对象之一；配合上游 exit 78 形成双保险） */
+const LEGACY_TEMPLATE_QQ = "123456";
+
 /** napuketto 分支的启动决策（守卫与路径解析全部纯函数化，bootstrap 只做接线） */
 export type NapukettoLaunchDecision =
-    | { action: "spawn"; configPath: string; dataDir: string; cliEntry: string }
+    | {
+          action: "spawn";
+          configPath: string;
+          dataDir: string;
+          cliEntry: string;
+          /** fix4 P0-A 内联配置 JSON 文本；null = 旧版 CLI 回退 toml 指路（NAPKETTO_CONFIG） */
+          inlineConfig: string | null;
+          /** napuketto 控制台日志级别（透传 NAPUKETTO_LOG_LEVEL）；缺省不设 */
+          logLevel?: string | undefined;
+      }
     | { action: "skip"; reason: string }
     | { action: "fatal"; reason: string };
 
@@ -46,9 +78,15 @@ export interface DecideNapukettoLaunchInput {
     binDir: string;
     /** 缺省 node:fs.existsSync */
     cliExists?: (path: string) => boolean;
+    /** CLI 包清单版本读取（注入便于测试）；缺省读 <bin>/napuketto/.../@napuketto/cli/package.json */
+    cliVersion?: (packageJsonPath: string) => string | null;
 }
 
-/** 前置：调用方须已判定 embedded.napuketto.enabled === true（否则走既有 stub 路径） */
+/**
+ * 前置：调用方须已判定 embedded.napuketto.enabled === true（否则走既有 stub 路径）。
+ * 守卫序列（fatal 均为配置未就绪语义，bootstrap 以 exit 2 收敛）：平台豁免 → ws.port 固定
+ * （连接 url 静态拼入）→ qq 非空且非占位 → CLI 入口存在 → 内联注入能力探测。
+ */
 export function decideNapukettoLaunch(input: DecideNapukettoLaunchInput): NapukettoLaunchDecision {
     if (input.platform !== "win32") {
         return {
@@ -63,11 +101,21 @@ export function decideNapukettoLaunch(input: DecideNapukettoLaunchInput): Napuke
             action: "fatal",
             reason:
                 "embedded.napuketto.enabled=true 要求配置 ws.port 固定端口：" +
-                "napuketto.toml 的 url 是静态的，动态端口无法喂给它" +
+                "连接 url 是静态的，动态端口无法喂给内联配置" +
                 "（快速失败，重启收敛于 Java 看护器退避；请补 config 的 ws.port 后重启）",
         };
     }
     const napuketto = input.config.embedded?.napuketto;
+    const qq = napuketto?.qq;
+    if (qq === undefined || qq.trim() === "" || qq === LEGACY_TEMPLATE_QQ) {
+        return {
+            action: "fatal",
+            reason:
+                "配置未就绪：embedded.napuketto.qq 未配置或为模板占位值——" +
+                "请在 plugins/kurobridge/config.jsonc 的 embedded.napuketto 段填入机器人 QQ 号后重启服务器" +
+                "（napuketto 不拉起，本进程以配置未就绪语义退出，看护器不退避重启）",
+        };
+    }
     const configPath = resolveRelative(input.cwd, napuketto?.configPath, DEFAULT_CONFIG_RELATIVE);
     const dataDir = resolveRelative(input.cwd, napuketto?.dataDir, DEFAULT_DATA_RELATIVE);
     const cliEntry = join(input.binDir, ...CLI_ENTRY_PARTS);
@@ -80,7 +128,67 @@ export function decideNapukettoLaunch(input: DecideNapukettoLaunchInput): Napuke
                 "（JAR 模式应随 embedded/napuketto.zip 解压；开发覆盖模式请先在 bin 同布局安装 @napuketto/cli）",
         };
     }
-    return { action: "spawn", configPath, dataDir, cliEntry };
+    const packageJsonPath = join(input.binDir, ...CLI_PACKAGE_JSON_PARTS);
+    const version = (input.cliVersion ?? readCliVersion)(packageJsonPath);
+    const supportsInline = version === null || isAtLeastVersion(version, INLINE_CONFIG_MIN_VERSION);
+    return {
+        action: "spawn",
+        configPath,
+        dataDir,
+        cliEntry,
+        inlineConfig: supportsInline ? buildNapukettoInlineConfig(input.config, qq) : null,
+        ...(napuketto?.logLevel === undefined ? {} : { logLevel: napuketto.logLevel }),
+    };
+}
+
+/** kurobot 连接 url（ADR-041）：通配监听地址落回环，IPv6 加方括号 */
+export function resolveKurobotUrl(host: string | undefined, port: number): string {
+    if (host === undefined || host === "" || host === "0.0.0.0" || host === "::") {
+        return `ws://127.0.0.1:${port}`;
+    }
+    const hostPart = host.includes(":") ? `[${host}]` : host;
+    return `ws://${hostPart}:${port}`;
+}
+
+/** fix4 P0-A 内联配置体（与 napuketto.toml 同构的 JSON 形态；上游 schema 演进时此处同步） */
+export function buildNapukettoInlineConfig(config: KurobridgeConfig, qq: string): string {
+    const port = config.ws?.port ?? 0; // 守卫保证 enabled 时 port 已配置；0 仅为类型兜底
+    const kurobot: { url: string; token?: string } = {
+        url: resolveKurobotUrl(config.ws?.host, port),
+        ...(config.token === "" ? {} : { token: config.token }),
+    };
+    return JSON.stringify({
+        // 显式钉住上游账号看护参数（toml 缺省同值），不随上游缺省漂移
+        autoRestart: true,
+        restartDelayMs: 2000,
+        accounts: [{ qq, enabled: true, kurobot }],
+    });
+}
+
+/** 读 CLI 包清单版本；缺失/不可解析返回 null（调用方按支持内联处理——向前兼容） */
+function readCliVersion(packageJsonPath: string): string | null {
+    try {
+        const raw = JSON.parse(readFileSync(packageJsonPath, "utf8")) as { version?: unknown };
+        return typeof raw.version === "string" ? raw.version : null;
+    } catch {
+        return null;
+    }
+}
+
+/** 宽松 semver 比较（主仓嵌包版本均为 plain x.y.z；预发布段按数字 0 处理，足够该门槛用） */
+function isAtLeastVersion(version: string, minimum: readonly [number, number, number]): boolean {
+    const parts = version.split(".").map((part) => Number.parseInt(part, 10));
+    if (parts.length < 3 || parts.some((part) => !Number.isInteger(part))) {
+        return false;
+    }
+    for (let index = 0; index < 3; index += 1) {
+        const current = parts[index] ?? 0;
+        const base = minimum[index] ?? 0;
+        if (current !== base) {
+            return current > base;
+        }
+    }
+    return true;
 }
 
 function resolveRelative(cwd: string, value: string | undefined, fallback: string): string {
@@ -92,6 +200,10 @@ export interface NapukettoSpawnSpec {
     cliEntry: string;
     configPath: string;
     dataDir: string;
+    /** fix4 P0-A 内联配置 JSON 文本；null = 旧版 CLI 回退 toml 指路（NAPKETTO_CONFIG） */
+    inlineConfig: string | null;
+    /** napuketto 控制台日志级别（透传 NAPUKETTO_LOG_LEVEL）；缺省不设 */
+    logLevel?: string | undefined;
 }
 
 export interface NapukettoDeps {
@@ -169,11 +281,23 @@ export function spawnNapuketto(spec: NapukettoSpawnSpec, deps: NapukettoDeps): N
 
     const env: NodeJS.ProcessEnv = {
         ...process.env,
-        NAPKETTO_CONFIG: spec.configPath,
         NAPKETTO_DATA: spec.dataDir,
         NAPUKETTO_LOG_FORMAT: "single-line",
         NAPUKETTO_NO_BANNER: "1",
+        ...(spec.logLevel === undefined ? {} : { NAPUKETTO_LOG_LEVEL: spec.logLevel }),
     };
+    if (spec.inlineConfig !== null) {
+        // fix4 P0-A：内联注入——toml 文件不参与，配置目录不再出现 napuketto.toml
+        env["NAPKETTO_CONFIG_JSON"] = spec.inlineConfig;
+    } else {
+        // 旧版 CLI（无内联能力）回退 toml 指路：首启由上游生成完整模板，服主需手工配置
+        // （qq + [accounts.kurobot]）；升级嵌包到内联门槛版本后自动转为宿主托管
+        env["NAPKETTO_CONFIG"] = spec.configPath;
+        logger.warn(
+            "内嵌 napuketto 版本较旧（无 NAPKETTO_CONFIG_JSON 内联注入能力）：" +
+                "napuketto.toml 首启仍需按上游模板手工配置；建议升级嵌包以启用宿主托管",
+        );
+    }
     const child = spawnFn(process.execPath, [spec.cliEntry], {
         env,
         stdio: ["pipe", "pipe", "pipe"],

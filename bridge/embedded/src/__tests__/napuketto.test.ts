@@ -6,10 +6,13 @@ import { defaultConfig } from "@kuro-bridge/bridge-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+    buildNapukettoInlineConfig,
     decideNapukettoLaunch,
     isBannerArtLine,
     isQrArtLine,
     type NapukettoDeps,
+    type NapukettoLaunchDecision,
+    resolveKurobotUrl,
     spawnNapuketto,
     type UnexpectedExit,
 } from "../napuketto.ts";
@@ -106,13 +109,15 @@ const SPEC = {
     cliEntry: "/bin/napuketto/node_modules/@napuketto/cli/dist/index.mjs",
     configPath: "/srv/plugins/kurobridge/napuketto.toml",
     dataDir: "/srv/plugins/kurobridge/napuketto-data",
+    inlineConfig: null,
 };
 
 function makeConfig(overrides?: Record<string, unknown>): Record<string, unknown> {
     return {
         ...defaultConfig(),
+        token: "test-token",
         ws: { host: "127.0.0.1", port: 25580 },
-        embedded: { napuketto: { enabled: true } },
+        embedded: { napuketto: { enabled: true, qq: "10001" } },
         ...overrides,
     };
 }
@@ -156,6 +161,22 @@ describe("decideNapukettoLaunch", () => {
         expect(decision.reason).toContain("ws.port");
     });
 
+    it("qq 缺失/空白/占位值 → fatal（配置未就绪，指路 config.jsonc）", () => {
+        for (const qq of [undefined, "  ", "123456"]) {
+            const decision = decideNapukettoLaunch({
+                ...base,
+                config: makeConfig({
+                    embedded: { napuketto: { enabled: true, ...(qq === undefined ? {} : { qq }) } },
+                }) as never,
+            });
+            if (decision.action !== "fatal") {
+                throw new Error(`qq=${String(qq)}：期望 fatal，实际 ${decision.action}`);
+            }
+            expect(decision.reason).toContain("config.jsonc");
+            expect(decision.reason).toContain("embedded.napuketto.qq");
+        }
+    });
+
     it("CLI 入口缺失 → fatal（配置要求嵌入形态而产物缺失）", () => {
         const decision = decideNapukettoLaunch({
             ...base,
@@ -168,11 +189,11 @@ describe("decideNapukettoLaunch", () => {
         expect(decision.reason).toContain("index.mjs");
     });
 
-    it("正常路径 → spawn：相对路径按 cwd 绝对化 + cliEntry 固定布局", () => {
+    it("正常路径 → spawn：相对路径按 cwd 绝对化 + cliEntry 固定布局 + 内联配置（ADR-041）", () => {
         const decision = decideNapukettoLaunch({
             ...base,
             config: makeConfig({
-                embedded: { napuketto: { enabled: true, dataDir: "custom-data" } },
+                embedded: { napuketto: { enabled: true, qq: "10001", dataDir: "custom-data" } },
             }) as never,
         });
         expect(decision).toEqual({
@@ -188,7 +209,40 @@ describe("decideNapukettoLaunch", () => {
                 "dist",
                 "index.mjs",
             ),
+            // 版本未知（无 package.json）按支持内联处理——向前兼容，上游发版即无缝接通
+            inlineConfig: buildNapukettoInlineConfig(makeConfig() as never, "10001"),
         });
+    });
+
+    it("内联注入门槛：版本 ≥ 门槛 → 内联；旧版 → null 回退 toml 指路", () => {
+        const spawnOf = (
+            version: string | null,
+        ): Extract<NapukettoLaunchDecision, { action: "spawn" }> => {
+            const decision = decideNapukettoLaunch({
+                ...base,
+                config: makeConfig() as never,
+                cliVersion: () => version,
+            });
+            if (decision.action !== "spawn") {
+                throw new Error(`期望 spawn，实际 ${decision.action}`);
+            }
+            return decision;
+        };
+        expect(spawnOf("0.2.0").inlineConfig).toBeNull();
+        expect(spawnOf("0.3.0").inlineConfig).not.toBeNull();
+        expect(spawnOf("1.0.0").inlineConfig).not.toBeNull();
+        expect(spawnOf(null).inlineConfig).not.toBeNull();
+        // logLevel 透传进决策
+        const withLevel = decideNapukettoLaunch({
+            ...base,
+            config: makeConfig({
+                embedded: { napuketto: { enabled: true, qq: "10001", logLevel: "warn" } },
+            }) as never,
+        });
+        if (withLevel.action !== "spawn") {
+            throw new Error("期望 spawn");
+        }
+        expect(withLevel.logLevel).toBe("warn");
     });
 
     it("configPath/dataDir 绝对路径原样使用", () => {
@@ -198,6 +252,7 @@ describe("decideNapukettoLaunch", () => {
                 embedded: {
                     napuketto: {
                         enabled: true,
+                        qq: "10001",
                         configPath: "/abs/conf.toml",
                         dataDir: "/abs/data",
                     },
@@ -230,7 +285,7 @@ describe("isQrArtLine", () => {
 });
 
 describe("spawnNapuketto", () => {
-    it("spawn 参数：node 自身执行 CLI 入口、env 指路 + 原样透传、stdio 全 pipe", () => {
+    it("spawn 参数：node 自身执行 CLI 入口、env 指路 + 原样透传、stdio 全 pipe（旧版回退形态）", () => {
         const h = makeHarness();
         process.env["KUROBRIDGE_NK_TEST_PASS"] = "keep-me";
         spawnNapuketto(SPEC, h.deps);
@@ -243,12 +298,78 @@ describe("spawnNapuketto", () => {
         expect(call.command).toBe(process.execPath);
         expect(call.args).toEqual([SPEC.cliEntry]);
         expect(call.options.stdio).toEqual(["pipe", "pipe", "pipe"]);
+        // inlineConfig=null：旧版 CLI 回退 NAPKETTO_CONFIG 指路 + 明确 warn
         expect(call.options.env?.["NAPKETTO_CONFIG"]).toBe(SPEC.configPath);
+        expect(call.options.env?.["NAPKETTO_CONFIG_JSON"]).toBeUndefined();
+        expect(
+            h.logs.some((l) => l.level === "warn" && l.message.includes("NAPKETTO_CONFIG_JSON")),
+        ).toBe(true);
         expect(call.options.env?.["NAPKETTO_DATA"]).toBe(SPEC.dataDir);
         // 嵌入式控制台契约（napuketto 0.2.0 env 覆盖）：单行记录 + 关 banner
         expect(call.options.env?.["NAPUKETTO_LOG_FORMAT"]).toBe("single-line");
         expect(call.options.env?.["NAPUKETTO_NO_BANNER"]).toBe("1");
         expect(call.options.env?.["KUROBRIDGE_NK_TEST_PASS"]).toBe("keep-me");
+    });
+
+    it("内联注入形态（ADR-041）：NAPKETTO_CONFIG_JSON 注入、toml 指路缺席、logLevel 透传", () => {
+        const h = makeHarness();
+        spawnNapuketto(
+            {
+                ...SPEC,
+                inlineConfig: '{"accounts":[{"qq":"10001"}]}',
+                logLevel: "warn",
+            },
+            h.deps,
+        );
+        expect(h.spawns).toHaveLength(1);
+        const call = h.spawns[0];
+        if (call === undefined) {
+            throw new Error("spawn 未被调用");
+        }
+        expect(call.options.env?.["NAPKETTO_CONFIG_JSON"]).toBe('{"accounts":[{"qq":"10001"}]}');
+        expect(call.options.env?.["NAPKETTO_CONFIG"]).toBeUndefined();
+        expect(call.options.env?.["NAPUKETTO_LOG_LEVEL"]).toBe("warn");
+        expect(
+            h.logs.some((l) => l.level === "warn" && l.message.includes("NAPKETTO_CONFIG_JSON")),
+        ).toBe(false);
+    });
+
+    it("resolveKurobotUrl：通配落回环、IPv6 加方括号、显式地址原样", () => {
+        expect(resolveKurobotUrl(undefined, 25580)).toBe("ws://127.0.0.1:25580");
+        expect(resolveKurobotUrl("0.0.0.0", 25580)).toBe("ws://127.0.0.1:25580");
+        expect(resolveKurobotUrl("::", 25580)).toBe("ws://127.0.0.1:25580");
+        expect(resolveKurobotUrl("", 25580)).toBe("ws://127.0.0.1:25580");
+        expect(resolveKurobotUrl("127.0.0.1", 25580)).toBe("ws://127.0.0.1:25580");
+        expect(resolveKurobotUrl("192.168.1.10", 25580)).toBe("ws://192.168.1.10:25580");
+        expect(resolveKurobotUrl("::1", 25580)).toBe("ws://[::1]:25580");
+    });
+
+    it("buildNapukettoInlineConfig：qq/enabled/url 必带，token 空则缺键（两端一致不鉴权）", () => {
+        const base = {
+            ...defaultConfig(),
+            ws: { host: "127.0.0.1", port: 25580 },
+        };
+        const withToken = JSON.parse(
+            buildNapukettoInlineConfig({ ...base, token: "s3cret" } as never, "10001"),
+        );
+        expect(withToken).toEqual({
+            autoRestart: true,
+            restartDelayMs: 2000,
+            accounts: [
+                {
+                    qq: "10001",
+                    enabled: true,
+                    kurobot: { url: "ws://127.0.0.1:25580", token: "s3cret" },
+                },
+            ],
+        });
+        const withoutToken = JSON.parse(buildNapukettoInlineConfig(base as never, "10001"));
+        expect(withoutToken.accounts[0]).toEqual({
+            qq: "10001",
+            enabled: true,
+            kurobot: { url: "ws://127.0.0.1:25580" },
+        });
+        expect(withoutToken.accounts[0].kurobot).not.toHaveProperty("token");
     });
 
     it("stdout/stderr 逐行捕获并按级别字样分流（[napuketto] 前缀；头行时间戳/级别已剥离）", async () => {

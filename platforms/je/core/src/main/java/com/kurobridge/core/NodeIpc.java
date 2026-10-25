@@ -52,6 +52,11 @@ public final class NodeIpc implements AutoCloseable {
 
     private static final int LOG_PREVIEW_LIMIT = 200;
 
+    /** EOF 后有界等待真实退出码的上限（ADR-041）：EOF 常先于进程状态翻转，立读只能得 null。 */
+    private static final long EXIT_CODE_WAIT_MS = 2_000L;
+    /** destroyForcibly 兜底后的追加短等时长。 */
+    private static final long EXIT_CODE_FORCE_WAIT_MS = 500L;
+
     private final String nodeExecutable;
     private final Path bundlePath;
     private final Path stubPath;
@@ -75,6 +80,7 @@ public final class NodeIpc implements AutoCloseable {
     private volatile Duration requestTimeout = Duration.ofSeconds(10);
     private volatile Duration shutdownGrace = Duration.ofSeconds(5);
     private volatile Duration shutdownForceWait = Duration.ofSeconds(2);
+    private volatile Duration exitCodeWait = Duration.ofMillis(EXIT_CODE_WAIT_MS);
     private volatile Path workingDirectory;
     /** PID 文件路径（DEBT-2 进程卫生）；null = 不启用。start 前经 {@link #setPidFile(Path)} 设置。 */
     private volatile Path pidFile;
@@ -290,9 +296,13 @@ public final class NodeIpc implements AutoCloseable {
         this.shutdownForceWait = Objects.requireNonNull(wait, "wait");
     }
 
+    void setExitCodeWait(Duration wait) {
+        this.exitCodeWait = Objects.requireNonNull(wait, "wait");
+    }
+
     /**
      * 子进程工作目录（须在 {@link #start()} 前调用）。null/缺省 = 继承当前进程目录
-     * （生产形态：Paper 以服务器根目录运行，Node 侧据此定位 plugins/kurobridge/config.json；
+     * （生产形态：Paper 以服务器根目录运行，Node 侧据此定位 plugins/kurobridge/config.jsonc；
      * 集成测试用它把子进程指到带配置的临时目录）。
      */
     void setWorkingDirectory(Path directory) {
@@ -300,9 +310,9 @@ public final class NodeIpc implements AutoCloseable {
     }
 
     /**
-     * PID 文件（DEBT-2，须在 {@link #start()} 前调用）：spawn 成功写入 winpid，优雅关停
-     * （{@link #shutdown(String)}）删除；异常退出不删——残留即「上次可能异常退出」的证据，
-     * 下次 spawn 前检测到残留会 INFO 提示。null/不调用 = 不启用。
+     * PID 文件（DEBT-2，须在 {@link #start()} 前调用）：spawn 成功写入 winpid；观察到进程
+     * 退出时删除（优雅关停与异常退出皆然，ADR-041——pid 文件指向已死进程即是误导）。残留
+     * 仅存于「连退出都未观察到」的强杀场景，下次 spawn 前检测到会告警提示。null/不调用 = 不启用。
      */
     public void setPidFile(Path file) {
         this.pidFile = Objects.requireNonNull(file, "file");
@@ -375,7 +385,8 @@ public final class NodeIpc implements AutoCloseable {
         }
     }
 
-    /** 优雅关停路径删除 PID 文件；异常退出的残留故意保留（下次启动提示用）。 */
+    /** 已观察到进程退出的路径删除 PID 文件（优雅关停与异常退出皆然）；仅「连退出都未观察到」
+     * （强杀未确认/僵尸）保留残留，供下次 spawn 前告警（DEBT-2）。 */
     private void deletePidFile() {
         Path file = pidFile;
         if (file == null) {
@@ -623,9 +634,10 @@ public final class NodeIpc implements AutoCloseable {
 
     /**
      * 通道终结（幂等）：关 stdin、失败 start future 与全部在途请求；非优雅路径（进程异常
-     * 退出 / stdin 写失败）另做两件事——存活进程 destroyForcibly（防双进程残留）与
+     * 退出 / stdin 写失败）另做两件事——有界观察真实退出码（EOF 竞态，ADR-041）与
      * {@link NodeIpcListener#onProcessExited} 退出通知（看护器输入，优雅关停不通知）。
-     * 可从任意线程调用。
+     * 退出通知先于 start future 失败完成：start future 异常完成会在看护器侧先消费本次尝试
+     * 的记账且不携带退出码，顺序颠倒看护器只能见到「exit=未知」。可从任意线程调用。
      */
     private void tearDownChannel(String cause) {
         if (!channelTornDown.compareAndSet(false, true)) {
@@ -634,10 +646,16 @@ public final class NodeIpc implements AutoCloseable {
         channelOpen.set(false);
         closeStdin();
         Process current = process;
-        if (current != null && current.isAlive()) {
-            current.destroyForcibly();
+        // 优雅关停路径已在 waitForExitBounded 里做过有界等待，这里不再等第二轮；
+        // 异常路径（stdout EOF / stdin 写失败）才等真实退出码（ADR-041）
+        Integer exitCode = current == null ? null : observeExitCode(current, !shutdownStarted.get());
+        if (exitCode != null) {
+            deletePidFile();
         }
-        String exitSuffix = describeExit();
+        String exitSuffix = describeExit(exitCode);
+        if (!shutdownStarted.get()) {
+            notifyListener("onProcessExited", () -> listener.onProcessExited(exitCode, cause));
+        }
         if (!startFuture.isDone()) {
             startFuture.completeExceptionally(new IpcException("Node 进程在 ready 前断开（" + cause + exitSuffix + "）"));
         }
@@ -647,19 +665,37 @@ public final class NodeIpc implements AutoCloseable {
                 entry.getValue().completeExceptionally(failure);
             }
         }
-        if (!shutdownStarted.get()) {
-            notifyListener("onProcessExited", () -> listener.onProcessExited(exitCodeOrNull(), cause));
-        }
         // 异常退出路径没人调 shutdown——通道已死，本实例的调度任务（start 超时/请求超时）全部作废，
         // 就地释放，避免看护器每次重启泄漏一个调度器线程（优雅路径 shutdown() 里的重复调用幂等无害）
         scheduler.shutdownNow();
     }
 
-    /** 退出码：进程已退出取 exitValue；未退出（刚 destroyForcibly）/无进程时 null。 */
-    private Integer exitCodeOrNull() {
-        Process current = process;
-        if (current == null) {
-            return null;
+    /**
+     * 观察退出码（ADR-041 EOF 竞态修复）：stdout EOF 先于进程状态翻转时，立刻读 exitValue
+     * 只会得到 null（旧实现退化为「exit=未知」，看护器无法识别 exit 2 契约）。await 为 true
+     * 时有界等待（默认 {@link #EXIT_CODE_WAIT_MS}，测试可缩）；届时仍存活才 destroyForcibly
+     * ——不抢在自然退出之前强杀，否则真实退出码会被打成强杀码——再短等
+     * {@link #EXIT_CODE_FORCE_WAIT_MS}。await 为 false（优雅关停已自行有界等待过）不等待，
+     * 存活即强杀。最终取不到返回 null。
+     */
+    private Integer observeExitCode(Process current, boolean await) {
+        if (current.isAlive()) {
+            if (!await) {
+                current.destroyForcibly();
+            } else {
+                try {
+                    if (!current.waitFor(exitCodeWait.toMillis(), TimeUnit.MILLISECONDS)) {
+                        logWarn("通道断开 " + exitCodeWait.toMillis() + "ms 仍未观察到退出，destroyForcibly 兜底");
+                        current.destroyForcibly();
+                        if (!current.waitFor(EXIT_CODE_FORCE_WAIT_MS, TimeUnit.MILLISECONDS)) {
+                            logWarn("destroyForcibly 后仍未退出，放弃获取退出码");
+                        }
+                    }
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    current.destroyForcibly();
+                }
+            }
         }
         try {
             return current.isAlive() ? null : current.exitValue();
@@ -668,16 +704,8 @@ public final class NodeIpc implements AutoCloseable {
         }
     }
 
-    private String describeExit() {
-        Process current = process;
-        if (current == null) {
-            return "";
-        }
-        try {
-            return current.isAlive() ? "" : "，exit=" + current.exitValue();
-        } catch (RuntimeException e) {
-            return "";
-        }
+    private static String describeExit(Integer exitCode) {
+        return exitCode == null ? "" : "，exit=" + exitCode;
     }
 
     // ---- 杂项 ----

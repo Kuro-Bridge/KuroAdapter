@@ -160,7 +160,7 @@ class NodeSupervisorTest {
         assertNotNull(second, "退避到点应拉起新实例");
         readyUp(second);
 
-        crashAndAwaitBookkeeping(second, 2);
+        crashAndAwaitBookkeeping(second, 3);
         assertEquals(10L, scheduler.delays.poll(1, TimeUnit.SECONDS), "成功后连续失败已归零 → 再次退避 10ms");
     }
 
@@ -247,6 +247,46 @@ class NodeSupervisorTest {
         int callsBefore = factoryCalls.get();
         scheduler.fireAll(); // 模拟取消后仍晚到的任务：spawnAttempt 的 stopped 检查兜底
         assertEquals(callsBefore, factoryCalls.get(), "停止看护后挂起的重启不得再拉起实例");
+    }
+
+    @Test
+    void configNotReadyExitEntersBlockedTerminalStateWithoutBackoff() throws Exception {
+        ManualDelayScheduler scheduler = new ManualDelayScheduler();
+        supervisor = newSupervisor(scheduler, options(true, 60_000, 3, new AtomicLong()));
+
+        supervisor.start();
+        FakeProcess process = processes.poll(5, TimeUnit.SECONDS);
+        readyUp(process);
+        crashAndAwaitBookkeeping(process, NodeSupervisor.EXIT_CONFIG_NOT_READY);
+
+        assertTrue(supervisor.isBlockedOnConfig(), "exit 2 应进入配置未就绪终态");
+        assertFalse(supervisor.isGivenUp(), "配置未就绪不走放弃终态（不计失败窗口）");
+        assertTrue(
+                logs.stream().anyMatch(line -> line.contains("[NodeSupervisor][SEVERE]") && line.contains("配置未就绪")),
+                "应有 SEVERE 提示：" + logs);
+        assertTrue(logs.stream().anyMatch(line -> line.contains("config.jsonc")), "提示应指明配置文件：" + logs);
+        assertNull(scheduler.delays.poll(300, TimeUnit.MILLISECONDS), "配置未就绪不得调度退避重启");
+        int callsBefore = factoryCalls.get();
+        scheduler.fireAll();
+        supervisor.start(); // 重复 start 的兜底路径同样不得再拉起
+        Thread.sleep(200);
+        assertEquals(callsBefore, factoryCalls.get(), "配置未就绪终态不再拉起新实例");
+    }
+
+    @Test
+    void configNotReadyExitBeforeReadyStillBooksRealExitCode() throws Exception {
+        ManualDelayScheduler scheduler = new ManualDelayScheduler();
+        supervisor = newSupervisor(scheduler, options(true, 60_000, 3, new AtomicLong()));
+
+        supervisor.start();
+        FakeProcess process = processes.poll(5, TimeUnit.SECONDS);
+        int base = logs.size();
+        process.exit(NodeSupervisor.EXIT_CONFIG_NOT_READY); // ready 前退出
+
+        awaitLogSince(base, "配置未就绪", "退出通知（携带真实退出码）应先于 start future 失败完成记账");
+        assertTrue(supervisor.isBlockedOnConfig(), "ready 前的 exit 2 同样进入配置未就绪终态");
+        assertFalse(supervisor.isGivenUp());
+        assertEquals(1, factoryCalls.get(), "终态后不再拉起新实例");
     }
 
     @Test

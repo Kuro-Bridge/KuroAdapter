@@ -11,7 +11,23 @@
  * - manualRetry（控制台 kurobridgeretry）重置放弃态与退避/窗口后立即尝试。
  * 定时只用全局 setTimeout（经 lse-env，测试可换假计时器）。
  */
+import { CONFIG_NOT_READY_EXIT_CODE } from "@kuro-bridge/bridge-core";
+
 import { cancelTimer, type ShellLogger, scheduleTimer, type TimerHandle } from "./lse-env.js";
+
+/**
+ * 尝试失败的结构化载体：exitCode 来自壳的进程退出回调（其它失败源不带）。
+ * 看护器据此识别配置未就绪退出（exit 2 契约，ADR-041）——确定性错误不退避重启。
+ */
+export class AttemptFailure extends Error {
+    readonly exitCode: number | null | undefined;
+
+    constructor(message: string, exitCode?: number | null) {
+        super(message);
+        this.name = "AttemptFailure";
+        this.exitCode = exitCode;
+    }
+}
 
 /** 一次尝试的结算信息（ready 帧上报） */
 export interface AttemptOutcome {
@@ -95,7 +111,7 @@ export class Supervisor {
             },
             (error: unknown) => {
                 // ready 前失败：唯一的失败结算入口（同期 done 拒绝由下方 up 态护栏忽略）
-                this.handleFailure(error instanceof Error ? error.message : String(error));
+                this.handleFailure(error);
             },
         );
         void handle.done.catch((error: unknown) => {
@@ -104,11 +120,31 @@ export class Supervisor {
             if (this.state !== "up") {
                 return;
             }
-            this.handleFailure(error instanceof Error ? error.message : String(error));
+            this.handleFailure(error);
         });
     }
 
-    private handleFailure(reason: string): void {
+    private handleFailure(error: unknown): void {
+        if (this.state !== "attempting" && this.state !== "up") {
+            return;
+        }
+        const reason = error instanceof Error ? error.message : String(error);
+        // ADR-041 退出码契约：exit 2 = 配置/环境确定性错误，退避重启无意义——
+        // 单条 error 指明恢复路径后进入放弃态（kurobridgeretry 仍可手动拉起）
+        if (error instanceof AttemptFailure && error.exitCode === CONFIG_NOT_READY_EXIT_CODE) {
+            this.cancelRetryTimer();
+            this.state = "down-given-up";
+            this.logger.error(
+                `看护：配置未就绪（exit=${String(error.exitCode)}），不自动重启——` +
+                    "修复 plugins/kurobridge/config.jsonc 后控制台执行 kurobridgeretry，或重启服务器" +
+                    `（${reason}）`,
+            );
+            return;
+        }
+        this.handleRetryableFailure(reason);
+    }
+
+    private handleRetryableFailure(reason: string): void {
         if (this.state !== "attempting" && this.state !== "up") {
             return;
         }

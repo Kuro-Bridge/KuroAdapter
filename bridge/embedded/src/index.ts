@@ -12,10 +12,14 @@
  * 4. 关机：Java 发 `shutdown` 帧 或 关 stdin（EOF）→ [napuketto 树杀 →] 杀 stub → 退出。
  *
  * 生命周期两条路径（决策 D-08）：shutdown 帧 / stdin EOF 自杀；Java destroyForcibly 兜底。
+ * 退出码契约（ADR-041）：0 = 优雅关停；1 = 可重试崩溃（看护器退避重启）；
+ * 2 = 配置/环境确定性错误（CONFIG_NOT_READY_EXIT_CODE，看护器不重启）。
  * 绑定失败语义（MVP-3）：固定端口被占 → 明确 error 日志（含端口与原因）→ 非零退出，
  * 重启收敛于 Java 看护器退避（1s/5s/15s，10 分钟窗 3 次放弃）。
- * napuketto 快速失败（MVP-4，ADR-029）：enabled 且无 ws.port / CLI 入口缺失 → 同族语义
- * （明确 error + exit(1)）；非 Windows 宿主 → error 日志 + 不拉起（继续纯 WS 服务端）。
+ * napuketto 快速失败（MVP-4，ADR-029；ADR-041 起 exit 2）：enabled 且无 ws.port /
+ * qq 未配置 / CLI 入口缺失 → 明确 error + exit(2)；非 Windows 宿主 → error 日志 +
+ * 不拉起（继续纯 WS 服务端）。napuketto 自身配置校验失败（上游 exit 78，fix4 P0-B）
+ * 同样映射为 exit 2。
  */
 
 import { type ChildProcess, spawn } from "node:child_process";
@@ -25,6 +29,7 @@ import { dirname, resolve } from "node:path";
 import {
     AdminTable,
     BindingTable,
+    CONFIG_NOT_READY_EXIT_CODE,
     CoreContext,
     defaultConfig,
     type KurobridgeConfig,
@@ -37,7 +42,12 @@ import { encodeFrame, PROTOCOL_VERSION } from "@kuro-bridge/protocol";
 import { NodeConfigStore } from "./config-store.js";
 import { StdioIpcChannel } from "./ipc-stdio.js";
 import { createStderrLogger } from "./logger.js";
-import { decideNapukettoLaunch, type NapukettoHandle, spawnNapuketto } from "./napuketto.js";
+import {
+    decideNapukettoLaunch,
+    NAPUKETTO_EXIT_CONFIG_INVALID,
+    type NapukettoHandle,
+    spawnNapuketto,
+} from "./napuketto.js";
 import { NodeClock, NodeScheduler } from "./node-platform.js";
 import { type QrWatcher, startQrWatcher } from "./qr-watcher.js";
 import { BRIDGE_VERSION } from "./version.js";
@@ -79,8 +89,9 @@ function launchNapukettoBranch(
         return null;
     }
     if (decision.action === "fatal") {
+        // ADR-041 退出码契约：配置/环境确定性错误以 exit 2 收敛，看护器不退避重启
         logger.error(decision.reason);
-        process.exit(1);
+        process.exit(CONFIG_NOT_READY_EXIT_CODE);
     }
     mkdirSync(decision.dataDir, { recursive: true });
     // QR 状态文件落地 plugins/kurobridge/（cwd = 服务器根；:paper /kurobridge qr 消费）
@@ -94,11 +105,21 @@ function launchNapukettoBranch(
             cliEntry: decision.cliEntry,
             configPath: decision.configPath,
             dataDir: decision.dataDir,
+            inlineConfig: decision.inlineConfig,
+            ...(decision.logLevel === undefined ? {} : { logLevel: decision.logLevel }),
         },
         { logger, onQrUrl: (url) => qr.setUrl(url) },
     );
     handle.onUnexpectedExit(({ code, error }) => {
         const cause = error === undefined ? "" : `，${String(error)}`;
+        if (code === NAPUKETTO_EXIT_CONFIG_INVALID) {
+            // fix4 P0-B：上游配置校验失败专用退出码——配置未就绪语义，看护器不退避重启
+            logger.error(
+                "napuketto CLI 配置校验失败（exit 78）——配置未就绪，本进程退出且看护器不重启" +
+                    "（修复配置后重启服务器，或 /kurobridge reload confirm 重载插件）",
+            );
+            process.exit(CONFIG_NOT_READY_EXIT_CODE);
+        }
         logger.error(
             `napuketto CLI 意外退出（code=${code ?? "null"}${cause}），本进程退出交由 Java 看护器退避重启`,
         );

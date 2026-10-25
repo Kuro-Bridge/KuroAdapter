@@ -24,7 +24,7 @@ BDS
 
 1. 壳启动看护器，每轮尝试生成随机端口 `20000–40000` 与会话令牌（`system.randomGuid()` 去连字符）。
 2. `newProcess("<node> <bin>/index.mjs --server-root <BDS根> --game-port N --game-token T")` 拉起 shim。
-3. shim 解析 argv（缺一即退）→ 读 `plugins/kurobridge/config.json`（缺失写默认，非法降级空绑定）→ 组装 core → 先绑 koishi WS（`config.ws` 或动态端口）→ 再绑 `127.0.0.1:N` 游戏通道。
+3. shim 解析 argv（缺一即退）→ 读 `plugins/kurobridge/config.jsonc`（缺失写注释模板含随机 token，ADR-040；旧 `config.json` 回退；非法降级空绑定）→ 组装 core → 先绑 koishi WS（`config.ws` 或动态端口）→ 再绑 `127.0.0.1:N` 游戏通道。
 4. 壳用 `WSClient` 连入游戏通道，首帧发送令牌原文；令牌不符或 10s 内未交 → close **1008**。
 5. shim 校验通过后包装成 core 的 `IpcChannel`，发给壳 `ready { wsPort, autoRestart }`；壳随即开通事件桥接。
 
@@ -67,19 +67,19 @@ plugins/kurobridge/
 ├── index.js             # 壳（dist/index.js）
 ├── bin/index.mjs        # Node shim（dist/bin/index.mjs）
 ├── bin/node.exe         # Windows 随包；其它平台用 PATH 上的 node（≥20，建议 26）
-└── config.json          # 首次运行生成默认，服主编辑
+└── config.jsonc         # 首次运行生成注释模板（随机 token），服主编辑
 ```
 
 `manifest.json` 的 `version`（字符串）、`src/runtime/index.ts` 的 `BRIDGE_VERSION` 与包版本当前均为 `0.1.0`，但 **LSE 未纳入 `check-versions` 六点门禁**，升级时需手动同步。
 
 ## 配置
 
-与 [config.json 参考](../reference/config.md) 相同的 schema。LSE 的差异：
+与 [config.jsonc 参考](../reference/config.md) 相同的 schema。LSE 的差异：
 
 - 不消费 `embedded` 段（无 napuketto 嵌入）。
 - 不消费 `runtime.autoRestart` 之外的宿主参数；该值随 `ready` 上报。
 - `ws.host` / `ws.port` 控制 koishi 连入点；缺省动态端口，实际端口见日志与 `ready`。
-- `config.json` 位于 `<BDS 根>/plugins/kurobridge/`；shim 用 `--server-root` 显式定位，不依赖子进程 cwd。
+- `config.jsonc` 位于 `<BDS 根>/plugins/kurobridge/`；shim 用 `--server-root` 显式定位，不依赖子进程 cwd。
 
 ## 已知限制
 

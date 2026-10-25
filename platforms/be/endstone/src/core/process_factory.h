@@ -39,7 +39,7 @@ private:
 };
 
 // spawn 请求（路径均 UTF-8）。workingDirectory 空指针 = 继承父进程 cwd（Java null 语义；
-// 生产形态：调用方传 BDS 根，Node 侧据此定位 plugins/kurobridge/config.json）。
+// 生产形态：调用方传 BDS 根，Node 侧据此定位 plugins/kurobridge/config.jsonc）。
 struct SpawnRequest {
     std::string nodeExecutable;
     std::string bundlePath;

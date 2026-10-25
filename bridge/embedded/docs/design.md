@@ -11,7 +11,7 @@
 ```
 src/
 ├── index.ts           # 入口：配置装配 + WS 服务端 + IPC + 协议端分支 + 关停
-├── config-store.ts    # Core ConfigStore 的 Node 实现（plugins/kurobridge/config.json + 2s 轮询）
+├── config-store.ts    # Core ConfigStore 的 Node 实现（config.jsonc + 2s 轮询；首启注释模板 + 随机 token；旧 config.json 回退）
 ├── ipc-stdio.ts       # stdin/stdout 实现 core 的 IpcChannel
 ├── logger.ts          # stderr logger，[KuroBridge][node][LEVEL] 唯一 writer
 ├── node-platform.ts   # NodeClock / NodeScheduler（定时器 unref）
