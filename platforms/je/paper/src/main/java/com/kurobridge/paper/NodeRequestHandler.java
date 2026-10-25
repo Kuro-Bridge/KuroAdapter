@@ -2,13 +2,12 @@ package com.kurobridge.paper;
 
 import com.kurobridge.KuroBridgePlugin;
 import com.kurobridge.core.IpcLogLevels;
+import com.kurobridge.core.IpcLogLines;
 import com.kurobridge.core.IpcResult;
 import com.kurobridge.core.NodeIpcListener;
 import java.util.List;
 import java.util.logging.Level;
-import net.kyori.adventure.text.Component;
 import org.bukkit.Bukkit;
-import org.bukkit.command.CommandException;
 
 /**
  * Node 侧请求的 Bukkit 桥接（实现 :core 的 {@link NodeIpcListener}）。
@@ -37,7 +36,7 @@ public final class NodeRequestHandler implements NodeIpcListener {
     @Override
     public void onBroadcast(String message, IpcResult result) {
         try {
-            Bukkit.getScheduler().runTask(plugin, () -> Bukkit.broadcast(Component.text(message)));
+            Bukkit.getScheduler().runTask(plugin, () -> Broadcasts.broadcast(message));
         } catch (RuntimeException e) {
             // 插件已 disable 等导致调度失败：显式回执失败，避免 Node 侧等到超时
             result.error("调度广播到主线程失败：" + e.getMessage());
@@ -56,13 +55,15 @@ public final class NodeRequestHandler implements NodeIpcListener {
                     capture.attach();
                     try {
                         Bukkit.dispatchCommand(sender, command);
-                    } catch (CommandException e) {
+                    } catch (RuntimeException e) {
                         if (!isVanillaListenerRejection(e)) {
                             throw e;
                         }
                         // Paper 的 VanillaCommandWrapper 拒绝自定义 sender（仅认内部 Craft* 类型，
-                        // DEBT1-NOTES D1-04）：vanilla 命令回退真实 console sender 执行，输出经
-                        // log4j 控制台流由 capture 收集
+                        // DEBT1-NOTES D1-04；26.x 起连 tps/list 等 Paper 命令也走 Brigadier 统一
+                        // 拒绝，且异常不再是 bukkit CommandException——2026-10-25 cleanroom 实证）：
+                        // vanilla 命令回退真实 console sender 执行，输出经 log4j 控制台流由
+                        // capture 收集
                         Bukkit.dispatchCommand(Bukkit.getConsoleSender(), command);
                     }
                 } catch (RuntimeException e) {
@@ -87,12 +88,15 @@ public final class NodeRequestHandler implements NodeIpcListener {
         // 超过请求超时（10s）由 Node 侧既有 IPC 超时兜底
     }
 
-    /** 是否为 VanillaCommandWrapper.getListener 拒绝自定义 sender（回退 console 的信号）。 */
-    private static boolean isVanillaListenerRejection(CommandException exception) {
+    /**
+     * 是否为 VanillaCommandWrapper.getListener 拒绝自定义 sender（回退 console 的信号）。
+     * 判据只认消息不认异常类型——Paper 26.x 换了包裹异常类型且不再是 bukkit
+     * CommandException（2026-10-25 cleanroom 实证），消息文案是该拒绝点的稳定特征。
+     */
+    private static boolean isVanillaListenerRejection(Throwable exception) {
         Throwable cause = exception;
         while (cause != null) {
-            if (cause instanceof IllegalArgumentException
-                    && String.valueOf(cause.getMessage()).contains("a vanilla command listener")) {
+            if (String.valueOf(cause.getMessage()).contains("a vanilla command listener")) {
                 return true;
             }
             cause = cause.getCause();
@@ -103,8 +107,9 @@ public final class NodeRequestHandler implements NodeIpcListener {
     @Override
     public void onStderrLine(String line) {
         // Node 侧日志行自带 [KuroBridge][node][LEVEL] 前缀（bridge/embedded 的 logger，ADR-034
-        // 唯一 writer）；级别经 IpcLogLevels 单一解析点分流后原样中继——error 行不再降级 INFO
-        plugin.getLogger().log(IpcLogLevels.parse(line), line);
+        // 唯一 writer）；级别经 IpcLogLevels 单一解析点分流，展示层经 IpcLogLines 剥传输前缀
+        // （ADR-038）——error 行不再降级 INFO，控制台也不再出现多层套娃前缀
+        plugin.getLogger().log(IpcLogLevels.parse(line), IpcLogLines.strip(line));
     }
 
     @Override

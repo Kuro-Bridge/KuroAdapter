@@ -157,6 +157,9 @@ async function main(): Promise<void> {
     let stub: ChildProcess | null = null;
     let napuketto: NapukettoHandle | null = null;
     let qrWatcher: QrWatcher | null = null;
+    // 关停 once 门闩：Java 的 shutdown 帧 + 关 stdin 是同一次关停的两个连续动作，
+    // 帧路径与 EOF 路径只允许第一条触发关停（日志也只留一条，relay.ts 的「收到关机通知」）
+    let shuttingDown = false;
     const relay = new Relay({
         context,
         server,
@@ -164,14 +167,17 @@ async function main(): Promise<void> {
         bindings,
         admins: new AdminTable(initialConfig.admins),
         configStore,
-        onShutdown: (reason) => {
-            logger.info(`收到 Java 关机通知（${reason}），退出`);
+        onShutdown: () => {
             void shutdown(0);
         },
     });
 
     // 统一关停路径：napuketto 优雅树杀（taskkill /T /F，等 exit ≤5s）→ stub 有界强杀 → 自退
     const shutdown = async (exitCode: number): Promise<void> => {
+        if (shuttingDown) {
+            return;
+        }
+        shuttingDown = true;
         relay.dispose();
         qrWatcher?.stop();
         if (napuketto !== null) {
@@ -197,7 +203,7 @@ async function main(): Promise<void> {
             body: { wsPort: port, autoRestart: initialConfig.runtime.autoRestart },
         }),
     );
-    logger.info(
+    logger.debug(
         `IPC ready 已发送（wsPort=${port}，autoRestart=${initialConfig.runtime.autoRestart}，协议 ${PROTOCOL_VERSION}）`,
     );
 
@@ -222,9 +228,12 @@ async function main(): Promise<void> {
         logger.info("未配置 KUROBRIDGE_STUB_PEER，跳过 stub 拉起（external 形态）");
     }
 
-    // stdin EOF：Java 关 stdin（或进程死亡）→ 自杀
+    // stdin EOF：Java 关 stdin（或进程死亡）→ 自杀。EOF 是 Java 正常关停（shutdown 帧后关
+    // stdin）的第二步时不再单独播报——只有未经帧路径的裸 EOF 才是独立关停信号
     ipc.onClose(() => {
-        logger.info("stdin EOF，退出");
+        if (!shuttingDown) {
+            logger.info("stdin EOF，退出");
+        }
         void shutdown(0);
     });
 

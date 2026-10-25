@@ -2,6 +2,15 @@
 // 平台无关：零 Bukkit API，可独立测试（类似 TS 侧 bridge/core）
 // 依赖：Jackson（JSON-lines IPC 解析）
 
+// Java 8 字节码基线（ADR-038 universal 兼容：1.12.2/1.16.5 服普遍跑 Java 8 JVM）。
+// 只约束 main 源集——测试源集保持工具链默认（JDK 25），测试代码可继续用现代语法。
+// --release 8 同时是兼容性机器门禁：任何 Java 9+ SE API 误用在此直接编译失败。
+// -Xlint:-options：压制 JDK 25 对 source/target 8 的「已过时」提示（预期内，非代码问题）。
+tasks.named<JavaCompile>("compileJava") {
+    options.release = 8
+    options.compilerArgs.add("-Xlint:-options")
+}
+
 dependencies {
     implementation(libs.jackson.databind)
 

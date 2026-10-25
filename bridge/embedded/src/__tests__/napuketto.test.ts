@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
     decideNapukettoLaunch,
+    isBannerArtLine,
     isQrArtLine,
     type NapukettoDeps,
     spawnNapuketto,
@@ -241,23 +242,21 @@ describe("spawnNapuketto", () => {
         expect(call.options.env?.["KUROBRIDGE_NK_TEST_PASS"]).toBe("keep-me");
     });
 
-    it("stdout/stderr 逐行捕获并按级别字样分流（[napuketto] 前缀）", async () => {
+    it("stdout/stderr 逐行捕获并按级别字样分流（[napuketto] 前缀；头行时间戳/级别已剥离）", async () => {
         const h = makeHarness();
         const handle = spawnNapuketto(SPEC, h.deps);
         h.child.stdout.write("19:00:00.000 INFO (kernel/1): kurobot adapter started\n");
         h.child.stdout.write("19:00:01.000 WARN (kernel/1): 请扫描二维码登录\n");
         h.child.stderr.write("19:00:02.000 ERROR (kernel/1): boom\n");
-        h.child.stdout.write("  █ ASCII QR 无级别字样\n");
+        h.child.stdout.write("█ ASCII QR 无级别字样（非缩进独立行）\n");
+        h.child.stdout.end();
+        h.child.stderr.end();
         await drain();
         const byLevel = (level: string) =>
             h.logs.filter((l) => l.level === level).map((l) => l.message);
-        expect(byLevel("info").some((m) => m.startsWith("[napuketto] 19:00:00.000 INFO"))).toBe(
-            true,
-        );
+        expect(byLevel("info").some((m) => m.includes("kurobot adapter started"))).toBe(true);
         expect(byLevel("warn").some((m) => m.includes("请扫描二维码登录"))).toBe(true);
-        expect(byLevel("error").some((m) => m.startsWith("[napuketto] 19:00:02.000 ERROR"))).toBe(
-            true,
-        );
+        expect(byLevel("error").some((m) => m.includes("boom"))).toBe(true);
         expect(byLevel("info").some((m) => m.includes("ASCII QR"))).toBe(true);
         // 收尾：结束句柄等待的 stop（不产生孤儿计时器）
         const stopped = handle.stop();
@@ -269,9 +268,10 @@ describe("spawnNapuketto", () => {
         const h = makeHarness();
         const handle = spawnNapuketto(SPEC, h.deps);
         h.child.stderr.write("20:00:00.000 FATAL (kernel/1): unrecoverable\n");
+        h.child.stderr.end();
         await drain();
         const errors = h.logs.filter((l) => l.level === "error").map((l) => l.message);
-        expect(errors.some((m) => m.includes("FATAL") && m.includes("unrecoverable"))).toBe(true);
+        expect(errors.some((m) => m.includes("unrecoverable"))).toBe(true);
         expect(h.logs.some((l) => l.level === "info" && l.message.includes("unrecoverable"))).toBe(
             false,
         );
@@ -348,5 +348,193 @@ describe("spawnNapuketto", () => {
         expect(unexpected).toHaveLength(1);
         expect(unexpected[0]?.error).toBeInstanceOf(Error);
         expect(h.logs.some((l) => l.level === "error" && l.message.includes("ENOENT"))).toBe(true);
+    });
+
+    it("关停路径 exit 不展示 taskkill 机制性的 code=1，措辞为树杀关停", async () => {
+        const h = makeHarness();
+        const handle = spawnNapuketto(SPEC, h.deps);
+        const stopped = handle.stop();
+        h.child.emitExit(1);
+        await stopped;
+        expect(h.logs.some((l) => l.level === "info" && l.message.includes("已关停（树杀）"))).toBe(
+            true,
+        );
+        expect(h.logs.some((l) => l.message.includes("code=1"))).toBe(false);
+    });
+});
+
+describe("pipeLines 记录重组与降噪（Paper 26.3 干跑台 latest.log 取证驱动）", () => {
+    it("真机 ANSI 色码形态：去色后头行识别、账号保留、时间戳/级别/pid 剥离、字段并入单行", async () => {
+        const h = makeHarness();
+        const handle = spawnNapuketto(SPEC, h.deps);
+        // 2026-10-25 cleanroom 实证形态：pipe 下 pino-pretty 仍带 ANSI，头行可带账号前缀
+        h.child.stdout.write(
+            "[3567141148] [18:03:30.355] \u001B[32mINFO\u001B[39m (26088): \u001B[36mQQ 文件来源\u001B[39m\n",
+        );
+        h.child.stdout.write('[3567141148]     \u001B[35mservice\u001B[39m: "cli"\n');
+        h.child.stdout.write('[3567141148]     \u001B[35mqqVersion\u001B[39m: "9.9.33-52230"\n');
+        h.child.stdout.end();
+        await drain();
+        const infos = h.logs.filter((l) => l.level === "info").map((l) => l.message);
+        expect(
+            infos.some((m) =>
+                m.includes('[3567141148] QQ 文件来源 service: "cli" qqVersion: "9.9.33-52230"'),
+            ),
+        ).toBe(true);
+        // 去色彻底：转发文本不再含 ANSI 转义；头行时间戳/级别/pid 不再重复出现
+        expect(infos.some((m) => m.includes("\u001B"))).toBe(false);
+        expect(infos.some((m) => m.includes("18:03:30"))).toBe(false);
+        expect(infos.some((m) => m.includes("(26088)"))).toBe(false);
+        const stopped = handle.stop();
+        h.child.emitExit(0);
+        await stopped;
+    });
+
+    it("pino-pretty 多行记录（头行+缩进字段行）重组为单行转发，续行不再各自成行", async () => {
+        const h = makeHarness();
+        const handle = spawnNapuketto(SPEC, h.deps);
+        h.child.stdout.write("[16:00:46.712] INFO (16216): 启动账号\n");
+        h.child.stdout.write('    service: "cli"\n');
+        h.child.stdout.write('    qq: "3567141148"\n');
+        h.child.stdout.write("    restartCount: 0\n");
+        h.child.stdout.write(
+            "[16:00:47.218] INFO (kernel/27256): wrapper 装配完成（engine + session）\n",
+        );
+        h.child.stdout.end();
+        await drain();
+        const infos = h.logs.filter((l) => l.level === "info").map((l) => l.message);
+        expect(
+            infos.some((m) =>
+                m.includes('启动账号 service: "cli" qq: "3567141148" restartCount: 0'),
+            ),
+        ).toBe(true);
+        expect(
+            infos.filter((m) => m.includes('service: "cli"') && !m.includes("启动账号")),
+        ).toHaveLength(0);
+        expect(infos.some((m) => m.includes("wrapper 装配完成"))).toBe(true);
+        const stopped = handle.stop();
+        h.child.emitExit(0);
+        await stopped;
+    });
+
+    it("onRecvSysMsg 校准数据（含 raw hex）整条降 debug，INFO 控制台不出现", async () => {
+        const h = makeHarness();
+        const handle = spawnNapuketto(SPEC, h.deps);
+        h.child.stdout.write(
+            "[02:01:55.294] INFO (loader/27256): ob11: onRecvSysMsg 校准数据（未识别，不广播）\n",
+        );
+        h.child.stdout.write('    verdict: "unknown"\n');
+        h.child.stdout.write("    msgType: 528\n");
+        h.child.stdout.write(
+            '    raw: "0a40089c82f9a40d1218755f4b5345594a326c656a574b6f62627947703235536851"\n',
+        );
+        h.child.stdout.end();
+        await drain();
+        const debugs = h.logs.filter((l) => l.level === "debug").map((l) => l.message);
+        const infos = h.logs.filter((l) => l.level === "info").map((l) => l.message);
+        expect(debugs.some((m) => m.includes("校准数据"))).toBe(true);
+        expect(infos.some((m) => m.includes("校准数据"))).toBe(false);
+        expect(infos.some((m) => m.includes("0a40089c"))).toBe(false);
+        const stopped = handle.stop();
+        h.child.emitExit(0);
+        await stopped;
+    });
+
+    it("接收行与 mmkv 透传行降 debug", async () => {
+        const h = makeHarness();
+        const handle = spawnNapuketto(SPEC, h.deps);
+        h.child.stdout.write(
+            "[16:03:37.609] INFO (loader/27256): loader | 接收 <- 群聊 [群967493177] [用户167155662]： 喵\n",
+        );
+        h.child.stdout.write(
+            "[3567141148] :92::loadFromFile> loading [mmkv.default] with crc 3221441533 sequence 8 version 4\n",
+        );
+        h.child.stdout.end();
+        await drain();
+        expect(
+            h.logs
+                .filter((l) => l.level === "info")
+                .some((l) => l.message.includes("接收 <- 群聊")),
+        ).toBe(false);
+        expect(
+            h.logs
+                .filter((l) => l.level === "info")
+                .some((l) => l.message.includes("mmkv.default")),
+        ).toBe(false);
+        expect(h.logs.filter((l) => l.level === "debug").length).toBeGreaterThanOrEqual(2);
+        const stopped = handle.stop();
+        h.child.emitExit(0);
+        await stopped;
+    });
+
+    it("超长记录截断并标注原长", async () => {
+        const h = makeHarness();
+        const handle = spawnNapuketto(SPEC, h.deps);
+        const longHex = "ab".repeat(400);
+        h.child.stdout.write("[02:01:55.294] WARN (loader/27256): hex dump 失败样本\n");
+        h.child.stdout.write(`    raw: "${longHex}"\n`);
+        h.child.stdout.end();
+        await drain();
+        const warns = h.logs.filter((l) => l.level === "warn").map((l) => l.message);
+        expect(warns.some((m) => m.includes("（截断，原长 "))).toBe(true);
+        expect(warns.every((m) => m.length < 500)).toBe(true);
+        const stopped = handle.stop();
+        h.child.emitExit(0);
+        await stopped;
+    });
+
+    it("ASCII banner（含账号前缀重打）整段丢弃，每进程仅一条 debug 提示", async () => {
+        const h = makeHarness();
+        const handle = spawnNapuketto(SPEC, h.deps);
+        for (const line of [
+            "    _   __                  __        __  __        ____  ____ ",
+            "   / | / /___ _____  __  __/ /_____  / /_/ /_____  / __ \\/ __ \\",
+            "  /  |/ / __ `/ __ `/ __ \\/ / / / //_/ _ \\/ __/ __/ __ \\/ / / / / / /",
+            " / /|  / /_/ / /_/ / /_/ / ,< /  __/ /_/ /_/ /_/ / /_/ / /_/ / ",
+            "/_/ |_/__,_/ .___/__,_/_/|_|\\___/__/\\__/\\____/\\___\\_\\___\\_\\ ",
+            "           /_/                                                 ",
+            "[3567141148]     _   __                  __        __  __        ____  ____ ",
+            "[3567141148]   / | / /___ _____  __  __/ /_____  / /_/ /_____  / __ \\/ __ \\",
+            "[16:00:57.251] INFO (kernel/27256): loginService.initConfig OK",
+        ]) {
+            h.child.stdout.write(`${line}\n`);
+        }
+        h.child.stdout.end();
+        await drain();
+        const infos = h.logs.filter((l) => l.level === "info").map((l) => l.message);
+        expect(infos.some((m) => m.includes("loginService.initConfig"))).toBe(true);
+        expect(infos.some((m) => m.includes("____"))).toBe(false);
+        const bannerDebugs = h.logs.filter(
+            (l) => l.level === "debug" && l.message.includes("banner 已折叠"),
+        );
+        expect(bannerDebugs).toHaveLength(1);
+        const stopped = handle.stop();
+        h.child.emitExit(0);
+        await stopped;
+    });
+});
+
+describe("isBannerArtLine", () => {
+    it("Spring 风格 banner 画行（可带账号前缀）→ true", () => {
+        expect(
+            isBannerArtLine("    _   __                  __        __  __        ____  ____ "),
+        ).toBe(true);
+        expect(
+            isBannerArtLine("   / | / /___ _____  __  __/ /_____  / /_/ /_____  / __ \\/ __ \\"),
+        ).toBe(true);
+        expect(
+            isBannerArtLine(
+                "[3567141148]           /_/                                                 ",
+            ),
+        ).toBe(true);
+    });
+
+    it("正常日志行不误伤：字段行 / hex / 二维码残骸 / 短行", () => {
+        expect(isBannerArtLine('    service: "cli"')).toBe(false);
+        expect(isBannerArtLine('    raw: "0a40089c82f9a40d1218"')).toBe(false);
+        expect(isBannerArtLine("    ]")).toBe(false);
+        expect(
+            isBannerArtLine("[16:00:57.251] INFO (kernel/27256): loginService.initConfig OK"),
+        ).toBe(false);
     });
 });

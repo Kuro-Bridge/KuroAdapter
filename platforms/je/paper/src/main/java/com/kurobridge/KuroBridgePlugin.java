@@ -2,17 +2,21 @@ package com.kurobridge;
 
 import com.kurobridge.core.EmbeddedRuntime;
 import com.kurobridge.core.IpcLogLevels;
+import com.kurobridge.core.IpcLogLines;
 import com.kurobridge.core.KurobridgeVersions;
 import com.kurobridge.core.NodeIpc;
 import com.kurobridge.core.NodeSupervisor;
 import com.kurobridge.paper.ChatListener;
+import com.kurobridge.paper.Compat;
 import com.kurobridge.paper.ConnectionListener;
 import com.kurobridge.paper.DeathListener;
 import com.kurobridge.paper.KurobridgeCommand;
+import com.kurobridge.paper.LegacyChatListener;
 import com.kurobridge.paper.NodeRequestHandler;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
@@ -20,6 +24,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import org.bukkit.Bukkit;
+import org.bukkit.command.Command;
+import org.bukkit.command.CommandSender;
 import org.bukkit.plugin.java.JavaPlugin;
 
 /**
@@ -37,7 +43,9 @@ import org.bukkit.plugin.java.JavaPlugin;
  *             正确）；失败 → SEVERE + 插件保持加载但无 IPC（开发模式降级语义），不崩服。</li>
  *       </ul>
  *       随后组装 {@link NodeSupervisor} 看护器（DEBT-2：异常退出按 1s/5s/15s 退避自动重启，
- *       10 分钟窗口累计 3 次失败放弃）并注册监听器与命令（两者均容忍无 IPC）。</li>
+ *       10 分钟窗口累计 3 次失败放弃）、按 {@link Compat} 探测结果注册监听器（ADR-038：
+ *       AsyncChatEvent 缺席的旧服挂 {@link LegacyChatListener}，不双注册以免整服聊天管线
+ *       降级）与命令（plugin.yml 声明 + onCommand 委派，两者均容忍无 IPC）。</li>
  *   <li>onDisable：{@code supervisor.stop("plugin disable")}——停看护（取消挂起的重启）+
  *       优雅关停 Node（:core 内部有界等待 + destroyForcibly 兜底，允许在 disable 期阻塞
  *       主线程，决策 D-08）。</li>
@@ -55,9 +63,9 @@ import org.bukkit.plugin.java.JavaPlugin;
  *
  * <p>bin 目录推导：相对服务器根的 {@code plugins/kurobridge/bin/}（小写 kurobridge，与 Node 侧
  * 配置目录 {@code plugins/kurobridge/config.json} 同基，均以 cwd=服务器根 为基准）。不用
- * {@code getDataFolder()}——paper-plugin.yml 的 name 是 {@code KuroBridge}，大小写敏感文件系统
+ * {@code getDataFolder()}——plugin.yml 的 name 是 {@code KuroBridge}，大小写敏感文件系统
  * 上会得到另一个目录（MVP2-NOTES 取舍记录）。PID 文件 {@code plugins/kurobridge/node.pid}
- * 同基（DEBT-2 进程卫生，写入/清理语义见 NodeIpc）。
+ * 同基（DEBT-2 进程卫生，写入/清理语义见 NodeIpc；Java 8 宿主取不到 PID 时降级不写）。
  */
 public final class KuroBridgePlugin extends JavaPlugin {
     private static final String ENV_NODE = "KUROBRIDGE_NODE";
@@ -81,13 +89,15 @@ public final class KuroBridgePlugin extends JavaPlugin {
 
     private volatile ScheduledExecutorService supervisorExecutor;
 
+    private final KurobridgeCommand commandDispatcher = new KurobridgeCommand(this);
+
     @Override
     public void onEnable() {
         String bundleEnv = System.getenv(ENV_BUNDLE);
-        if (bundleEnv == null || bundleEnv.isBlank()) {
+        if (bundleEnv == null || bundleEnv.trim().isEmpty()) {
             startFromJar();
         } else {
-            Path bundle = Path.of(bundleEnv);
+            Path bundle = Paths.get(bundleEnv);
             String stub = envOrDefault(
                     ENV_STUB_PEER,
                     bundle.getParent()
@@ -96,11 +106,25 @@ public final class KuroBridgePlugin extends JavaPlugin {
                             .toString());
             startSupervised(bundle, envOrDefault(ENV_NODE, DEFAULT_NODE), stub, NODE_VERSION_DEV);
         }
-        Bukkit.getPluginManager().registerEvents(new ChatListener(this), this);
+        if (Compat.asyncChatEventPresent()) {
+            Bukkit.getPluginManager().registerEvents(new ChatListener(this), this);
+        } else {
+            // ADR-038 universal：1.12.2 ~ 1.18.2 无 AsyncChatEvent，挂 legacy 监听
+            Bukkit.getPluginManager().registerEvents(new LegacyChatListener(this), this);
+        }
         Bukkit.getPluginManager().registerEvents(new ConnectionListener(this), this);
         Bukkit.getPluginManager().registerEvents(new DeathListener(this), this);
-        // paper-plugin.yml 不支持 commands 声明，经 Paper 提供的 CommandMap 直接注册（无需反射）
-        Bukkit.getCommandMap().register("kurobridge", new KurobridgeCommand(this));
+        // 命令经 plugin.yml 声明（kurobridge），onCommand 委派到分派器（ADR-038：
+        // 经典 plugin.yml 全版本可用，替代 paper-plugin.yml 时代的 CommandMap 直注）
+    }
+
+    @Override
+    public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
+        if (!sender.hasPermission("kurobridge.admin")) {
+            sender.sendMessage("缺少 kurobridge.admin 权限");
+            return true;
+        }
+        return commandDispatcher.execute(sender, args);
     }
 
     @Override
@@ -120,7 +144,7 @@ public final class KuroBridgePlugin extends JavaPlugin {
 
     /** JAR 自含模式：解压/复用 embedded 运行时后经看护器拉起（失败 → SEVERE + 无 IPC 降级）。 */
     private void startFromJar() {
-        Path binDir = Path.of("plugins", "kurobridge", "bin").toAbsolutePath().normalize();
+        Path binDir = Paths.get("plugins", "kurobridge", "bin").toAbsolutePath().normalize();
         EmbeddedRuntime.ResourceSource source = name -> {
             InputStream stream = getClass().getClassLoader().getResourceAsStream("embedded/" + name);
             if (stream == null) {
@@ -137,7 +161,7 @@ public final class KuroBridgePlugin extends JavaPlugin {
             return;
         }
         String stub = System.getenv(ENV_STUB_PEER);
-        if (stub == null || stub.isBlank()) {
+        if (stub == null || stub.trim().isEmpty()) {
             getLogger().info("JAR 解压模式未设置 KUROBRIDGE_STUB_PEER，不拉起 stub（外部协议端形态）");
         }
         startSupervised(
@@ -158,24 +182,28 @@ public final class KuroBridgePlugin extends JavaPlugin {
      * @param nodeVersion 就绪汇总行展示用（JAR 模式取 manifest，开发覆盖为 dev）
      */
     private void startSupervised(Path bundle, String nodeExecutable, String stub, String nodeVersion) {
-        Path pidFile = Path.of("plugins", "kurobridge")
+        Path pidFile = Paths.get("plugins", "kurobridge")
                 .resolve(PID_FILE_RELATIVE)
                 .toAbsolutePath()
                 .normalize();
-        ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor(
-                Thread.ofVirtual().name("kurobridge-supervisor").factory());
+        ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor(runnable -> {
+            // 具名守护线程（Java 8 基线，ADR-038）
+            Thread thread = new Thread(runnable, "kurobridge-supervisor");
+            thread.setDaemon(true);
+            return thread;
+        });
         NodeSupervisor.DelayScheduler delayScheduler = (delayMs, task) -> {
             ScheduledFuture<?> future = executor.schedule(task, delayMs, TimeUnit.MILLISECONDS);
             return () -> future.cancel(false);
         };
-        String stubPath = stub == null || stub.isBlank() ? null : stub;
+        String stubPath = stub == null || stub.trim().isEmpty() ? null : stub;
         NodeRequestHandler handler = new NodeRequestHandler(this);
         NodeSupervisor created = new NodeSupervisor(
                 observed -> {
                     NodeIpc instance = new NodeIpc(
                             nodeExecutable,
                             bundle,
-                            stubPath == null ? null : Path.of(stubPath),
+                            stubPath == null ? null : Paths.get(stubPath),
                             observed,
                             line -> relayIpcLog(getLogger(), line));
                     instance.setPidFile(pidFile);
@@ -192,17 +220,18 @@ public final class KuroBridgePlugin extends JavaPlugin {
         created.start();
     }
 
-    /** Node ready 回调（IPC 读取线程）：消费 autoRestart 看护开关 + 输出就绪与汇总日志。 */
+    /** Node ready 回调（IPC 读取线程）：消费 autoRestart 看护开关。就绪播报收敛（ADR-038）：
+     * 控制台只留看护器的「Node 进程就绪（wsPort=…），看护中」+ 本方法版本汇总行两条。 */
+    @SuppressWarnings("deprecation") // getDescription()：26.x 标弃用，但全版本存留（getPluginMeta 1.19+ 才有）
     public void onNodeReady(int wsPort, boolean autoRestart) {
         NodeSupervisor current = supervisor;
         if (current != null) {
             current.setAutoRestart(autoRestart);
         }
-        getLogger().info("Node 子进程就绪，WS 端口 " + wsPort + "（autoRestart=" + autoRestart + "）");
-        // 版本来源：插件=paper-plugin.yml；node=manifest（开发覆盖为 dev）；协议=:core 硬编码副本。
+        // 版本来源：插件=plugin.yml；node=manifest（开发覆盖为 dev）；协议=:core 硬编码副本。
         // 「[KuroBridge]」前缀由插件 logger 自动附加（M2-11：手写会双前缀）
         getLogger()
-                .info(() -> "就绪：插件 v" + getPluginMeta().getVersion() + " / node v" + nodeVersion + " / 协议 v"
+                .info(() -> "就绪：插件 v" + getDescription().getVersion() + " / node v" + nodeVersion + " / 协议 v"
                         + KurobridgeVersions.PROTOCOL_VERSION);
     }
 
@@ -221,13 +250,13 @@ public final class KuroBridgePlugin extends JavaPlugin {
     private volatile String nodeVersion = NODE_VERSION_DEV;
 
     /** :core 日志行中继到插件 logger（行格式 {@code [NodeIpc][LEVEL] 消息}；级别经
-     * IpcLogLevels 单一解析点分流，ADR-034——中继方不得各自猜前缀）。 */
+     * IpcLogLevels 单一解析点分流，展示层经 IpcLogLines 剥传输前缀——ADR-034 + ADR-038）。 */
     private static void relayIpcLog(Logger logger, String line) {
-        logger.log(IpcLogLevels.parse(line), line);
+        logger.log(IpcLogLevels.parse(line), IpcLogLines.strip(line));
     }
 
     private static String envOrDefault(String name, String defaultValue) {
         String value = System.getenv(name);
-        return (value == null || value.isBlank()) ? defaultValue : value;
+        return (value == null || value.trim().isEmpty()) ? defaultValue : value;
     }
 }

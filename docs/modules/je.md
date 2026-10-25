@@ -1,17 +1,18 @@
 # platforms/je（Java 薄壳）
 
-Gradle 多模块，一个服务端 = 一个模块。Java 只做平台桥接；业务全部在 Node。模块状态：`:core`、`:paper`、`:fabric` 已实现；`:neoforge`、`:velocity` 为预留骨架（只有空 `build.gradle.kts`）。
+Gradle 多模块，一个服务端 = 一个模块。Java 只做平台桥接；业务全部在 Node。模块状态：`:core`、`:paper`、`:paper-legacy`、`:fabric` 已实现；`:neoforge`、`:velocity` 为预留骨架（只有空 `build.gradle.kts`）。
 
 ## 模块
 
 | 模块 | 依赖 | 产物 | 职责 |
 | --- | --- | --- | --- |
 | `:core` | Jackson、JDK | `core-0.1.0.jar` | IPC 编解码、进程管理、看护器、JAR 运行时解压；零 Bukkit API |
-| `:paper` | `:core`、paper-api（compileOnly）、log4j-core（compileOnly）、Jackson | `kurobridge-0.1.0.jar`（shadowJar） | Paper 事件/命令/权限桥接 |
+| `:paper` | `:core`、`:paper-legacy`、paper-api 26.3（compileOnly）、log4j-core（compileOnly）、Jackson | `kurobridge-0.1.0.jar`（shadowJar） | Paper 事件/命令/权限桥接 |
+| `:paper-legacy` | paper-api 1.21.4（compileOnly） | 并入 `:paper` shadowJar | 旧 Adventure 序列化器隔离层（ADR-038）：`PlainComponentSerializer` 对 1.21.4 时代 API 编译，现代服缺失时由兼容链回退触碰 |
 | `:fabric` | `:core`、fabric-loader / fabric-api（modImplementation）、Jackson | `kurobridge-fabric-0.1.0.jar`（remapJar） | Fabric mod 薄壳 |
 | `:neoforge` / `:velocity` | — | 空 jar | 预留 |
 
-工具链：JDK 25 编译，`options.release = 21`；`-Xlint:all -Werror`；Spotless Palantir 2.71.0。Gradle 9.7 wrapper。
+工具链：JDK 25 编译，main 源集 `options.release = 8`（ADR-038 universal 基线：1.12.2 ~ 26.3 单 jar；`--release` 同时是 Java 9+ SE API 误用的机器门禁）；`-Xlint:all -Werror`；Spotless Palantir 2.71.0。Gradle 9.7 wrapper。
 
 ## :core
 
@@ -24,12 +25,14 @@ Gradle 多模块，一个服务端 = 一个模块。Java 只做平台桥接；�
 | `NodeSupervisor` | 看护状态机：退避、10 分钟窗累计 3 次放弃、`autoRestart`、手动停止 |
 | `EmbeddedRuntime` | JAR 内 `embedded/` → `plugins/kurobridge/bin/` 的幂等解压（sha256 manifest + zip slip 防护 + napuketto zip 展开） |
 | `IpcLogLevels` | 日志行 → JUL 级别的单一解析点 |
+| `IpcLogLines` | 日志行展示层剥传输前缀（ADR-038）：中继到控制台的最后一跳剥 `[KuroBridge][node][level]` / `[NodeIpc][LEVEL]`，Bukkit logger 自带插件前缀，透传即套娃 |
+| `PidSupport` | 跨版本取 PID：反射 `Process.pid()`（Java 9+），Java 8 返回 -1 |
 | `KurobridgeVersions` | 协议版本展示副本（门禁与 npm 包 version 对齐） |
 | `ProcessFactory` | 进程启动抽象，测试注入替身 |
 
 ### NodeIpc 生命周期
 
-1. `start()`：检查残留 PID 文件（仅告警）→ `ProcessFactory.start` → 写 PID → 启动 stdout/stderr 两条虚拟线程 → 30s ready 超时保护。
+1. `start()`：检查残留 PID 文件（仅告警）→ `ProcessFactory.start` → 写 PID → 启动 stdout/stderr 两条命名 daemon 线程（Java 8 基线无虚拟线程，ADR-038）→ 30s ready 超时保护。
 2. 运行期：stdout 逐行解码分发（ready / request / result）；stderr 逐行交 `onStderrLine`；写 stdin 加锁串行。
 3. `shutdown(reason)`：发 `shutdown` 帧 → 关 stdin → 等 5s → `destroyForcibly()` → 再等 2s → 删 PID。幂等。
 4. 非优雅断开（stdout EOF / 写失败）：杀存活进程、拒绝在途请求与 start future、关闭调度器，并发一次 `onProcessExited`（优雅关停不发）。
@@ -48,14 +51,18 @@ Gradle 多模块，一个服务端 = 一个模块。Java 只做平台桥接；�
 | 类 | 行为 |
 | --- | --- |
 | `KuroBridgePlugin` | `onEnable`：环境变量覆盖或 JAR 解压 → 组装 `NodeSupervisor` 拉起 node → 注册监听器与命令。`onDisable`：停看护 + 优雅关停 |
-| `ChatListener` | `AsyncChatEvent` → 纯文本 → `game_chat`；无 `kurobridge.relay` 权限（含 negate）则不转发 |
+| `Compat` | 运行期版本探测（ADR-038）：`AsyncChatEvent` 有无 → 现代或 legacy 聊天监听（不双注册）；Adventure 有无 → Component 或 String 广播 |
+| `ChatListener` | `AsyncChatEvent`（Paper 1.19+）→ 纯文本 → `game_chat`；无 `kurobridge.relay` 权限（含 negate）则不转发 |
+| `LegacyChatListener` | `AsyncPlayerChatEvent`（1.12.2 ~ 1.18.2）→ `getMessage()` String → `game_chat`；语义同 `ChatListener` |
 | `ConnectionListener` | `PlayerJoinEvent` / `PlayerQuitEvent` → `player_join` / `player_quit`；随后补一帧 `status`（TPS / 在线数 / JVM uptime） |
-| `DeathListener` | `PlayerDeathEvent` → `player_death`（`deathMessage == null` 时 message 为空串） |
+| `DeathListener` | `PlayerDeathEvent` → `player_death`：`getDeathMessage()` String 全版本路径（`deathMessage == null` 时 message 为空串），剥 legacy 颜色码 |
+| `Broadcasts` | 广播兼容层：Adventure 存在走 `Bukkit.broadcast(Component)`（隔离在 `ComponentPath`），否则 `Bukkit.broadcastMessage(String)` |
 | `NodeRequestHandler` | Node 请求回主线程：`broadcast` 调度后即回执；`execute_command` 执行完回执（收集型 sender，vanilla 命令回退 console + log4j 截流） |
-| `KurobridgeCommand` | `/kurobridge send <文本>` / `reload` / `qr`；权限 `kurobridge.admin`（default op） |
-| `CollectingCommandSender` / `VanillaFeedbackCapture` / `PlainText` | 命令输出收集、vanilla 反馈捕获、Adventure 文本序列化 |
+| `KurobridgeCommand` | `/kurobridge send <文本>` / `reload` / `qr`；权限 `kurobridge.admin`（default op）；回执全 String（universal） |
+| `CollectingCommandSender` / `VanillaFeedbackCapture` | 命令输出收集、vanilla 反馈捕获 |
+| `PlainText` | Component → 纯文本兼容链（ADR-038）：`PlainTextComponentSerializer`（隔离 holder）→ `:paper-legacy` 的旧序列化器回退，首用解析缓存 |
 
-- 命令通过 `CommandMap` 运行期注册（`paper-plugin.yml` 不支持 `commands` 声明）。
+- 命令在 `plugin.yml` 声明（经典清单 1.12.2 ~ 26.3 全版本可加载；`paper-plugin.yml` 是 1.19.4+ 专属格式，ADR-038 弃用），主类 `onCommand` 委派 `KurobridgeCommand`。
 - `status` 只在 join/quit 时推送，不是周期上报。
 - 就绪后输出汇总行：插件版本 / node 版本 / 协议版本。
 
@@ -80,7 +87,7 @@ Gradle 多模块，一个服务端 = 一个模块。Java 只做平台桥接；�
 ## 打包与运行期布局
 
 - `pnpm build:jar`：`pnpm -r build` → `embed.ts` → `:paper:shadowJar` → `:fabric:remapJar`。
-- paper shadowJar 包含 `:core`、Jackson、`embedded/` 资源；fabric shadow 白名单只合并 `:core` + Jackson 三件，再由 loom `remapJar`。
+- paper shadowJar 包含 `:core`、`:paper-legacy`、Jackson、`embedded/` 资源；fabric shadow 白名单只合并 `:core` + Jackson 三件，再由 loom `remapJar`。
 - JAR 安装后运行期路径（cwd = 服务器根）：
 
 ```
@@ -111,7 +118,8 @@ plugins/kurobridge/
 
 ## 已知缺口
 
-- `:paper` 无单元测试（Bukkit 桥接靠沙盒验收）；`:fabric` 只有 `TickRateSampler` 单测。
+- `:paper` 无单元测试（Bukkit 桥接靠沙盒验收；日志行解析类测试在 `:core`）；`:fabric` 只有 `TickRateSampler` 单测。
+- universal 面（ADR-038）：26.3（embedded 深验）/ 26.2 / 1.21.11 / 1.16.5（`Debug/Paper-1.16.5`，Java 16）四线真机冒烟通过；1.12.2 未上机（`api-version` 下限 1.13，1.12.2 忽略该键可加载，需 Java 8 运行时实测）。
 - fabric 多 MC 版本矩阵未做（首版钉 1.21.4）。
 - fabric 缺 relay 权限门与 `/kurobridge` 细粒度权限。
 - neoforge / velocity 未实现。

@@ -1,16 +1,16 @@
 # 项目现状
 
-> 以当前代码为准（最后核对 2026-10-23）。产品版本 `0.1.0`，协议 `0.4.0`。
+> 以当前代码为准（最后核对 2026-10-25）。产品版本 `0.1.0`，协议 `0.4.0`。
 
 ## 版本基线
 
 | 项 | 值 |
 | --- | --- |
-| bridge | `0.1.0`（根 package / embedded / paper-plugin / Gradle 六点对齐） |
+| bridge | `0.1.0`（根 package / embedded / plugin.yml / Gradle 六点对齐） |
 | 协议 | `0.4.0`（`@kuro-bridge/protocol`，主版本兼容区间 `0.x`） |
 | 内嵌 Node | `26.7.0`（win-x64） |
 | napuketto | `@napuketto/cli` 0.1.20（精确 pin） |
-| Java | 工具链 25，字节码 target 21 |
+| Java | 工具链 25，字节码 `--release 8`（ADR-038 universal：1.12.2 ~ 26.3 单 jar） |
 | Fabric | MC 1.21.4 / loader 0.19.5 / fabric-api 0.119.4 |
 | Endstone | API v0.11 补丁线（CMake FetchContent） |
 
@@ -18,7 +18,7 @@
 
 | 平台 | 状态 | 说明 |
 | --- | --- | --- |
-| Paper | ✅ 可用 | 四事件 + status、命令、热载、embedded/external、JAR 自含运行时 |
+| Paper | ✅ 可用 | universal 单 jar 1.12.2 ~ 26.3（ADR-038：兼容链 + 运行期探测 + 经典 plugin.yml）；四事件 + status、命令、热载、embedded/external、JAR 自含运行时。26.3（embedded 深验：命令四条 + napuketto 在线日志治理）/ 26.2 / 1.21.11 / 1.16.5（Java 16）四线真机冒烟通过；1.12.2 未上机 |
 | Fabric | ✅ 首版 | 四事件 + status（TPS 自测）、命令；单 MC 版本；chat/权限有登记差异 |
 | LSE | 🟡 已实现，待真机 | 壳 + shim + 回环 e2e 绿；`newProcess` 等平台前提待实机背书 |
 | Endstone | 🟡 已实现，待真机 | portable 层 ctest 5/5；clang-cl dll 已构建；真机联调未做 |
@@ -82,6 +82,9 @@
 - `kurobridge-spike` serverId 硬编码已清（ADR-034）。
 - 版本六点/两份机械对齐、金样本契约/行为检查已入门禁。
 - 腾讯闭源件扫描已是构建期硬断言。
+- Paper 26.3 聊天/死亡监听崩溃已修（ADR-038：Adventure 5.2 删除旧序列化器，兼容链 + release 8 universal）；控制台 IPC 日志套娃前缀在展示层剥离，napuketto 多行记录（含 ANSI 色码形态）重组为单行、遥测噪音降 debug、banner/终端二维码折叠、关停日志收敛为单条。
+- Paper 26.x vanilla 命令拒绝自定义 sender 的回退修复：异常类型随版本漂移（26.x 不再是 bukkit CommandException / IllegalArgumentException），判据改为消息链匹配（2026-10-25 cleanroom 实证，version/tps/list/kurobridge qr 四命令回执成功）。
+- shadowJar 重复 META-INF 条目（Jackson 三件的 LICENSE/NOTICE）触发 Paper 1.20.5+ PluginRemapper 拒绝（经典 plugin.yml 的 api-version 1.13 触发重映射），已加 `duplicatesStrategy = EXCLUDE`（2026-10-25 Paper-1.21.11 实证）。
 
 ## 下一步优先级
 

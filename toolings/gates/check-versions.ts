@@ -7,7 +7,8 @@
 //    - package.json（根，期望来源）
 //    - bridge/embedded/package.json
 //    - bridge/embedded/src/version.ts 的 BRIDGE_VERSION（hello_ack 上报唯一来源）
-//    - platforms/je/paper/src/main/resources/paper-plugin.yml 的 version:
+//    - platforms/je/paper/src/main/resources/plugin.yml 的 version:（ADR-038 起经典清单，
+//      paper-plugin.yml 为 1.19.4+ 专属格式已弃用）
 //    - platforms/je/build.gradle.kts 的全部 `version = "..."`（根级 + subprojects，须 ≥2 处逐一相符）
 // 2) 协议版本族（两份）：已安装 npm 包清单 version
 //    （bridge/core/node_modules/@kuro-bridge/protocol/package.json，期望来源）≡
@@ -65,11 +66,11 @@ if (expectedBridge === undefined) {
         firstMatch("bridge/embedded/src/version.ts", /BRIDGE_VERSION = "([^"]+)"/),
     );
     check(
-        "paper-plugin.yml version",
+        "plugin.yml version",
         expectedBridge,
         firstMatch(
-            "platforms/je/paper/src/main/resources/paper-plugin.yml",
-            /^version:[ \t]*(\S+)/m,
+            "platforms/je/paper/src/main/resources/plugin.yml",
+            /^version:[ \t]*['"]?([^'"\s]+)/m,
         ),
     );
     // gradle：解析全部 `version = "..."` 出现点逐一校验（根级无缩进 + subprojects 缩进，

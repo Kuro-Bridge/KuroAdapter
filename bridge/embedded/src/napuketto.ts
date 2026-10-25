@@ -163,7 +163,9 @@ export function spawnNapuketto(spec: NapukettoSpawnSpec, deps: NapukettoDeps): N
         }
         reported = true;
         if (stopping) {
-            logger.info(`napuketto CLI 已退出（code=${code ?? "null"}，关停路径）`);
+            // taskkill /T /F 树杀的退出码恒为 1（机制产物，非结果信号）——不展示 code，
+            // 等 napuketto 上游落地优雅退出（退出码契约）后再恢复语义
+            logger.info("napuketto CLI 已关停（树杀）");
             return;
         }
         for (const cb of exitCbs) {
@@ -236,16 +238,160 @@ export function isQrArtLine(line: string): boolean {
 /** 单次折叠突发允许的最大行数（防御：超过视为流污染，恢复透传不再吞行） */
 const QR_ART_FOLD_CAP = 200;
 
-/** 按级别字样分流转发一行（复杂度拆分：热路径主循环只管折叠状态机） */
-function logNapukettoLine(logger: Logger, line: string): void {
-    const text = `[napuketto] ${line}`;
-    if (LOG_LEVEL_ERROR.test(line) || LOG_LEVEL_FATAL.test(line)) {
+/**
+ * pino-pretty 记录头行（匹配前必须先剥 ANSI——真机 pipe 下输出仍带颜色码，
+ * 2026-10-25 cleanroom 实证：带色码时本正则永不命中，多行重组整链失效）。
+ * 形态：`[账号] [HH:MM:SS.mmm] LEVEL (pid/scope): 消息`（账号与毫秒可选）。
+ * 捕获组：账号（保留转发）、级别（随记录传递，头行剥离后正文不再含级别字样）、
+ * 消息体。时间戳 / 级别 / pid 与宿主 logger 前缀重复，重组时丢弃。
+ */
+const RECORD_HEADER =
+    /^\s*(?:\[(\d+)\]\s*)?\[?\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?\]?\s+(INFO|WARN|ERROR|FATAL|DEBUG|TRACE)\s*(?:\([^)]*\))?:\s*(.*)$/;
+/** banner 画字符（Spring 风格 ASCII banner 的全部构成字符：`_/\|(),<.` + 反引号；无 CJK、无数字、无时间戳） */
+const BANNER_ART_CHARS = /^[_/\\|(),<.`· ]+$/;
+/** 重组后单条记录的长度上限：超长（如 raw hex 转储）截断，全文留 napuketto 自己的日志侧 */
+const RECORD_TRUNCATE_LIMIT = 300;
+/**
+ * 已知遥测噪音（证据：Paper 26.3 干跑台 latest.log）→ 降 debug（宿主控制台默认不显示）：
+ * - onRecvSysMsg 校准数据（协议逆向/校准用，非运行状态，登录后一分钟能刷数百行 hex）
+ * - `loader | 接收 <- 群聊`（收包遥测；绑定过滤在 bridge/core，转发结果另有广播行可见）
+ * - mmkv loadFromFile（第三方底层库透传）
+ */
+const NOISE_PATTERNS = [/校准数据/, /接收 <- 群聊/, /loadFromFile/];
+/** pino-pretty 的可选 pid/账号前缀（`[12345] `），banner 判定前剥掉 */
+const PID_LINE_PREFIX = /^\[\d+\]\s*/;
+/** 裸缩进续行（无账号前缀的 pino-pretty 字段/列表行） */
+const INDENTED_LINE = /^\s/;
+/** 账号前缀续行：前缀 + pino-pretty 字段缩进（≥2 空格）；单空格是独立行（mmkv 透传等），
+ *  不并入——以空格数区分续行与同前缀独立行（2026-10-25 cleanroom 实证形态） */
+const PREFIXED_FIELD_LINE = /^\[\d+\]\s{2,}/;
+/** 续行内容剥离：行首空白 + 可选账号前缀 */
+const CONTINUATION_PREFIX = /^\s*(?:\[\d+\]\s*)?/;
+
+/** banner 画行判定（导出供单测）：去 ANSI 与可选账号前缀后仅由画字符构成且 ≥3 个非空白字符 */
+export function isBannerArtLine(line: string): boolean {
+    const plain = line.replace(ANSI_ESCAPE, "").replace(PID_LINE_PREFIX, "");
+    const stripped = plain.replace(/\s/g, "");
+    return stripped.length >= 3 && stripped.length <= 200 && BANNER_ART_CHARS.test(stripped);
+}
+
+function truncateRecord(record: string): string {
+    if (record.length <= RECORD_TRUNCATE_LIMIT) {
+        return record;
+    }
+    return `${record.slice(0, RECORD_TRUNCATE_LIMIT)}…（截断，原长 ${record.length} 字符）`;
+}
+
+/**
+ * 按级别分流转发一条重组后的记录；已知遥测噪音降 debug。
+ * level 为头行捕获的级别字样（头行已剥离，正文不再含级别）；非记录行（无头行）传 null，
+ * 退回正文扫描。异常日志静默降级 info 的教训见 ADR-034。
+ */
+function logNapukettoRecord(logger: Logger, record: string, level: string | null): void {
+    const text = `[napuketto] ${record}`;
+    if (NOISE_PATTERNS.some((pattern) => pattern.test(record))) {
+        logger.debug(text);
+        return;
+    }
+    const effective =
+        level ??
+        (LOG_LEVEL_ERROR.test(record) || LOG_LEVEL_FATAL.test(record)
+            ? "ERROR"
+            : LOG_LEVEL_WARN.test(record)
+              ? "WARN"
+              : null);
+    if (effective === "ERROR" || effective === "FATAL") {
         logger.error(text);
-    } else if (LOG_LEVEL_WARN.test(line)) {
+    } else if (effective === "WARN") {
         logger.warn(text);
     } else {
         logger.info(text);
     }
+}
+
+/** 逐行捕获并按 pino-pretty 固定的级别字样分流；多行记录重组为单行，终端二维码与 ASCII banner 折叠 */
+function pipeLines(
+    stream: Readable | null,
+    logger: Logger,
+    onQrUrl: ((url: string) => void) | undefined,
+): void {
+    if (stream === null) {
+        return;
+    }
+    let foldedRun = 0;
+    let recordBuffer: string[] = [];
+    let recordLevel: string | null = null;
+    let bannerAnnounced = false;
+    const flushRecord = (): void => {
+        if (recordBuffer.length === 0) {
+            return;
+        }
+        logNapukettoRecord(logger, truncateRecord(recordBuffer.join(" ")), recordLevel);
+        recordBuffer = [];
+        recordLevel = null;
+    };
+    /** 终端二维码画行折叠：返回 true = 本行已吞掉（突发超 QR_ART_FOLD_CAP 后透传，防流污染吞行） */
+    const foldQrArt = (line: string): boolean => {
+        if (!isQrArtLine(line)) {
+            return false;
+        }
+        if (foldedRun === 0) {
+            logger.info(
+                "[napuketto] （终端二维码输出已折叠；图片路径与登录链接请看 kurobridge qr）",
+            );
+        }
+        foldedRun += 1;
+        return foldedRun < QR_ART_FOLD_CAP;
+    };
+    /** banner 画行整段丢弃（CLI 引导与 kernel 登录后各打一次，纯噪音）；每进程只留一条 debug 提示 */
+    const dropBannerArt = (line: string): boolean => {
+        if (!isBannerArtLine(line)) {
+            return false;
+        }
+        if (!bannerAnnounced) {
+            bannerAnnounced = true;
+            logger.debug("[napuketto] （ASCII banner 已折叠）");
+        }
+        return true;
+    };
+    /** 记录行分流：头行开新缓冲（账号保留、时间戳/级别/pid 剥离，级别随记录传递）、
+     * 续行（裸缩进或账号前缀+字段缩进）并入、其余独立成条（重组见 RECORD_HEADER 注释） */
+    const handleRecordLine = (line: string): void => {
+        const header = RECORD_HEADER.exec(line);
+        if (header !== null) {
+            flushRecord();
+            const account = header[1];
+            const message = header[3] ?? "";
+            recordBuffer = [account !== undefined ? `[${account}] ${message}` : message];
+            recordLevel = header[2] ?? null;
+            return;
+        }
+        const isContinuation =
+            recordBuffer.length > 0 && (INDENTED_LINE.test(line) || PREFIXED_FIELD_LINE.test(line));
+        if (isContinuation) {
+            recordBuffer.push(line.replace(CONTINUATION_PREFIX, ""));
+            return;
+        }
+        logNapukettoRecord(logger, truncateRecord(line.trim()), null);
+    };
+    const handleLine = (rawLine: string): void => {
+        // 单一去色点：真机 pipe 下 pino-pretty 仍带 ANSI 色码，所有下游判定与转发都用去色行
+        const line = rawLine.replace(ANSI_ESCAPE, "");
+        emitQrUrlIfMatched(line, onQrUrl);
+        if (foldQrArt(line)) {
+            return;
+        }
+        foldedRun = 0;
+        if (dropBannerArt(line)) {
+            return;
+        }
+        handleRecordLine(line);
+    };
+    const rl = createInterface({ input: stream, terminal: false });
+    rl.on("line", handleLine);
+    rl.on("close", () => {
+        flushRecord();
+    });
 }
 
 /** QR URL 日志提取（行级 best-effort；命中即回调，与折叠/分流无关） */
@@ -257,33 +403,4 @@ function emitQrUrlIfMatched(line: string, onQrUrl: ((url: string) => void) | und
     if (match !== null && match[1] !== undefined) {
         onQrUrl(match[1]);
     }
-}
-
-/** 逐行捕获并按 pino-pretty 固定的级别字样分流；终端 ASCII 二维码按突发折叠成一行提示 */
-function pipeLines(
-    stream: Readable | null,
-    logger: Logger,
-    onQrUrl: ((url: string) => void) | undefined,
-): void {
-    if (stream === null) {
-        return;
-    }
-    let foldedRun = 0;
-    const rl = createInterface({ input: stream, terminal: false });
-    rl.on("line", (line: string) => {
-        emitQrUrlIfMatched(line, onQrUrl);
-        if (isQrArtLine(line)) {
-            if (foldedRun === 0) {
-                logger.info(
-                    "[napuketto] （终端二维码输出已折叠；图片路径与登录链接请看 kurobridge qr）",
-                );
-            }
-            foldedRun += 1;
-            if (foldedRun < QR_ART_FOLD_CAP) {
-                return;
-            }
-        }
-        foldedRun = 0;
-        logNapukettoLine(logger, line);
-    });
 }

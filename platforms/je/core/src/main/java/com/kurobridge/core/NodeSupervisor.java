@@ -1,6 +1,7 @@
 package com.kurobridge.core;
 
 import java.util.ArrayDeque;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -42,23 +43,61 @@ public final class NodeSupervisor {
     }
 
     /**
-     * 看护参数（{@link #defaults()} 为生产缺省值；测试经 record 副本缩短窗口/退避）。
+     * 看护参数（{@link #defaults()} 为生产缺省值；测试经显式构造缩短窗口/退避）。
      *
-     * @param autoRestart 自动重启开关初值（ready 上报后可被 {@code setAutoRestart} 更新）
-     * @param backoffDelaysMs 退避档位（毫秒），按连续失败次数取值，越界取末档封顶
-     * @param failureWindowMs 放弃判定的滑动窗口毫秒
-     * @param maxFailuresInWindow 窗口内累计失败达到该次数即放弃
-     * @param clock 毫秒时钟（可注入，测试用）
+     * <p>访问器名沿用 record 组件名，Java 8 基线以普通不可变类承载（ADR-038）。
+     *
+     * <ul>
+     *   <li>autoRestart 自动重启开关初值（ready 上报后可被 {@code setAutoRestart} 更新）</li>
+     *   <li>backoffDelaysMs 退避档位（毫秒），按连续失败次数取值，越界取末档封顶</li>
+     *   <li>failureWindowMs 放弃判定的滑动窗口毫秒</li>
+     *   <li>maxFailuresInWindow 窗口内累计失败达到该次数即放弃</li>
+     *   <li>clock 毫秒时钟（可注入，测试用）</li>
+     * </ul>
      */
-    public record Options(
-            boolean autoRestart,
-            List<Long> backoffDelaysMs,
-            long failureWindowMs,
-            int maxFailuresInWindow,
-            LongSupplier clock) {
+    public static final class Options {
+        private final boolean autoRestart;
+        private final List<Long> backoffDelaysMs;
+        private final long failureWindowMs;
+        private final int maxFailuresInWindow;
+        private final LongSupplier clock;
+
+        public Options(
+                boolean autoRestart,
+                List<Long> backoffDelaysMs,
+                long failureWindowMs,
+                int maxFailuresInWindow,
+                LongSupplier clock) {
+            this.autoRestart = autoRestart;
+            this.backoffDelaysMs = backoffDelaysMs;
+            this.failureWindowMs = failureWindowMs;
+            this.maxFailuresInWindow = maxFailuresInWindow;
+            this.clock = clock;
+        }
 
         public static Options defaults() {
-            return new Options(true, List.of(1_000L, 5_000L, 15_000L), 10 * 60_000L, 3, System::currentTimeMillis);
+            return new Options(
+                    true, Arrays.asList(1_000L, 5_000L, 15_000L), 10 * 60_000L, 3, System::currentTimeMillis);
+        }
+
+        public boolean autoRestart() {
+            return autoRestart;
+        }
+
+        public List<Long> backoffDelaysMs() {
+            return backoffDelaysMs;
+        }
+
+        public long failureWindowMs() {
+            return failureWindowMs;
+        }
+
+        public int maxFailuresInWindow() {
+            return maxFailuresInWindow;
+        }
+
+        public LongSupplier clock() {
+            return clock;
         }
     }
 
@@ -109,7 +148,8 @@ public final class NodeSupervisor {
 
     /**
      * 停止看护（onDisable）：取消挂起的重启、优雅关停当前实例（幂等）。放弃终态下调用
-     * 同样安全（回收半启动实例）。
+     * 同样安全（回收半启动实例）。关停播报收敛（ADR-038）：只留 NodeIpc.shutdown 的
+     * 「Node IPC 已关闭：<reason>」一条，本方法不再重复播报。
      */
     public void stop(String reason) {
         stopped.set(true);
@@ -121,7 +161,6 @@ public final class NodeSupervisor {
         if (cur != null) {
             cur.shutdown(reason);
         }
-        logInfo("看护已停止：" + reason);
     }
 
     /** 当前看护中的实例；无实例（未 start/放弃后已回收）为 null。 */

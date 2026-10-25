@@ -1,11 +1,10 @@
 package com.kurobridge.paper;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
-import net.kyori.adventure.audience.MessageType;
-import net.kyori.adventure.identity.Identity;
 import net.kyori.adventure.text.Component;
 import org.bukkit.Bukkit;
 import org.bukkit.Server;
@@ -24,16 +23,18 @@ import org.bukkit.plugin.Plugin;
  * 拒绝）；isOp 恒 true；所有消息只进本地缓冲，不落服务端控制台。
  *
  * <p>线程契约：仅在 Bukkit 主线程使用（dispatchCommand 与 collectedLines 都在主线程任务内）。
- * adventure 4.20 的 Audience 各 sendMessage(Component) 变体最终都汇入
- * {@code sendMessage(Identity, Component, MessageType)}（默认实现为 no-op），故除该汇聚点外
- * 仅需再拦截 Bukkit 侧的 String 变体即可覆盖全部回显。
+ * adventure 4.x 的 Audience 各 sendMessage 变体经默认方法链最终调用 {@code sendMessage(Component)}
+ * （虚分派先命中本类 override，链在此终止），故拦截该汇聚点 + Bukkit 侧 String 变体即可
+ * 覆盖全部回显。不 override 4.x 的 {@code (Identity, Component, MessageType)} 三参汇聚点：
+ * MessageType 在 adventure 5.x（Paper 26.x）已删除，保留 override 会在 26.x 类加载时即抛
+ * NoClassDefFoundError（与 PlainText 事故同型），而经默认方法链的调用根本到不了三参签名。
  */
 public final class CollectingCommandSender implements CommandSender {
     private final List<String> lines = new ArrayList<>();
 
     /** 已收集的输出行（快照；空输出 → 空列表，IpcResult.ok 对空列表不产生 output 字段）。 */
     public List<String> collectedLines() {
-        return List.copyOf(lines);
+        return Collections.unmodifiableList(new ArrayList<>(lines));
     }
 
     // ---- 消息收集（Bukkit String 变体 + adventure 汇聚点）----
@@ -66,12 +67,6 @@ public final class CollectingCommandSender implements CommandSender {
 
     @Override
     public void sendMessage(Component message) {
-        lines.add(PlainText.serialize(message));
-    }
-
-    @SuppressWarnings("deprecation") // MessageType 自 adventure 4.15 起弃用，但仍是 Audience 汇聚点签名
-    @Override
-    public void sendMessage(Identity sourceIdentity, Component message, MessageType type) {
         lines.add(PlainText.serialize(message));
     }
 
@@ -141,7 +136,7 @@ public final class CollectingCommandSender implements CommandSender {
 
     @Override
     public Set<PermissionAttachmentInfo> getEffectivePermissions() {
-        return Set.of();
+        return Collections.emptySet();
     }
 
     // ---- 身份 ----

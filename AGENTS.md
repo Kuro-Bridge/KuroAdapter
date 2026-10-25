@@ -82,5 +82,5 @@ pnpm build:jar          # 全链路：TS 构建 → 嵌入式打包 → gradle :
 ## 环境
 
 - Node.js 26（ESM，`"type": "module"`）；TypeScript `NodeNext` 解析；包名统一 `@kuro-bridge/*`（`platforms/be/lse` 根包 `kurobridge` 无 scope）。
-- Java 25 工具链 + Gradle 9.7（`platforms/je`，mise 统一版本；**gradlew.bat 日常构建**，mise 的 gradle 仅一次性生成 wrapper）；**字节码 target 21**（兼容 Paper 服务端运行时，见 ADR-015）。
+- Java 25 工具链 + Gradle 9.7（`platforms/je`，mise 统一版本；**gradlew.bat 日常构建**，mise 的 gradle 仅一次性生成 wrapper）；**`:core`/`:paper`/`:paper-legacy` 字节码 `--release 8`（ADR-038 universal：1.12.2 ~ 26.3 单 jar）**，`:fabric` 保持 release 21（MC 1.21.4 运行时基线，ADR-015）。
 - LSE（`platforms/be`）使用官方 TS 声明（原 npm 包 `@levimc-lse/types` 已从 registry 下架，改用仓内 vendor 副本 `platforms/be/lse/vendor/lse-types/`），编译为 JS 后由 LeviLamina 加载。

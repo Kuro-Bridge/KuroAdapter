@@ -10,6 +10,8 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -103,8 +105,12 @@ public final class NodeIpc implements AutoCloseable {
         this.listener = Objects.requireNonNull(listener, "listener");
         this.log = Objects.requireNonNull(log, "log");
         this.processFactory = Objects.requireNonNull(processFactory, "processFactory");
-        this.scheduler = Executors.newSingleThreadScheduledExecutor(
-                Thread.ofVirtual().name("kurobridge-ipc-scheduler").factory());
+        this.scheduler = Executors.newSingleThreadScheduledExecutor(runnable -> {
+            // 具名守护线程：JVM 关停不被残留的调度任务拖住（Java 8 基线，无虚拟线程，ADR-038）
+            Thread thread = new Thread(runnable, "kurobridge-ipc-scheduler");
+            thread.setDaemon(true);
+            return thread;
+        });
     }
 
     /**
@@ -248,7 +254,7 @@ public final class NodeIpc implements AutoCloseable {
         if (!shutdownStarted.compareAndSet(false, true)) {
             return;
         }
-        String safeReason = (reason == null || reason.isBlank()) ? "unspecified" : reason;
+        String safeReason = (reason == null || reason.trim().isEmpty()) ? "unspecified" : reason;
         if (channelOpen.get()) {
             writeFrame(IpcFrameCodec.encodeShutdown(safeReason));
             closeStdin();
@@ -310,7 +316,7 @@ public final class NodeIpc implements AutoCloseable {
             return;
         }
         checkPidResidue();
-        List<String> command = List.of(nodeExecutable, bundlePath.toString());
+        List<String> command = Arrays.asList(nodeExecutable, bundlePath.toString());
         Map<String, String> extraEnv = new HashMap<>();
         if (stubPath != null) {
             extraEnv.put(STUB_PEER_ENV, stubPath.toString());
@@ -327,8 +333,13 @@ public final class NodeIpc implements AutoCloseable {
         channelOpen.set(true);
         writePidFile(spawned);
         logInfo("Node 进程已拉起：" + command);
-        Thread.ofVirtual().name("kurobridge-ipc-stdout").start(this::readStdoutLoop);
-        Thread.ofVirtual().name("kurobridge-ipc-stderr").start(this::readStderrLoop);
+        // 具名守护读线程：阻塞在流读取上，进程退出即自然结束（Java 8 基线，ADR-038）
+        Thread stdoutReader = new Thread(this::readStdoutLoop, "kurobridge-ipc-stdout");
+        stdoutReader.setDaemon(true);
+        stdoutReader.start();
+        Thread stderrReader = new Thread(this::readStderrLoop, "kurobridge-ipc-stderr");
+        stderrReader.setDaemon(true);
+        stderrReader.start();
         Duration timeout = startTimeout;
         scheduler.schedule(this::onStartTimeout, timeout.toMillis(), TimeUnit.MILLISECONDS);
     }
@@ -342,17 +353,23 @@ public final class NodeIpc implements AutoCloseable {
         logWarn("发现残留 PID 文件（上次可能异常退出）：" + file);
     }
 
-    /** spawn 成功后写 winpid（{@code Process.pid()} 即操作系统 PID）。写失败仅告警，不影响启动。 */
+    /** spawn 成功后写 winpid（Java 8 宿主取不到 PID 时跳过——PidSupport 降级语义，ADR-038）。
+     * 写失败仅告警，不影响启动。 */
     private void writePidFile(Process spawned) {
         Path file = pidFile;
         if (file == null) {
+            return;
+        }
+        long pid = PidSupport.pidOf(spawned);
+        if (pid < 0) {
+            logWarn("当前 JVM 无 Process.pid（Java 8 宿主），跳过 PID 文件：" + file);
             return;
         }
         try {
             if (file.getParent() != null) {
                 Files.createDirectories(file.getParent());
             }
-            Files.writeString(file, spawned.pid() + System.lineSeparator(), StandardCharsets.UTF_8);
+            Files.write(file, (pid + System.lineSeparator()).getBytes(StandardCharsets.UTF_8));
         } catch (IOException | RuntimeException e) {
             logWarn("写入 PID 文件失败（不影响运行）：" + file + "，" + e.getMessage());
         }
@@ -417,7 +434,7 @@ public final class NodeIpc implements AutoCloseable {
 
     private void handleLine(String line) {
         Optional<InboundFrame> decoded = IpcFrameCodec.decode(line);
-        if (decoded.isEmpty()) {
+        if (!decoded.isPresent()) {
             logWarn("跳过无法解析/未知的 IPC 行：" + preview(line));
             return;
         }
@@ -425,10 +442,14 @@ public final class NodeIpc implements AutoCloseable {
     }
 
     private void dispatch(InboundFrame frame) {
-        switch (frame) {
-            case InboundFrame.Ready ready -> handleReady(ready.wsPort(), ready.autoRestart());
-            case InboundFrame.Request request -> handleRequest(request);
-            case InboundFrame.Result result -> settleResult(result);
+        // if-instanceof 链：Java 8 基线无模式匹配 switch（ADR-038）
+        if (frame instanceof InboundFrame.Ready) {
+            InboundFrame.Ready ready = (InboundFrame.Ready) frame;
+            handleReady(ready.wsPort(), ready.autoRestart());
+        } else if (frame instanceof InboundFrame.Request) {
+            handleRequest((InboundFrame.Request) frame);
+        } else if (frame instanceof InboundFrame.Result) {
+            settleResult((InboundFrame.Result) frame);
         }
     }
 
@@ -437,7 +458,7 @@ public final class NodeIpc implements AutoCloseable {
             logWarn("忽略重复的 ready 帧：wsPort=" + wsPort);
             return;
         }
-        logInfo("Node ready：wsPort=" + wsPort + "，autoRestart=" + (autoRestart == null ? "缺省(true)" : autoRestart));
+        // 就绪播报收敛（ADR-038）：控制台只留看护器的一条「Node 进程就绪」+ 主类版本汇总行
         startFuture.complete(wsPort);
         notifyListener("onReady", () -> listener.onReady(wsPort, autoRestart == null || autoRestart));
     }
@@ -494,7 +515,7 @@ public final class NodeIpc implements AutoCloseable {
             return;
         }
         if (result.ok()) {
-            future.complete(result.output() == null ? List.of() : result.output());
+            future.complete(result.output() == null ? Collections.emptyList() : result.output());
             return;
         }
         future.completeExceptionally(new IpcException(result.type() + " 失败：" + result.error()));
@@ -504,10 +525,10 @@ public final class NodeIpc implements AutoCloseable {
 
     private CompletableFuture<List<String>> sendRequest(String type, String field, String value) {
         if (value.isEmpty()) {
-            return CompletableFuture.failedFuture(new IllegalArgumentException(type + " 的 " + field + " 不能为空"));
+            return failedFuture(new IllegalArgumentException(type + " 的 " + field + " 不能为空"));
         }
         if (unavailable(type + " 请求")) {
-            return CompletableFuture.failedFuture(new IpcException("IPC 通道不可用，无法发送 " + type));
+            return failedFuture(new IpcException("IPC 通道不可用，无法发送 " + type));
         }
         String id = UUID.randomUUID().toString();
         CompletableFuture<List<String>> future = new CompletableFuture<>();
@@ -662,10 +683,17 @@ public final class NodeIpc implements AutoCloseable {
     // ---- 杂项 ----
 
     private static String requireNonBlank(String value, String name) {
-        if (value == null || value.isBlank()) {
+        if (value == null || value.trim().isEmpty()) {
             throw new IllegalArgumentException(name + " 不能为空白");
         }
         return value;
+    }
+
+    /** Java 8 基线无 CompletableFuture.failedFuture（9+），本地等价实现（ADR-038）。 */
+    private static CompletableFuture<List<String>> failedFuture(Throwable error) {
+        CompletableFuture<List<String>> future = new CompletableFuture<>();
+        future.completeExceptionally(error);
+        return future;
     }
 
     private static String preview(String line) {

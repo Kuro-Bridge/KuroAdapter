@@ -6,7 +6,7 @@
 | --- | --- | --- |
 | Node.js | 26（CI 与 `mise.toml`） | ESM；`package.json` 要求 `>=26` |
 | pnpm | 11.6.0 | 版本由 `devEngines` 钉住 |
-| Java | 25 工具链，target 21 | 仅 `platforms/je`；日常用 `gradlew.bat` / `./gradlew` |
+| Java | 25 工具链，main 源集 `--release 8`（`:core`/`:paper`/`:paper-legacy`，ADR-038）；`:fabric` release 21 | 仅 `platforms/je`；日常用 `gradlew.bat` / `./gradlew` |
 | Gradle | 9.7（wrapper） | 不用全局 gradle |
 | CMake / Ninja | ≥ 3.29 / 任意 | 仅 `platforms/be/endstone` |
 | mise | 可选 | `mise install` 一次性装 node 26 + java 25 |
@@ -42,7 +42,7 @@ bridge 版本族（当前 `0.1.0`）共六点，改版本必须同改：
 1. 根 `package.json` 的 `version`
 2. `bridge/embedded/package.json` 的 `version`
 3. `bridge/embedded/src/version.ts` 的 `BRIDGE_VERSION`
-4. `platforms/je/paper/src/main/resources/paper-plugin.yml` 的 `version:`
+4. `platforms/je/paper/src/main/resources/plugin.yml` 的 `version:`（ADR-038 起经典清单）
 5. `platforms/je/build.gradle.kts` 的根级 `version = "..."`
 6. 同文件 `subprojects` 的 `version = "..."`
 

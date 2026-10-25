@@ -167,14 +167,23 @@ final class IpcFrameCodec {
         if (typeNode == null || !typeNode.isTextual()) {
             return Optional.empty();
         }
-        return switch (typeNode.asText()) {
-            case TYPE_READY -> decodeReady(header, body);
-            case TYPE_BROADCAST -> decodeRequest(TYPE_BROADCAST, "message", header, body);
-            case TYPE_EXECUTE_COMMAND -> decodeRequest(TYPE_EXECUTE_COMMAND, "command", header, body);
-            case TYPE_BROADCAST_RESULT -> decodeResult(TYPE_BROADCAST_RESULT, header, body);
-            case TYPE_EXECUTE_COMMAND_RESULT -> decodeResult(TYPE_EXECUTE_COMMAND_RESULT, header, body);
-            default -> Optional.empty();
-        };
+        String type = typeNode.asText();
+        if (TYPE_READY.equals(type)) {
+            return decodeReady(header, body);
+        }
+        if (TYPE_BROADCAST.equals(type)) {
+            return decodeRequest(TYPE_BROADCAST, "message", header, body);
+        }
+        if (TYPE_EXECUTE_COMMAND.equals(type)) {
+            return decodeRequest(TYPE_EXECUTE_COMMAND, "command", header, body);
+        }
+        if (TYPE_BROADCAST_RESULT.equals(type)) {
+            return decodeResult(TYPE_BROADCAST_RESULT, header, body);
+        }
+        if (TYPE_EXECUTE_COMMAND_RESULT.equals(type)) {
+            return decodeResult(TYPE_EXECUTE_COMMAND_RESULT, header, body);
+        }
+        return Optional.empty();
     }
 
     private static Optional<InboundFrame> decodeReady(JsonNode header, JsonNode body) {

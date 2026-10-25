@@ -1,4 +1,4 @@
-# 决策台账（ADR-001 ~ ADR-037）
+# 决策台账（ADR-001 ~ ADR-038）
 
 只保留结论与理由。代码注释中的 ADR 编号以本表为准；KuroProtocol 仓另有独立的 ADR-001~003 序列，与本表**无编号对应关系**。
 
@@ -30,6 +30,7 @@
 | ADR-034 | 2026-09-18 | 可观测性收敛：`[KuroBridge][node][LEVEL]` 行契约、`IpcLogLevels` 单一解析点、`server.id`、版本单点 | 修复 error 行降级 INFO 的事故；消除硬编码残留 |
 | ADR-035 | 2026-09-18 | 门禁链 build 前置；协议镜像退役；版本锚改为已安装 npm 包 | 校验在发布面进行；消除仓内协议副本 |
 | ADR-036 | 2026-09-19 | 主仓金样本 fixture-driven 双层检查；删除 embedded 悬空 `types` | 协议消费正确性有机器防线；诚实导出面 |
+| ADR-038 | 2026-10-25 | Java 字节码基线降 8（`--release 8`，取代 ADR-002/015 的 target 21）：Paper 单 jar universal 覆盖 1.12.2 ~ 26.3。经典 `plugin.yml`（1.19.4+ 专属 `paper-plugin.yml` 弃用）；新增 `:paper-legacy` 模块隔离旧 Adventure 序列化器（`PlainTextComponentSerializer` → `PlainComponentSerializer` 兼容链）；`Compat` 运行期探测（`AsyncChatEvent` 有无 → 现代或 legacy 聊天监听，不双注册）；死亡/广播走全版本 String 路径；IPC 日志展示层剥传输前缀（`IpcLogLines`） | Paper 26.3 捆绑 Adventure 5.2 删除 `PlainComponentSerializer`，静态初始化失败致聊天/死亡监听全崩（QQ→MC 正常、MC→QQ 崩）；1.16.5/1.12.2 运行 Java 8，字节码与 SE API 双锁；ADR-034 传输契约不变，套娃前缀只在「中继到控制台」最后一跳剥离 |
 
 ## 协议
 

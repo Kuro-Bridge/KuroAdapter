@@ -7,21 +7,18 @@ import com.kurobridge.core.NodeIpc;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.Duration;
+import java.nio.file.Paths;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
-import java.util.List;
-import net.kyori.adventure.text.Component;
-import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
 
 /**
- * /kurobridge 命令（开发/验收期的 IPC 手工触发入口）。
+ * /kurobridge 子命令分派（plugin.yml 声明命令，主类 onCommand 委派到这里；ADR-038 universal
+ * 化：消息回执全 String——sendMessage(String) 全版本存留，Component 版 1.12.2 无）。
  *
- * <p>paper-plugin.yml 不支持 commands 声明，由主类经 {@code Bukkit.getCommandMap()} 直接
- * 注册。子命令：
+ * <p>子命令：
  * <ul>
  *   <li>{@code kurobridge send <文本...>} → 以发送者名义上报一条 game_chat 事件帧。</li>
  *   <li>{@code kurobridge reload}（v0.3.0）→ 上报 config_reload 事件帧，Node 侧重读配置
@@ -30,53 +27,49 @@ import org.bukkit.command.CommandSender;
  *       {@code plugins/kurobridge/qr.json}（node.pid 式运维文件先例），展示二维码图片路径、
  *       登录链接（可得时）与检测时间。零 IPC 零业务——纯文件只读展示。</li>
  * </ul>
- * 权限：kurobridge.admin（paper-plugin.yml 已声明，default: op）。
+ * 权限：kurobridge.admin（plugin.yml 已声明，default: op）。
  */
-public final class KurobridgeCommand extends Command {
+public final class KurobridgeCommand {
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final DateTimeFormatter TIME_FORMAT =
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss").withZone(ZoneId.systemDefault());
+
     private final KuroBridgePlugin plugin;
 
     public KurobridgeCommand(KuroBridgePlugin plugin) {
-        super("kurobridge", "KuroBridge 开发命令", "/kurobridge send <文本...> | reload | qr", List.of());
         this.plugin = plugin;
     }
 
-    @Override
-    public boolean execute(CommandSender sender, String commandLabel, String[] args) {
-        if (!sender.hasPermission("kurobridge.admin")) {
-            sender.sendMessage(Component.text("缺少 kurobridge.admin 权限"));
-            return true;
-        }
+    /** 主类 onCommand 的委派入口；返回值语义同 Bukkit（权限已由主类校验）。 */
+    public boolean execute(CommandSender sender, String[] args) {
         if (args.length >= 2 && "send".equals(args[0])) {
             NodeIpc ipc = plugin.getIpc();
             if (ipc == null) {
-                sender.sendMessage(Component.text("Node IPC 未就绪"));
+                sender.sendMessage("Node IPC 未就绪");
                 return true;
             }
             String text = String.join(" ", Arrays.copyOfRange(args, 1, args.length));
             if (ipc.sendGameChat(sender.getName(), text)) {
-                sender.sendMessage(Component.text("已发送"));
+                sender.sendMessage("已发送");
             } else if (plugin.isSupervisorGivenUp()) {
-                sender.sendMessage(Component.text("发送失败：Node 进程反复崩溃，自动重启已放弃（需修复后重启服务器或重载插件）"));
+                sender.sendMessage("发送失败：Node 进程反复崩溃，自动重启已放弃（需修复后重启服务器或重载插件）");
             } else {
-                sender.sendMessage(Component.text("发送失败：Node IPC 通道不可用，消息已丢弃"));
+                sender.sendMessage("发送失败：Node IPC 通道不可用，消息已丢弃");
             }
             return true;
         }
         if (args.length == 1 && "reload".equals(args[0])) {
             NodeIpc ipc = plugin.getIpc();
             if (ipc == null) {
-                sender.sendMessage(Component.text("Node IPC 未就绪"));
+                sender.sendMessage("Node IPC 未就绪");
                 return true;
             }
             if (ipc.sendConfigReload()) {
-                sender.sendMessage(Component.text("已通知重载"));
+                sender.sendMessage("已通知重载");
             } else if (plugin.isSupervisorGivenUp()) {
-                sender.sendMessage(Component.text("重载失败：Node 进程反复崩溃，自动重启已放弃（需修复后重启服务器或重载插件）"));
+                sender.sendMessage("重载失败：Node 进程反复崩溃，自动重启已放弃（需修复后重启服务器或重载插件）");
             } else {
-                sender.sendMessage(Component.text("重载失败：Node IPC 通道不可用"));
+                sender.sendMessage("重载失败：Node IPC 通道不可用");
             }
             return true;
         }
@@ -84,46 +77,45 @@ public final class KurobridgeCommand extends Command {
             handleQr(sender);
             return true;
         }
-        sender.sendMessage(Component.text("用法：" + getUsage()));
+        sender.sendMessage("用法：/kurobridge send <文本...> | reload | qr");
         return true;
     }
 
     /** /kurobridge qr（MVP-4，ADR-029）：只读展示 QR 状态文件；无 IPC 依赖，node 未起也可查。 */
     private void handleQr(CommandSender sender) {
         Path qrJson =
-                Path.of("plugins", "kurobridge", "qr.json").toAbsolutePath().normalize();
+                Paths.get("plugins", "kurobridge", "qr.json").toAbsolutePath().normalize();
         if (!Files.isRegularFile(qrJson)) {
-            sender.sendMessage(Component.text("尚无 QR 状态：napuketto 未启用（config 的 embedded.napuketto.enabled），或还未进入扫码阶段"));
+            sender.sendMessage("尚无 QR 状态：napuketto 未启用（config 的 embedded.napuketto.enabled），或还未进入扫码阶段");
             return;
         }
         JsonNode state;
         try {
             state = MAPPER.readTree(Files.readAllBytes(qrJson));
         } catch (IOException e) {
-            sender.sendMessage(Component.text("QR 状态文件读取失败（可能正在写入，稍后重试）：" + e.getMessage()));
+            sender.sendMessage("QR 状态文件读取失败（可能正在写入，稍后重试）：" + e.getMessage());
             return;
         }
         long detectedAt = state.path("detectedAt").asLong(0);
         String age = detectedAt > 0 ? "，距今 " + humanAge(detectedAt) : "";
-        sender.sendMessage(
-                Component.text("QQ 登录二维码状态（检测时间 " + TIME_FORMAT.format(Instant.ofEpochMilli(detectedAt)) + age + "）："));
+        sender.sendMessage("QQ 登录二维码状态（检测时间 " + TIME_FORMAT.format(Instant.ofEpochMilli(detectedAt)) + age + "）：");
         String pngPath = state.path("pngPath").asText("");
         if (!pngPath.isEmpty()) {
-            sender.sendMessage(Component.text("  二维码图片（手机 QQ 扫描）：" + pngPath));
+            sender.sendMessage("  二维码图片（手机 QQ 扫描）：" + pngPath);
         } else {
-            sender.sendMessage(Component.text("  二维码图片尚未生成，请稍后再次运行 /kurobridge qr"));
+            sender.sendMessage("  二维码图片尚未生成，请稍后再次运行 /kurobridge qr");
         }
         String url = state.path("url").asText("");
         if (!url.isEmpty()) {
-            sender.sendMessage(Component.text("  登录链接（手机 QQ 打开）：" + url));
+            sender.sendMessage("  登录链接（手机 QQ 打开）：" + url);
         }
-        sender.sendMessage(Component.text("二维码过期会自动刷新；登录成功后本命令显示的内容即为最后一次扫码状态"));
+        sender.sendMessage("二维码过期会自动刷新；登录成功后本命令显示的内容即为最后一次扫码状态");
     }
 
     /** 检测时间的相对年龄（N 秒/分钟/小时前）：二维码 120s 过期，过没过期要一眼可见 */
     private static String humanAge(long epochMilli) {
-        long seconds = Math.max(
-                0L, Duration.ofMillis(System.currentTimeMillis() - epochMilli).toSeconds());
+        // 不用 Duration.toSeconds()（Java 9+）：Java 8 基线（ADR-038）下手动换算
+        long seconds = Math.max(0L, (System.currentTimeMillis() - epochMilli) / 1000L);
         if (seconds < 90L) {
             return seconds + " 秒前";
         }

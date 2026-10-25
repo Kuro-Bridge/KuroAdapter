@@ -1,6 +1,7 @@
 // KuroBridge Java 多模块项目（root）
 // 一个服务端平台 = 一个模块，共享 :core（纯逻辑，零服务端 API）
-// 已实现：core（纯逻辑）+ paper（Paper 适配）+ fabric（Fabric mod）
+// 已实现：core（纯逻辑）+ paper（Paper 适配）+ paper-legacy（旧 Adventure 序列化器隔离层，
+// ADR-038 universal 兼容：对 1.21.4 时代 paper-api 编译，随 shadowJar 分发）+ fabric（Fabric mod）
 // 预留：neoforge（NeoForge mod）/ velocity（Velocity 代理）
 rootProject.name = "kurobridge"
 
@@ -16,4 +17,4 @@ pluginManagement {
     }
 }
 
-include("core", "paper", "fabric", "neoforge", "velocity")
+include("core", "paper", "paper-legacy", "fabric", "neoforge", "velocity")

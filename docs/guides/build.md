@@ -58,7 +58,7 @@ Endstone 的 dll 目前**不在**自动打包链里：`bin/` 四件由真机 SOP
 
 - `:core` 与 Jackson（shadow 合并）；
 - `embedded/` 资源（node.exe / index.mjs / NODE_LICENSE / manifest.json / napuketto.zip / NAPUKETTO_LICENSES）；
-- `paper-plugin.yml`。
+- `plugin.yml`（经典清单，1.12.2 ~ 26.3 全版本可加载；`paper-plugin.yml` 为 1.19.4+ 专属格式，ADR-038 弃用）。
 
 首次启动把 embedded 解压到 `plugins/kurobridge/bin/`（逐文件 sha256 幂等），napuketto zip 解压到 `bin/napuketto/`（哨兵文件记 zip sha256）。
 

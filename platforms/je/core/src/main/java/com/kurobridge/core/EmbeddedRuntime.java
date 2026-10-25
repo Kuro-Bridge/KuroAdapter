@@ -2,20 +2,23 @@ package com.kurobridge.core;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.security.DigestInputStream;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 import java.util.function.Consumer;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
@@ -61,11 +64,56 @@ public final class EmbeddedRuntime {
         InputStream open(String name) throws IOException;
     }
 
-    /** 安装结果：node 可执行文件与 bundle 的磁盘路径（绝对路径）+ manifest 声明的 node 版本。 */
-    public record Installed(Path nodeExecutable, Path bundle, String nodeVersion) {}
+    /** 安装结果：node 可执行文件与 bundle 的磁盘路径（绝对路径）+ manifest 声明的 node 版本。
+     * 访问器名沿用 record 组件名（Java 8 基线普通类，ADR-038）。 */
+    public static final class Installed {
+        private final Path nodeExecutable;
+        private final Path bundle;
+        private final String nodeVersion;
+
+        Installed(Path nodeExecutable, Path bundle, String nodeVersion) {
+            this.nodeExecutable = nodeExecutable;
+            this.bundle = bundle;
+            this.nodeVersion = nodeVersion;
+        }
+
+        public Path nodeExecutable() {
+            return nodeExecutable;
+        }
+
+        public Path bundle() {
+            return bundle;
+        }
+
+        public String nodeVersion() {
+            return nodeVersion;
+        }
+    }
 
     /** manifest 内容：node 版本（仅日志展示）、文件名 → sha256、napuketto 嵌包 zip sha（MVP-4 可选）。 */
-    private record Manifest(String nodeVersion, TreeMap<String, String> files, String napukettoZipSha) {}
+    private static final class Manifest {
+        private final String nodeVersion;
+        private final TreeMap<String, String> files;
+        private final String napukettoZipSha;
+
+        Manifest(String nodeVersion, TreeMap<String, String> files, String napukettoZipSha) {
+            this.nodeVersion = nodeVersion;
+            this.files = files;
+            this.napukettoZipSha = napukettoZipSha;
+        }
+
+        String nodeVersion() {
+            return nodeVersion;
+        }
+
+        TreeMap<String, String> files() {
+            return files;
+        }
+
+        String napukettoZipSha() {
+            return napukettoZipSha;
+        }
+    }
 
     private EmbeddedRuntime() {}
 
@@ -156,14 +204,15 @@ public final class EmbeddedRuntime {
                 count++;
             }
         }
-        String sentinelJson = MAPPER.writeValueAsString(Map.of("sha256", expectedSha));
-        Files.writeString(sentinel, sentinelJson);
+        String sentinelJson =
+                MAPPER.createObjectNode().put("sha256", expectedSha).toString();
+        Files.write(sentinel, sentinelJson.getBytes(StandardCharsets.UTF_8));
         log.accept("napuketto 嵌包展开完成（" + count + " 个文件）→ " + targetDir);
     }
 
     /** zip entry 名校验：拒绝绝对路径/反斜杠/盘符；normalize 后必须仍在目标目录内（防 ../ 逃逸）。 */
     private static Path safeZipTarget(Path targetDir, String name) throws IOException {
-        if (name.isBlank() || name.startsWith("/") || name.contains("\\") || name.contains(":")) {
+        if (name.trim().isEmpty() || name.startsWith("/") || name.contains("\\") || name.contains(":")) {
             throw new IOException("napuketto.zip 含非法条目名（疑似路径注入）：" + name);
         }
         Path target = targetDir.resolve(name).normalize();
@@ -175,8 +224,8 @@ public final class EmbeddedRuntime {
 
     private static void deleteRecursively(Path root) throws IOException {
         List<Path> paths;
-        try (var walk = Files.walk(root)) {
-            paths = walk.sorted((a, b) -> b.getNameCount() - a.getNameCount()).toList();
+        try (Stream<Path> walk = Files.walk(root)) {
+            paths = walk.sorted((a, b) -> b.getNameCount() - a.getNameCount()).collect(Collectors.toList());
         }
         for (Path path : paths) {
             Files.deleteIfExists(path);
@@ -186,7 +235,7 @@ public final class EmbeddedRuntime {
     private static Manifest readManifest(ResourceSource source) throws IOException {
         byte[] manifestBytes;
         try (InputStream in = source.open(MANIFEST_NAME)) {
-            manifestBytes = in.readAllBytes();
+            manifestBytes = readAllBytes(in);
         }
         JsonNode root = MAPPER.readTree(manifestBytes);
         JsonNode filesNode = root.get("files");
@@ -233,7 +282,7 @@ public final class EmbeddedRuntime {
             DigestInputStream in = new DigestInputStream(resource, digest);
             Files.copy(in, tmp, StandardCopyOption.REPLACE_EXISTING);
         }
-        String actual = HexFormat.of().formatHex(digest.digest());
+        String actual = toHex(digest.digest());
         if (!actual.equals(expectedSha)) {
             Files.deleteIfExists(tmp);
             throw new IOException("资源 sha256 与 manifest 不符（JAR 损坏？）：" + name);
@@ -253,7 +302,27 @@ public final class EmbeddedRuntime {
                 digest.update(buffer, 0, read);
             }
         }
-        return HexFormat.of().formatHex(digest.digest());
+        return toHex(digest.digest());
+    }
+
+    /** 字节数组 → 小写十六进制（Java 8 基线无 HexFormat，ADR-038）。 */
+    private static String toHex(byte[] bytes) {
+        StringBuilder builder = new StringBuilder(bytes.length * 2);
+        for (byte value : bytes) {
+            builder.append(Character.forDigit((value >> 4) & 0xF, 16));
+            builder.append(Character.forDigit(value & 0xF, 16));
+        }
+        return builder.toString();
+    }
+
+    /** 流全量读入（Java 8 基线无 InputStream.readAllBytes，ADR-038）。 */
+    private static byte[] readAllBytes(InputStream in) throws IOException {
+        ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+        byte[] chunk = new byte[8192];
+        for (int read; (read = in.read(chunk)) != -1; ) {
+            buffer.write(chunk, 0, read);
+        }
+        return buffer.toByteArray();
     }
 
     private static MessageDigest sha256Digest() {

@@ -1,0 +1,26 @@
+# KuroBridge 插件清单（经典 plugin.yml，ADR-038 universal 基线）
+# 经典格式从 1.12.2 到 26.3 全版本可加载；paper-plugin.yml 是 1.19.4+ 专属格式，旧服不可见。
+# 命令在本文件声明（kurobridge），主类 onCommand 委派到 KurobridgeCommand 分派器。
+name: KuroBridge
+version: '0.1.0'
+main: com.kurobridge.KuroBridgePlugin
+# api-version 下限标记：1.13+ 服务器读取；1.12.2 忽略未知键（该键 1.13 才引入）
+api-version: '1.13'
+# 加载时机：服务端启动时（薄壳拉起 Node 子进程）
+load: STARTUP
+
+commands:
+    kurobridge:
+        description: KuroBridge 开发命令
+        usage: /kurobridge send <文本...> | reload | qr
+        permission: kurobridge.admin
+
+permissions:
+    kurobridge.admin:
+        description: KuroBridge 管理权限
+        default: op
+    # 聊天转发开关（v0.3.0 消费，ChatListener 检查）：default true = 全员可转发；
+    # negate（设为 false）即静音——该玩家的聊天不再上报 Node
+    kurobridge.relay:
+        description: 消息互通权限（聊天转发）
+        default: true
