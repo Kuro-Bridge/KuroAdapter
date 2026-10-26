@@ -7,9 +7,9 @@ pnpm -r build                     # bridge/core (tsdown) + bridge/embedded (esbu
   ↓
 toolings/packaging/embed.ts       # node.exe + index.mjs + napuketto 嵌包 → paper/fabric resources
   ↓
-gradlew :paper:shadowJar          # kurobridge-0.1.0.jar
+gradlew :paper:shadowJar          # kurobridge-1.0.0.jar
   ↓
-gradlew :fabric:remapJar          # kurobridge-fabric-0.1.0.jar
+gradlew :fabric:remapJar          # kurobridge-fabric-1.0.0.jar
 ```
 
 根命令 `pnpm build:jar` 依次执行以上四步（`toolings/packaging/build-jar.ts`）。顺序是硬约束：先有 TS 产物，才能嵌包，才能打 JAR。
@@ -19,12 +19,13 @@ gradlew :fabric:remapJar          # kurobridge-fabric-0.1.0.jar
 | 命令 | 产物 |
 | --- | --- |
 | `pnpm -r build` | `bridge/core/dist/`、`bridge/embedded/dist/index.mjs`、`platforms/be/lse/dist/{index.js,bin/index.mjs}` |
-| `pnpm build:jar` | `platforms/je/paper/build/libs/kurobridge-0.1.0.jar`、`platforms/je/fabric/build/libs/kurobridge-fabric-0.1.0.jar` |
+| `pnpm build:jar` | `platforms/je/paper/build/libs/kurobridge-1.0.0.jar`、`platforms/je/fabric/build/libs/kurobridge-fabric-1.0.0.jar` |
 | `pnpm build:je` | 同上（gradle 全量 build，不重跑 embed；**新克隆须先跑过 `pnpm build:jar` 或 embed 步骤，否则 JAR 不含内嵌运行时**） |
 | `pnpm build:endstone` | `platforms/be/endstone/build/core/`（portable 库 + 5 测试） |
 | `cmake --preset windows-clang-cl` | `platforms/be/endstone/build/windows-clang-cl/endstone_kurobridge.dll` |
+| `pnpm release:pack` | `dist-release/`：四类发布产物 + `SHA256SUMS.txt`（见下节） |
 
-Endstone 的 dll 目前**不在**自动打包链里：`bin/` 四件由真机 SOP 手动预置（R3）。
+Endstone 的 dll 仍不在构建链里：`pnpm release:pack` 会把 dll 与 embedded 的 bin 四件收进 `kurobridge-endstone-<ver>.zip`；开发期真机仍按 SOP 手动预置（R3）。
 
 ## 嵌入式打包（embed.ts）
 
@@ -54,7 +55,7 @@ Endstone 的 dll 目前**不在**自动打包链里：`bin/` 四件由真机 SOP
 
 ## JAR 布局
 
-`kurobridge-0.1.0.jar` 包含：
+`kurobridge-1.0.0.jar` 包含：
 
 - `:core` 与 Jackson（shadow 合并）；
 - `embedded/` 资源（node.exe / index.mjs / NODE_LICENSE / manifest.json / napuketto.zip / NAPUKETTO_LICENSES）；
@@ -63,6 +64,22 @@ Endstone 的 dll 目前**不在**自动打包链里：`bin/` 四件由真机 SOP
 首次启动把 embedded 解压到 `plugins/kurobridge/bin/`（逐文件 sha256 幂等），napuketto zip 解压到 `bin/napuketto/`（哨兵文件记 zip sha256）。
 
 Fabric 产物是 loom 重映射后的 mod jar；`:core` 与 Jackson 由 shadow 白名单合并，fabric-api/loader 不吞入。
+
+## 发布打包（release.ts）
+
+`pnpm release:pack` 把已构建产物收拢到 `dist-release/`（不触发构建；先跑 `pnpm build:jar`、`pnpm build:endstone` 与 clang-cl dll 构建）：
+
+| 产物 | 内容 | 定位 |
+| --- | --- | --- |
+| `kurobridge-<ver>.jar` | Paper shadowJar，内嵌 Node 26.7.0 + napuketto 0.2.0 | 正式 |
+| `kurobridge-fabric-<ver>.jar` | Fabric remapJar | 正式 |
+| `kurobridge-lse-<ver>.zip` | `manifest.json` + `index.js` + `bin/index.mjs`（解压到 `plugins/kurobridge/`，node 运行时服主自备） | 预览 |
+| `kurobridge-endstone-<ver>.zip` | `plugins/endstone_kurobridge.dll` + `plugins/kurobridge/bin/` 四件（解压到 BDS 根） | 预览 |
+| `SHA256SUMS.txt` | 四件产物的 sha256 | 校验 |
+
+打包前四道校验：产物齐全非空；`embedded/manifest.json` 逐文件 sha256 与磁盘一致；JAR 必需条目（`plugin.yml` / `embedded/*`）齐全且体积 > 30 MB；JAR 条目名不命中腾讯闭源件红线。zip 生成后回读条目名，确保分隔符为 `/`。
+
+> 预览件指 LSE / Endstone 真机联调尚未完成（见 [status.md](../status.md)）：产物结构与门禁已就绪，行为背书待补。
 
 ## CI
 
@@ -82,15 +99,19 @@ ts job 与本地 pre-commit 同构；`pnpm check` 自含 `pnpm -r build` 首环�
 2. `pnpm install --frozen-lockfile` 绿。
 3. `pnpm check && pnpm test` 绿。
 4. `pnpm build:all` 绿（JE + Endstone）。
-5. 设置 `KUROBRIDGE_NODE_DIST_STRICT=1` 后跑 `pnpm build:jar`，确认 JAR 内无腾讯闭源件、`manifest.json` 的 sha256 与文件一致。
-6. 冒烟：Paper 沙盒起服 → ready 汇总行 → `/kurobridge send` → 协议端收到；`/kurobridge reload` 推 `bindings_updated`。
-7. 更新 [status.md](../status.md) 与 [decisions.md](../decisions.md)（如有新决策）。
+5. 设置 `KUROBRIDGE_NODE_DIST_STRICT=1` 后跑 `pnpm build:jar`。
+6. 构建 Endstone dll（`cmake --build --preset windows-clang-cl`）。
+7. `pnpm release:pack` 生成 `dist-release/`；核对脚本输出的 sha256 与体积。
+8. 冒烟：Paper 沙盒起服 → ready 汇总行 → `/kurobridge send` → 协议端收到；`/kurobridge reload` 推 `bindings_updated`。
+9. 更新 [status.md](../status.md)、[decisions.md](../decisions.md) 与 `CHANGELOG.md`。
+10. 两个仓库同版打 tag `v<version>`，创建 GitHub Release 并上传 `dist-release/` 四件与 `SHA256SUMS.txt`。
 
 ## 排障
 
 | 现象 | 排查 |
 | --- | --- |
 | `pnpm check` 版本门禁红 | 六点/两份版本不一致；见上表 |
+| `release:pack` 报 JAR 缺失/版本不符 | 构建产物版本与 `package.json` 不一致；按当前版本重跑 `pnpm build:jar` |
 | 构建期 Node 下载失败 | 设置 `KUROBRIDGE_NODE_DIST_BASE` 镜像；发布环境加 `KUROBRIDGE_NODE_DIST_STRICT=1` 暴露问题 |
 | `WS 服务端启动失败` | 端口被占；换 `ws.port` 或释放端口，看护器会退避重试后放弃 |
 | 看护器 SEVERE 放弃 | 修根因后重启服务器 / 重载插件；LSE 用 `kurobridgeretry` |

@@ -29,10 +29,10 @@ import { NodeWsServer } from "./ws-server.js";
 
 /**
  * kurobridge 版本（hello_ack 上报唯一取值点）。
- * 与 platforms/be/lse/package.json / manifest.json 版本联动（当前 0.1.0；
+ * 与 platforms/be/lse/package.json / manifest.json 版本联动（当前 1.0.0；
  * lse 包暂未纳入 check-versions 六点门禁，改动须手动同步）。
  */
-const BRIDGE_VERSION = "0.1.0";
+const BRIDGE_VERSION = "1.0.0";
 
 interface ShimArgs {
     readonly serverRoot: string;

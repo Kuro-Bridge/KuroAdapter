@@ -43,7 +43,7 @@ pnpm check              # 一条入口（pre-commit 同款）：pnpm -r build �
                         #   + 根 tsc（bridge/*）+ lse typecheck + docs 门禁（旧 scope 口径清零
                         #   + md 死链）+ 版本对齐门禁
 pnpm check:docs         # docs 两道门禁单跑（已含在 pnpm check，列出便于定位）
-pnpm check:versions     # 版本对齐门禁：bridge 六点 0.1.0 + 协议两份（锚 = 已安装 npm 包
+pnpm check:versions     # 版本对齐门禁：bridge 六点 1.0.0 + 协议两份（锚 = 已安装 npm 包
                         #   @kuro-bridge/protocol 清单 version，ADR-034/035，已含在 pnpm check）
 pnpm fix                # biome 自动修复 + tsc
 pnpm test               # vitest run（TS 侧）
@@ -53,6 +53,7 @@ pnpm build:endstone     # endstone portable 构建回归（cmake+build+ctest 五
 pnpm build:all          # 三侧全量构建：pnpm -r build + build:je + build:endstone
 pnpm check:all          # 全量门禁（CI 三 job 本地合体）：pnpm check + pnpm test + 平台两侧
 pnpm build:jar          # 全链路：TS 构建 → 嵌入式打包 → gradle :paper:shadowJar → :fabric:remapJar（toolings/packaging/build-jar.ts 链式）
+pnpm release:pack       # 发布产物收拢：Paper/Fabric JAR + LSE/Endstone zip + SHA256SUMS（toolings/packaging/release.ts）
 ```
 
 **构建顺序（硬约束）**：`pnpm -r build`（bridge/embedded 产物）→ `toolings/packaging/embed.ts` 嵌入式打包（node 官方 dist 下载校验 + napuketto 嵌包，产出进 `platforms/je/paper/src/main/resources/embedded/`）→ `gradle :paper:shadowJar`。本地 `pnpm build:jar` 经 `toolings/packaging/build-jar.ts` 链式执行四步（TS 构建 → embed 嵌包 → shadowJar → fabric remapJar）。

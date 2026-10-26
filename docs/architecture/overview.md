@@ -25,8 +25,8 @@ flowchart LR
 
 | 宿主 | 薄壳语言 | 薄壳 ↔ Node | 产物 |
 | --- | --- | --- | --- |
-| Paper | Java 21 字节码（工具链 25） | stdin/stdout JSON-lines | `kurobridge-0.1.0.jar`（shadowJar） |
-| Fabric | Java 21 字节码 | stdin/stdout JSON-lines | `kurobridge-fabric-0.1.0.jar`（loom remapJar） |
+| Paper | Java 8 字节码（工具链 25） | stdin/stdout JSON-lines | `kurobridge-1.0.0.jar`（shadowJar） |
+| Fabric | Java 21 字节码（工具链 25） | stdin/stdout JSON-lines | `kurobridge-fabric-1.0.0.jar`（loom remapJar） |
 | Endstone | C++20 | stdin/stdout JSON-lines | `endstone_kurobridge.dll` |
 | LeviLamina / LSE | TypeScript → QuickJS | 127.0.0.1 回环 WS（平台无 stdio 子进程 API） | `index.js` + `bin/index.mjs` |
 

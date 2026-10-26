@@ -10,6 +10,7 @@
   <img src="https://img.shields.io/badge/角色-WS%20服务端-6366F1?style=flat-square&labelColor=18181B" alt="角色：WS 服务端">&emsp;
   <img src="https://img.shields.io/badge/协议-kurobridge--ws%20v0.4.0-0EA5E9?style=flat-square&labelColor=18181B" alt="协议：kurobridge-ws v0.4.0">&emsp;
   <img src="https://img.shields.io/badge/形态-embedded%20%7C%20external-10B981?style=flat-square&labelColor=18181B" alt="形态：embedded | external">&emsp;
+  <img src="https://img.shields.io/github/v/release/Kuro-Bridge/KuroAdapter?style=flat-square&label=release&labelColor=18181B&color=6366F1" alt="Release">&emsp;
   <img src="https://img.shields.io/badge/许可-MIT-8B5CF6?style=flat-square&labelColor=18181B" alt="许可：MIT">
 </p>
 
@@ -78,7 +79,7 @@ flowchart TB
 
 * **JE / BE 跨平台薄壳**：Paper、Fabric、LSE 已落地；Endstone 待真机联调
 
-* **双形态打包分发**：提供 `embedded`（内嵌 `napuketto 0.1.20`）与 `external` 形态
+* **双形态打包分发**：提供 `embedded`（内嵌 `napuketto 0.2.0`）与 `external` 形态
 
 **本仓不负责**
 
@@ -111,7 +112,7 @@ flowchart TB
 
             subgraph Modes ["打包与运行形态分支"]
                 direction LR
-                Emb["<b>[embedded] 内嵌形态</b><br/><sub>内置 napuketto (0.1.20)<br/>内部闭环直连 · 开箱即用扫码</sub>"]
+                Emb["<b>[embedded] 内嵌形态</b><br/><sub>内置 napuketto (0.2.0)<br/>内部闭环直连 · 开箱即用扫码</sub>"]
                 Ext["<b>[external] 外部形态</b><br/><sub>不附带内置协议端<br/>监听固定端口 ws.port 待外部连入</sub>"]
             end
 
@@ -141,7 +142,7 @@ flowchart TB
 
 * 面向单机服主快速部署，无需额外部署机器人框架
 
-* 打包内嵌 `napuketto (0.1.20)`，开箱即可扫码登录
+* 打包内嵌 `napuketto (0.2.0)`，开箱即可扫码登录
 
 * 需显式开启 `embedded.napuketto.enabled: true`（默认关闭）
 
@@ -167,9 +168,9 @@ flowchart TB
 
 **JE 家族（Java 版）**
 
-* **Paper**（已实现 · 主形态）：`kurobridge-0.1.0.jar`（shadowJar，内嵌 Node 运行时与业务核心）
+* **Paper**（已实现 · 主形态）：`kurobridge-1.0.0.jar`（shadowJar，内嵌 Node 运行时与业务核心）
 
-* **Fabric**（已实现）：首版 Mod 薄壳，五事件对齐 Paper（chat / status 存在微小注册差异）
+* **Fabric**（已实现）：首版 Mod 薄壳，四事件 + status 对齐 Paper（chat / status 存在微小注册差异）
 
 * **NeoForge / Velocity**（预留）：模块工程骨架已就位（ADR-021）
 
@@ -183,6 +184,8 @@ flowchart TB
 
 ## 快速开始
 
+发布产物见 [GitHub Releases](https://github.com/Kuro-Bridge/KuroAdapter/releases)：Paper universal JAR 与 Fabric mod JAR 为正式产物，LSE / Endstone 分发包标注为预览。以下为本地构建流程。
+
 ### 1. 构建产物
 
 ```bash
@@ -190,7 +193,7 @@ pnpm install
 pnpm build:jar    # 流水线：TS 构建 → 资源内嵌 → shadowJar → Fabric remapJar
 ```
 
-构建完成后，提取 `platforms/je/paper/build/libs/kurobridge-0.1.0.jar` 放入 Paper 服务器的 `plugins/` 目录。
+构建完成后，提取 `platforms/je/paper/build/libs/kurobridge-1.0.0.jar` 放入 Paper 服务器的 `plugins/` 目录。
 
 ### 2. 最小化配置
 
@@ -230,18 +233,18 @@ pnpm build:jar    # 流水线：TS 构建 → 资源内嵌 → shadowJar → Fab
 
 ```bash
 pnpm check        # 首环构建 + Biome 检查 + tsc + LSE 类型检查 + 文档门禁 + 版本号对齐
-pnpm test         # 运行 Vitest 测试套件（基线：247 用例 / 23 文件，详见 docs/status.md）
+pnpm test         # 运行 Vitest 测试套件（基线：298 用例 / 25 文件，详见 docs/status.md）
 pnpm check:all    # 本地全量模拟 CI 三项 Job 合体检查
 pnpm build:all    # 编译打包全平台产物
 ```
 
 * **TypeScript**：TS 7，Biome 格式化与检查 + 严格 `tsconfig` 全家桶。
 
-* **Java 宿主**：Toolchain 25 / 字节码 Target 21，`-Xlint:all -Werror` + Spotless 规范（ADR-015），构建系统 Gradle 9.7。
+* **Java 宿主**：Toolchain 25 / 字节码 release 8（`:fabric` release 21），`-Xlint:all -Werror` + Spotless 规范（ADR-015），构建系统 Gradle 9.7。
 
 * **架构红线**：`bridge/core` 保持纯粹——零 Node.js 原生 API、零外部重型框架（可平替运行于 QuickJS）；平台薄壳仅做桥接，严禁染指协议解析，协议 SSOT 仅经 npm 依赖单向消费（ADR-031 / ADR-035）。
 
-* **工程台账**：研发规约与依赖白名单见 [AGENTS.md](AGENTS.md)；架构决策记录（ADR-001 ~ 037）见 [docs/decisions.md](docs/decisions.md)；当前里程碑与技术债见 [docs/status.md](docs/status.md)。
+* **工程台账**：研发规约与依赖白名单见 [AGENTS.md](AGENTS.md)；架构决策记录（ADR-001 ~ 042）见 [docs/decisions.md](docs/decisions.md)；当前里程碑与技术债见 [docs/status.md](docs/status.md)；对外变更见 [CHANGELOG.md](CHANGELOG.md)。
 
 ---
 

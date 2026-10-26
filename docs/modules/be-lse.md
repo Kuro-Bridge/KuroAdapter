@@ -70,7 +70,7 @@ plugins/kurobridge/
 └── config.jsonc         # 首次运行生成注释模板（随机 token），服主编辑
 ```
 
-`manifest.json` 的 `version`（字符串）、`src/runtime/index.ts` 的 `BRIDGE_VERSION` 与包版本当前均为 `0.1.0`，但 **LSE 未纳入 `check-versions` 六点门禁**，升级时需手动同步。
+`manifest.json` 的 `version`（字符串）、`src/runtime/index.ts` 的 `BRIDGE_VERSION` 与包版本当前均为 `1.0.0`，但 **LSE 未纳入 `check-versions` 六点门禁**，升级时需手动同步。
 
 ## 配置
 

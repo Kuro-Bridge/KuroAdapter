@@ -21,6 +21,9 @@ platforms/je/**/build/
 platforms/je/.gradle/
 platforms/je/out/
 
+# 发布产物（toolings/packaging/release.ts 生成）
+dist-release/
+
 # 嵌入式打包产物（构建期生成，gitignore）
 platforms/je/paper/src/main/resources/embedded/
 

@@ -7,7 +7,7 @@ plugins {
 }
 
 group = "com.kurobridge"
-version = "0.1.0"
+version = "1.0.0"
 
 allprojects {
     repositories {
@@ -23,7 +23,7 @@ subprojects {
     apply(plugin = "com.diffplug.spotless")
 
     group = "com.kurobridge"
-    version = "0.1.0"
+    version = "1.0.0"
 
     java {
         toolchain {

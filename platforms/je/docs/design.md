@@ -19,8 +19,8 @@
 ## 构建
 
 - 工具链：JDK 25，`options.release = 21`，`-Xlint:all -Werror`，Spotless Palantir 2.71.0。
-- `:paper`：shadowJar 合并 `:core` + Jackson + `embedded/` 资源，产物 `kurobridge-0.1.0.jar`。
-- `:fabric`：shadow 白名单合并 `:core` + Jackson → loom `remapJar`，产物 `kurobridge-fabric-0.1.0.jar`。
+- `:paper`：shadowJar 合并 `:core` + Jackson + `embedded/` 资源，产物 `kurobridge-1.0.0.jar`。
+- `:fabric`：shadow 白名单合并 `:core` + Jackson → loom `remapJar`，产物 `kurobridge-fabric-1.0.0.jar`。
 - 根命令：`pnpm build:je`（gradlew build）、`pnpm build:jar`（TS → embed → shadowJar → remapJar）。
 
 ## 环境变量优先级

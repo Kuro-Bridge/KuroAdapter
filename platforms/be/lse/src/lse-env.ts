@@ -79,7 +79,7 @@ export function logDebug(message: string): void {
 
 /**
  * 插件注册（LSE 装载期要求）：index.ts 顶层经此调用，ll 全局触点仍收敛本模块。
- * ll.registerPlugin 的版本三元组与 manifest.json 的 version 字符串 / 包版本联动（0.1.0）。
+ * ll.registerPlugin 的版本三元组与 manifest.json 的 version 字符串 / 包版本联动（1.0.0）。
  */
 export function registerPlugin(name: string, description: string): void {
     // 第 4 参按类型契约是 Record<string, string>（附加信息，如作者/许可证），不能传裸字符串

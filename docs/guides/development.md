@@ -37,7 +37,7 @@ pre-commit（lefthook）串行跑 `pnpm check` → `pnpm test`（`parallel: fals
 
 ## 版本对齐
 
-bridge 版本族（当前 `0.1.0`）共六点，改版本必须同改：
+bridge 版本族（当前 `1.0.0`）共六点，改版本必须同改：
 
 1. 根 `package.json` 的 `version`
 2. `bridge/embedded/package.json` 的 `version`

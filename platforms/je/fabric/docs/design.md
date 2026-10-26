@@ -55,7 +55,7 @@ loom 只发布在 Fabric maven（Gradle Plugin Portal 无此插件，实测 meta
 
 ## 6. 打包路线（裁决）
 
-- **产物链**：`shadowJar`（白名单合并 :core + Jackson 三件，fabric-api/loader 明确不入包）→ `remapJar`（loom，inputFile = shadowJar 产物）→ `build/libs/kurobridge-fabric-0.1.0.jar`。loom 1.18 的 RemapJarTask 主输入属性为 `inputFile`（`input` 为弃用别名）。
+- **产物链**：`shadowJar`（白名单合并 :core + Jackson 三件，fabric-api/loader 明确不入包）→ `remapJar`（loom，inputFile = shadowJar 产物）→ `build/libs/kurobridge-fabric-1.0.0.jar`。loom 1.18 的 RemapJarTask 主输入属性为 `inputFile`（`input` 为弃用别名）。
 - **弃选路线**：loom `include` 嵌套 jar 要求嵌套 jar 本身是 mod（含 fabric.mod.json）；:core 是纯库，加 fabric.mod.json 违反 ADR-021 纯度（宿主不得改造 :core 构建产物），弃。直接 `jar { from(project(":core").sourceSets.main.output) }` 无法合并外部 Jackson jar 内容（无 fat jar 能力），弃。
 - **白名单式 include 的原因**：shadow 缺省吞整个 runtimeClasspath（loom 下含 fabric-api/loader 的 mod jar），必须显式只留 :core（group com.kurobridge）与 com.fasterxml.jackson.core 三件。
 - **embed 链**：toolings/packaging/embed.ts 的 runEmbed 本已参数化 outDir，硬编码仅在 CLI 入口 runCli——扩展为按目标目录列表循环（paper 与 fabric 各一份同内容产物；第二次调用走 zip/napuketto 缓存，零重复下载）。产物契约不变（manifest.json nodeVersion/files/napukettoZip + sha256），Java 侧 :core EmbeddedRuntime 原样消费。

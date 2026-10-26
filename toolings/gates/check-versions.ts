@@ -37,7 +37,7 @@ function jsonVersion(relativePath: string): string | undefined {
     return typeof version === "string" && version.length > 0 ? version : undefined;
 }
 
-/** 文本内首个捕获组（如 BRIDGE_VERSION = "0.1.0"）；无匹配 → undefined */
+/** 文本内首个捕获组（如 BRIDGE_VERSION = "1.0.0"）；无匹配 → undefined */
 function firstMatch(relativePath: string, pattern: RegExp): string | undefined {
     const match = pattern.exec(readText(relativePath));
     return match === null ? undefined : match[1];

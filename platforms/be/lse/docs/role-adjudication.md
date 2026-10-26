@@ -81,7 +81,7 @@
 | ADR-007 core 平台无关 | **保持**。core 仅被导入，零改动；`IpcChannel` 是传输无关接口（`transport.ts:33-40`），注释「Java 薄壳 ↔ Node 的 stdin/stdout」描述的是 JE 实例而非接口约束 |
 | 领地 | **保持**。全部新代码在 `platforms/be/lse/**`；`bridge/**`、`platforms/je/**`、`platforms/be/endstone/**` 只读未动 |
 | 协议 SSOT（KuroProtocol 0.4.0） | **保持**。游戏通道两端用同一 `@kuro-bridge/protocol` zod schema 与 `encodeFrame`，无新增线上词汇，仅新增一种传输绑定（IPC 方言 over WS text frame，一帧一 message） |
-| 版本号 | 不动（0.1.0，无发版） |
+| 版本号 | 随主仓发版对齐（1.0.0）；LSE 未纳入 `check-versions` 六点门禁，升级需手动同步 |
 
 ## 4. R2′ 契约（实现与测试的机械联动基准）
 

@@ -18,6 +18,7 @@ KuroBridge（仓名 KuroAdapter）：Minecraft 服务器 ↔ 社交平台群服�
 | 构建 JAR / mod / dll、发版 | [构建与发布](guides/build.md) |
 | 查“为什么这么定” | [决策台账](decisions.md) |
 | 查当前能力与已知缺口 | [项目现状](status.md) |
+| 查版本变更与发布物 | [变更日志](../CHANGELOG.md) |
 
 ## 文档地图
 
@@ -39,9 +40,11 @@ docs/
 ├── guides/
 │   ├── development.md         # 环境、命令、代码规范、扩展方式
 │   └── build.md               # 构建链、嵌入式打包、CI、排障
-├── decisions.md               # ADR-001~037 精简台账
+├── decisions.md               # ADR-001~042 精简台账
 └── status.md                  # 支持矩阵、已知缺口、下一步
 ```
+
+仓根另有 [CHANGELOG.md](../CHANGELOG.md)：按版本记录对外可见变更。
 
 平台包内另有部署 SOP（[platforms/je/readme.md](../platforms/je/readme.md)、[platforms/be/lse/readme.md](../platforms/be/lse/readme.md)、[platforms/be/endstone/readme.md](../platforms/be/endstone/readme.md)）。
 

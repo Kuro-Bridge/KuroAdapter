@@ -1,19 +1,19 @@
 # 项目现状
 
-> 以当前代码为准（最后核对 2026-10-25）。产品版本 `0.1.0`，协议 `0.4.0`。
+> 以当前代码为准（最后核对 2026-10-26）。产品版本 `1.0.0`，协议 `0.4.0`。
 
 ## 版本基线
 
 | 项 | 值 |
 | --- | --- |
-| bridge | `0.1.0`（根 package / embedded / plugin.yml / Gradle 六点对齐） |
+| bridge | `1.0.0`（根 package / embedded / plugin.yml / Gradle 六点对齐） |
 | 协议 | `0.4.0`（`@kuro-bridge/protocol`，主版本兼容区间 `0.x`） |
 | 内嵌 Node | `26.7.0`（win-x64） |
 | napuketto | `@napuketto/cli` 0.2.0（精确 pin；哨兵优雅关停 + single-line env 契约，ADR-039）。内联注入门槛 0.3.0+（ADR-041）：当前 pin 走 `NAPKETTO_CONFIG` 回退 + WARN，升级嵌包即转宿主托管 |
 | Java | 工具链 25，字节码 `--release 8`（ADR-038 universal：1.12.2 ~ 26.3 单 jar） |
 | Fabric | MC 1.21.4 / loader 0.19.5 / fabric-api 0.119.4 |
 | Endstone | API v0.11 补丁线（CMake FetchContent） |
-| 测试基线 | TS vitest 298 用例（25 文件）/ Java JUnit 90 用例（`:core` 84 + `:fabric` 6），2026-10-25 本地门禁 |
+| 测试基线 | TS vitest 298 用例（25 文件）/ Java JUnit 90 用例（`:core` 84 + `:fabric` 6），2026-10-26 本地门禁 |
 
 ## 平台支持
 

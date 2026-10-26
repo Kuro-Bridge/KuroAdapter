@@ -56,7 +56,7 @@ body:
       value: |
         - 操作系统: <!-- 例如 Windows 11 / Ubuntu 24.04 -->
         - 服务端版本: <!-- 例如 Paper 1.21.4 -->
-        - kurobridge JAR 版本: <!-- 例如 0.1.0 -->
+        - kurobridge JAR 版本: <!-- 例如 1.0.0 -->
         - 打包形态: <!-- embedded（内嵌 napuketto）/ external（外部对端连入） -->
         - 对端与协议版本: <!-- 例如 koishi-plugin-kurobridge 0.2.0 / kurobridge-ws 0.4.0 -->
     validations:

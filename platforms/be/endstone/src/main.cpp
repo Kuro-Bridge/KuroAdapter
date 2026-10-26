@@ -57,9 +57,9 @@ private:
 
 }  // namespace kurobridge
 
-ENDSTONE_PLUGIN(/*name=*/"kurobridge", /*version=*/"0.1.0", /*main_class=*/kurobridge::KuroBridgePlugin)
+ENDSTONE_PLUGIN(/*name=*/"kurobridge", /*version=*/"1.0.0", /*main_class=*/kurobridge::KuroBridgePlugin)
 {
-    // 版本串 0.1.0 为占位：插件版本面后续线定夺，与包版本无关。
+    // 版本串与主仓发版对齐（1.0.0）；Endstone 侧不单独维护版本线。
     // 不声明任何 commands/permissions（R5：v1 无自定义命令面）。
     // prefix 对齐 Java 薄壳的 [KuroBridge] logger 前缀契约（core/node 日志行都按此前缀收敛）。
     prefix = "KuroBridge";

@@ -49,7 +49,7 @@ LeviLamina 与 LSE 本身的安装见官方文档（[docs.levimc.org](https://do
 - `type` 必须写 LSE 管理器名 `lse-nodejs`：写 `script` 会报「无法识别的模组类型：script」
   （LeviLamina 按 `manifest.type` 路由到已注册的 ModManager）。
 - `dependencies` 须声明 `legacy-script-engine-nodejs`，保证 LSE 引擎先于本 mod 加载注册；
-  `version` 为字符串（如 `0.1.0`），不是旧格式的三元组数组。
+  `version` 为字符串（如 `1.0.0`），不是旧格式的三元组数组。
 
 ## 配置（config.jsonc 契约）
 

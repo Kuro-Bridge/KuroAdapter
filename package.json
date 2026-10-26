@@ -1,7 +1,7 @@
 {
     "$schema": "https://json.schemastore.org/package.json",
     "name": "kurobridge",
-    "version": "0.1.0",
+    "version": "1.0.0",
     "description": "MC 服务器 ↔ 社交平台群服互通插件",
     "type": "module",
     "private": true,
@@ -28,7 +28,8 @@
         "build:endstone": "node toolings/build/platforms.ts endstone",
         "build:all": "pnpm -r build && node toolings/build/platforms.ts all",
         "check:all": "pnpm check && pnpm test && node toolings/build/platforms.ts all",
-        "build:jar": "node toolings/packaging/build-jar.ts"
+        "build:jar": "node toolings/packaging/build-jar.ts",
+        "release:pack": "node toolings/packaging/release.ts"
     },
     "devEngines": {
         "packageManager": {

@@ -2,7 +2,7 @@
 # 经典格式从 1.12.2 到 26.3 全版本可加载；paper-plugin.yml 是 1.19.4+ 专属格式，旧服不可见。
 # 命令在本文件声明（kurobridge），主类 onCommand 委派到 KurobridgeCommand 分派器。
 name: KuroBridge
-version: '0.1.0'
+version: '1.0.0'
 main: com.kurobridge.KuroBridgePlugin
 # api-version 下限标记：1.13+ 服务器读取；1.12.2 忽略未知键（该键 1.13 才引入）
 api-version: '1.13'

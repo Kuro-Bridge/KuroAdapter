@@ -6,10 +6,10 @@ Gradle 多模块，一个服务端 = 一个模块。Java 只做平台桥接；�
 
 | 模块 | 依赖 | 产物 | 职责 |
 | --- | --- | --- | --- |
-| `:core` | Jackson、JDK | `core-0.1.0.jar` | IPC 编解码、进程管理、看护器、JAR 运行时解压；零 Bukkit API |
-| `:paper` | `:core`、`:paper-legacy`、paper-api 26.3（compileOnly）、log4j-core（compileOnly）、Jackson | `kurobridge-0.1.0.jar`（shadowJar） | Paper 事件/命令/权限桥接 |
+| `:core` | Jackson、JDK | `core-1.0.0.jar` | IPC 编解码、进程管理、看护器、JAR 运行时解压；零 Bukkit API |
+| `:paper` | `:core`、`:paper-legacy`、paper-api 26.3（compileOnly）、log4j-core（compileOnly）、Jackson | `kurobridge-1.0.0.jar`（shadowJar） | Paper 事件/命令/权限桥接 |
 | `:paper-legacy` | paper-api 1.21.4（compileOnly） | 并入 `:paper` shadowJar | 旧 Adventure 序列化器隔离层（ADR-038）：`PlainComponentSerializer` 对 1.21.4 时代 API 编译，现代服缺失时由兼容链回退触碰 |
-| `:fabric` | `:core`、fabric-loader / fabric-api（modImplementation）、Jackson | `kurobridge-fabric-0.1.0.jar`（remapJar） | Fabric mod 薄壳 |
+| `:fabric` | `:core`、fabric-loader / fabric-api（modImplementation）、Jackson | `kurobridge-fabric-1.0.0.jar`（remapJar） | Fabric mod 薄壳 |
 | `:neoforge` / `:velocity` | — | 空 jar | 预留 |
 
 工具链：JDK 25 编译，main 源集 `options.release = 8`（ADR-038 universal 基线：1.12.2 ~ 26.3 单 jar；`--release` 同时是 Java 9+ SE API 误用的机器门禁）；`-Xlint:all -Werror`；Spotless Palantir 2.71.0。Gradle 9.7 wrapper。

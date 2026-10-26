@@ -1,7 +1,7 @@
 {
     "name": "kurobridge",
     "entry": "index.js",
-    "version": "0.1.0",
+    "version": "1.0.0",
     "type": "lse-nodejs",
     "platform": "server",
     "description": "KuroBridge LeviLamina 平台适配（群服互通）",
