@@ -1,6 +1,6 @@
 // :paper —— Paper 服务端适配（薄壳的业务桥接层）
-// 依赖 :core（纯逻辑）+ :paper-legacy（旧 Adventure 序列化器隔离层）+ Paper API（compileOnly）
-// 产物：shadowJar fat JAR（内含 :core + :paper-legacy + embedded 资源）
+// 依赖 :core（纯逻辑）+ Paper API（compileOnly）
+// 产物：shadowJar fat JAR（内含 :core + embedded 资源）
 
 plugins {
     id("com.gradleup.shadow")
@@ -8,7 +8,9 @@ plugins {
 
 // Java 8 字节码基线（ADR-038 universal 兼容），同 :core：只约束 main 源集，
 // --release 8 是 Java 9+ SE API 误用的机器门禁；-Xlint:-options 压制 JDK 25 的过时提示。
-// 消费端 JVM 版本声明为工具链版本的原因同 :paper-legacy（paper-api 元数据 21+/25+）。
+// 消费端 JVM 版本声明为工具链版本：paper-api 的 Gradle 元数据按高版本 JVM 发布（21+/25+），
+// 变体匹配会拒绝把它放进 release 8 的编译类路径——真正的兼容门禁是 javac --release 8，
+// 此声明仅为恢复依赖解析。
 import org.gradle.api.attributes.java.TargetJvmVersion
 
 tasks.named<JavaCompile>("compileJava") {
@@ -27,9 +29,6 @@ configurations.named("compileClasspath") {
 
 dependencies {
     implementation(project(":core"))
-    // 旧 Adventure 序列化器（PlainComponentSerializer）隔离层：对 1.21.4 时代 api 编译，
-    // 运行期仅 PlainText 兼容链回退分支触碰（1.19 ~ 1.21.x 服务器），ADR-038
-    implementation(project(":paper-legacy"))
     // ADR-038：编译目标对齐现行主线（26.3 捆绑 Adventure 5.2，PlainComponentSerializer 已删，
     // PlainTextComponentSerializer 可用）；全版本运行面经 Compat 探测 + String 侧路径覆盖
     compileOnly("io.papermc.paper:paper-api:26.3.build.219-stable")

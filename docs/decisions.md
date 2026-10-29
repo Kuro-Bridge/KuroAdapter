@@ -1,4 +1,4 @@
-# 决策台账（ADR-001 ~ ADR-042）
+# 决策台账（ADR-001 ~ ADR-043）
 
 只保留结论与理由。代码注释中的 ADR 编号以本表为准；KuroProtocol 仓另有独立的 ADR-001~003 序列，与本表**无编号对应关系**。
 
@@ -35,6 +35,7 @@
 | ADR-040 | 2026-10-25 | 配置面 JSONC 化：配置文件改 `plugins/kurobridge/config.jsonc`（严格 JSON 超集：行/块注释 + 行尾逗号，剥离输出与输入等长保行号）；首启生成带注释模板并写入 32 位 hex 随机 token（全形态，对齐 Pure 线）；旧 `config.json` 回退读取、不迁移不重命名；模板形状由「parseJsonc + parseConfig 回环」单测锁死 | 生成件即文档——裸 JSON 无引导，服主一头雾水；等长输出让 JSON.parse 报错行号直接定位手改处；回退而非迁移，避免首启意外改写服主已有文件；解析器放 bridge/core（零 Node API，LSE QuickJS 共用）；解析失败仍走降级运行不变 |
 | ADR-041 | 2026-10-25 | embedded onboarding 闭环与退出码契约：`embedded.napuketto.qq/logLevel` 上浮主配置，连接参数（url/token）由宿主按内嵌 CLI 版本注入——支持 `NAPKETTO_CONFIG_JSON`（0.3.0+）走内联，旧版回退 `NAPKETTO_CONFIG` + WARN（面向上游 fix4 契约编程，不写过渡 TOML 生成器）；Node 退出码收敛为 0 优雅 / 1 可重试 / 2 配置未就绪（`CONFIG_NOT_READY_EXIT_CODE`），上游 napuketto `exit 78` 映射 2；:core 看护器对 exit 2 进入 blocked-on-config 终态（不计窗、不退避、单条 SEVERE 指路）；NodeIpc EOF 后有界等待真实退出码、退出通知先于 start future 失败完成、观察到退出即清 pid 文件 | 配置守卫 fatal 走退避重启是纯风暴（占位 qq → 3 次重试同败刷屏）；stdout EOF 先于进程状态翻转曾致看护器只见「exit=未知」，识别不了契约；`managed:false` 逃生门不设（高级用法走 external 形态）；paper/fabric/lse 命令文案同步区分「配置未就绪」与「反复崩溃」 |
 | ADR-042 | 2026-10-26 | 首个公开发版 1.0.0 与产物分层：主仓与纯净线同版；Paper / Fabric 为正式产物，LSE / Endstone 标注预览（真机联调未完成）；新增 `pnpm release:pack`（`toolings/packaging/release.ts`）收拢四类产物 + `SHA256SUMS.txt`，打包期校验嵌入清单 sha256、JAR 必需条目与腾讯闭源件红线；版本以 `v<version>` tag 与 GitHub Release 发布，`CHANGELOG.md` 按版本记录 | 发布前无 tag、变更日志与分发件，服主只能自行构建；预览标注避免把 ABI 构建成功当成行为背书；校验放在打包期而非构建期，保证上传的字节就是被校验的字节 |
+| ADR-043 | 2026-10-28 | 撤销 `:paper-legacy` 模块（ADR-038 引入的旧 Adventure 序列化器隔离层）：`PlainText` 砍掉 `PlainComponentSerializer` 回退分支，收敛为 `PlainTextComponentSerializer` 单路径（隔离 holder 与首用解析缓存一并去除；产物形态与运行行为不变） | 版本事实修正：`PlainTextComponentSerializer` 所在的 `adventure-text-serializer-plain` 自 adventure 4.8.0（2021-05）引入并存活至 5.x，覆盖矩阵内全部捆绑 Adventure 的 Paper（1.16.5 起捆绑；1.19~1.20.5 为 4.9~4.14；1.21.x 为 4.x 末段；26.x 为 5.2）。ADR-038 注释「4.15+ / Paper 1.20.6+ 捆绑」归因错误（4.15 仅是旧序列化器弃用点），回退分支在支持矩阵上无可触发版本，属死代码；隔离模块的双 API 世界维护成本换不来任何真实覆盖。理论缺口仅剩 adventure <4.8 的极早期 Paper 1.16.5 build（不在矩阵；该档聊天/死亡本走 String 路径）。农场实测佐证：1.21.11 捆 adventure 4.26.1，26.2/26.3 捆 5.2.0 |
 
 ## 协议
 

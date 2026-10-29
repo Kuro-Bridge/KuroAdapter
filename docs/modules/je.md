@@ -1,14 +1,13 @@
 # platforms/je（Java 薄壳）
 
-Gradle 多模块，一个服务端 = 一个模块。Java 只做平台桥接；业务全部在 Node。模块状态：`:core`、`:paper`、`:paper-legacy`、`:fabric` 已实现；`:neoforge`、`:velocity` 为预留骨架（只有空 `build.gradle.kts`）。
+Gradle 多模块，一个服务端 = 一个模块。Java 只做平台桥接；业务全部在 Node。模块状态：`:core`、`:paper`、`:fabric` 已实现；`:neoforge`、`:velocity` 为预留骨架（只有空 `build.gradle.kts`）。
 
 ## 模块
 
 | 模块 | 依赖 | 产物 | 职责 |
 | --- | --- | --- | --- |
 | `:core` | Jackson、JDK | `core-1.0.0.jar` | IPC 编解码、进程管理、看护器、JAR 运行时解压；零 Bukkit API |
-| `:paper` | `:core`、`:paper-legacy`、paper-api 26.3（compileOnly）、log4j-core（compileOnly）、Jackson | `kurobridge-1.0.0.jar`（shadowJar） | Paper 事件/命令/权限桥接 |
-| `:paper-legacy` | paper-api 1.21.4（compileOnly） | 并入 `:paper` shadowJar | 旧 Adventure 序列化器隔离层（ADR-038）：`PlainComponentSerializer` 对 1.21.4 时代 API 编译，现代服缺失时由兼容链回退触碰 |
+| `:paper` | `:core`、paper-api 26.3（compileOnly）、log4j-core（compileOnly）、Jackson | `kurobridge-1.0.0.jar`（shadowJar） | Paper 事件/命令/权限桥接 |
 | `:fabric` | `:core`、fabric-loader / fabric-api（modImplementation）、Jackson | `kurobridge-fabric-1.0.0.jar`（remapJar） | Fabric mod 薄壳 |
 | `:neoforge` / `:velocity` | — | 空 jar | 预留 |
 
@@ -60,7 +59,7 @@ Gradle 多模块，一个服务端 = 一个模块。Java 只做平台桥接；�
 | `NodeRequestHandler` | Node 请求回主线程：`broadcast` 调度后即回执；`execute_command` 执行完回执（收集型 sender，vanilla 命令回退 console + log4j 截流） |
 | `KurobridgeCommand` | `/kurobridge send <文本>` / `reload` / `qr`；权限 `kurobridge.admin`（default op）；回执全 String（universal） |
 | `CollectingCommandSender` / `VanillaFeedbackCapture` | 命令输出收集、vanilla 反馈捕获 |
-| `PlainText` | Component → 纯文本兼容链（ADR-038）：`PlainTextComponentSerializer`（隔离 holder）→ `:paper-legacy` 的旧序列化器回退，首用解析缓存 |
+| `PlainText` | Component → 纯文本（ADR-043 单路径）：`PlainTextComponentSerializer`（adventure 4.8.0+ 存活至 5.x，矩阵全档覆盖） |
 
 - 命令在 `plugin.yml` 声明（经典清单 1.12.2 ~ 26.3 全版本可加载；`paper-plugin.yml` 是 1.19.4+ 专属格式，ADR-038 弃用），主类 `onCommand` 委派 `KurobridgeCommand`。
 - `status` 只在 join/quit 时推送，不是周期上报。
@@ -87,7 +86,7 @@ Gradle 多模块，一个服务端 = 一个模块。Java 只做平台桥接；�
 ## 打包与运行期布局
 
 - `pnpm build:jar`：`pnpm -r build` → `embed.ts` → `:paper:shadowJar` → `:fabric:remapJar`。
-- paper shadowJar 包含 `:core`、`:paper-legacy`、Jackson、`embedded/` 资源；fabric shadow 白名单只合并 `:core` + Jackson 三件，再由 loom `remapJar`。
+- paper shadowJar 包含 `:core`、Jackson、`embedded/` 资源；fabric shadow 白名单只合并 `:core` + Jackson 三件，再由 loom `remapJar`。
 - JAR 安装后运行期路径（cwd = 服务器根）：
 
 ```

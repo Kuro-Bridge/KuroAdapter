@@ -98,7 +98,7 @@ KuroAdapter/
 │   ├── core/            # @kuro-bridge/bridge-core（平台无关）
 │   └── embedded/        # @kuro-bridge/bridge-embedded（Node 引导层）
 ├── platforms/
-│   ├── je/              # Gradle：core / paper / paper-legacy / fabric / neoforge / velocity
+│   ├── je/              # Gradle：core / paper / fabric / neoforge / velocity
 │   └── be/
 │       ├── lse/         # LeviLamina 平台适配（壳 + Node shim）
 │       └── endstone/    # Endstone 适配（C++ 薄壳 + portable 层）
@@ -119,7 +119,7 @@ KuroAdapter/
 | --- | --- | --- | --- | --- |
 | `bridge/core` | TS → ESM，target ES2020 | zod、`@kuro-bridge/protocol` | tsdown | vitest |
 | `bridge/embedded` | TS → ESM 单文件 | `ws`、`@napuketto/cli`（精确 pin） | esbuild | vitest |
-| `platforms/je` | Java 8 字节码（工具链 25；`:core`/`:paper`/`:paper-legacy` release 8，`:fabric` release 21，ADR-038） | Paper API / Fabric Loader+API（均 compileOnly 类）、Jackson | Gradle：shadowJar / loom remapJar | JUnit 5 |
+| `platforms/je` | Java 8 字节码（工具链 25；`:core`/`:paper` release 8，`:fabric` release 21，ADR-038） | Paper API / Fabric Loader+API（均 compileOnly 类）、Jackson | Gradle：shadowJar / loom remapJar | JUnit 5 |
 | `platforms/be/lse` | TS → QuickJS IIFE + Node ESM shim | `ws`、LSE 官方类型 | esbuild 双产物 | vitest（含回环 e2e） |
 | `platforms/be/endstone` | C++20 | Endstone API（header-only）+ expected-lite | CMake presets | ctest（5 目标） |
 

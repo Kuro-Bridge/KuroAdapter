@@ -2,6 +2,10 @@
 
 本文件按版本记录对外可见变更。设计裁决见 [docs/decisions.md](docs/decisions.md)，现状与已知缺口见 [docs/status.md](docs/status.md)。
 
+## 未发布
+
+- Paper 适配模块收敛（ADR-043）：撤销 `:paper-legacy` 隔离层，`PlainText` 收敛为 `PlainTextComponentSerializer` 单路径（adventure 4.8.0+ 至 5.x 全覆盖，原回退分支在支持矩阵上无可触发版本）。产物形态与运行行为不变。
+
 ## 1.0.0 — 2026-10-26
 
 首个公开发布。Paper 为正式产物，Fabric 同版发布；LSE 与 Endstone 以预览件提供。

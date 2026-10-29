@@ -1,6 +1,6 @@
 # 项目现状
 
-> 以当前代码为准（最后核对 2026-10-26）。产品版本 `1.0.0`，协议 `0.4.0`。
+> 以当前代码为准（最后核对 2026-10-29）。产品版本 `1.0.0`，协议 `0.4.0`。
 
 ## 版本基线
 
@@ -19,7 +19,7 @@
 
 | 平台 | 状态 | 说明 |
 | --- | --- | --- |
-| Paper | ✅ 可用 | universal 单 jar 1.12.2 ~ 26.3（ADR-038：兼容链 + 运行期探测 + 经典 plugin.yml）；四事件 + status、命令、热载、embedded/external、JAR 自含运行时。26.3（embedded 深验：命令四条 + napuketto 在线日志治理）/ 26.2 / 1.21.11 / 1.16.5（Java 16）四线真机冒烟通过；1.12.2 未上机 |
+| Paper | ✅ 可用 | universal 单 jar 1.12.2 ~ 26.3（ADR-038 universal + ADR-043：PlainText 单路径 + 运行期探测 + 经典 plugin.yml）；四事件 + status、命令、热载、embedded/external、JAR 自含运行时。26.3（embedded 深验：命令四条 + napuketto 在线日志治理）/ 26.2 / 1.21.11 / 1.16.5（Java 16）四线真机冒烟通过；1.12.2 未上机 |
 | Fabric | ✅ 首版 | 四事件 + status（TPS 自测）、命令；单 MC 版本；chat/权限有登记差异 |
 | LSE | 🟡 已实现，待真机 | 壳 + shim + 回环 e2e 绿；`newProcess` 等平台前提待实机背书 |
 | Endstone | 🟡 已实现，待真机 | portable 层 ctest 5/5；clang-cl dll 已构建；真机联调未做 |
@@ -87,7 +87,7 @@
 - `kurobridge-spike` serverId 硬编码已清（ADR-034）。
 - 版本六点/两份机械对齐、金样本契约/行为检查已入门禁。
 - 腾讯闭源件扫描已是构建期硬断言。
-- Paper 26.3 聊天/死亡监听崩溃已修（ADR-038：Adventure 5.2 删除旧序列化器，兼容链 + release 8 universal）；控制台 IPC 日志套娃前缀在展示层剥离，napuketto 多行记录（含 ANSI 色码形态）重组为单行、遥测噪音降 debug、banner/终端二维码折叠、关停日志收敛为单条。
+- Paper 26.3 聊天/死亡监听崩溃已修（ADR-038 引入兼容链，ADR-043 撤销为 `PlainTextComponentSerializer` 单路径 + release 8 universal）；控制台 IPC 日志套娃前缀在展示层剥离，napuketto 多行记录（含 ANSI 色码形态）重组为单行、遥测噪音降 debug、banner/终端二维码折叠、关停日志收敛为单条。
 - Paper 26.x vanilla 命令拒绝自定义 sender 的回退修复：异常类型随版本漂移（26.x 不再是 bukkit CommandException / IllegalArgumentException），判据改为消息链匹配（2026-10-25 cleanroom 实证，version/tps/list/kurobridge qr 四命令回执成功）。
 - shadowJar 重复 META-INF 条目（Jackson 三件的 LICENSE/NOTICE）触发 Paper 1.20.5+ PluginRemapper 拒绝（经典 plugin.yml 的 api-version 1.13 触发重映射），已加 `duplicatesStrategy = EXCLUDE`（2026-10-25 Paper-1.21.11 实证）。
 - napuketto 已消费 0.2.0（ADR-039）：宿主 env 钉 single-line + 关 banner，关停改停止哨兵优先（`<数据根>/napuketto.stop`）、树杀 10s 兜底，哨兵路径展示 exit 0；上游默认级别重分配后校准/接收/mmkv 噪音在源头即 debug，宿主侧降噪层保留为防御。协议面零变化（`kurobridge-ws.v1` / 0.4.0），自报身份 `napukettoqq/0.4.0`。
