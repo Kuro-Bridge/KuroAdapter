@@ -5,7 +5,9 @@ import com.kurobridge.core.IpcLogLevels;
 import com.kurobridge.core.IpcLogLines;
 import com.kurobridge.core.KurobridgeVersions;
 import com.kurobridge.core.NodeIpc;
+import com.kurobridge.core.NodeRuntimeProbe;
 import com.kurobridge.core.NodeSupervisor;
+import com.kurobridge.core.PlatformKey;
 import com.kurobridge.paper.ChatListener;
 import com.kurobridge.paper.Compat;
 import com.kurobridge.paper.ConnectionListener;
@@ -39,7 +41,7 @@ import org.bukkit.plugin.java.JavaPlugin;
  *             stub 缺省从 bundle 相对推导。</li>
  *         <li>未设 → JAR 自含：{@link EmbeddedRuntime} 把 JAR 内 embedded 资源解压/复用到
  *             {@code plugins/kurobridge/bin/}（幂等，sha256 对 manifest），node 用解压出的
- *             node.exe。解压在 onEnable 同步执行（STARTUP 期，首启约 1-2s，换取加载顺序天然
+ *             node 运行时（Windows node.exe / Linux node）。解压在 onEnable 同步执行（STARTUP 期，首启约 1-2s，换取加载顺序天然
  *             正确）；失败 → SEVERE + 插件保持加载但无 IPC（开发模式降级语义），不崩服。</li>
  *       </ul>
  *       随后组装 {@link NodeSupervisor} 看护器（DEBT-2：异常退出按 1s/5s/15s 退避自动重启，
@@ -56,7 +58,7 @@ import org.bukkit.plugin.java.JavaPlugin;
  *   <li>{@code KUROBRIDGE_BUNDLE}：esbuild 单文件产物绝对路径——开发覆盖开关；设置后完全走
  *       环境变量形态，不触碰 JAR 解压。</li>
  *   <li>{@code KUROBRIDGE_NODE}：node 可执行文件；开发覆盖缺省 "node"，JAR 模式缺省
- *       {@code plugins/kurobridge/bin/node.exe}。</li>
+ *       {@code plugins/kurobridge/bin/node-<平台键>}（如 node-win-x64.exe / node-linux-x64）。</li>
  *   <li>{@code KUROBRIDGE_STUB_PEER}：stub 协议端脚本路径（测试件，不进 JAR）；设置即注入。
  *       未设置时：开发覆盖从 bundle 相对推导缺省值，JAR 模式无 stub（外部协议端形态）。</li>
  * </ul>
@@ -164,11 +166,25 @@ public final class KuroBridgePlugin extends JavaPlugin {
         if (stub == null || stub.trim().isEmpty()) {
             getLogger().info("JAR 解压模式未设置 KUROBRIDGE_STUB_PEER，不拉起 stub（外部协议端形态）");
         }
-        startSupervised(
-                installed.bundle(),
-                envOrDefault(ENV_NODE, installed.nodeExecutable().toString()),
-                stub,
-                installed.nodeVersion());
+        // 运行时可执行性：Linux 做一次预检（glibc/libstdc++ 不匹配时给出可修复的日志），
+        // Windows 不做（省一次进程拉起）；显式 KUROBRIDGE_NODE 时尊重用户选择，不预检不替换。
+        String override = System.getenv(ENV_NODE);
+        String nodeExecutable = installed.nodeExecutable().toString();
+        String nodeVersion = installed.nodeVersion();
+        if (override != null && !override.trim().isEmpty()) {
+            nodeExecutable = override;
+        } else if (!PlatformKey.isWindows(installed.platformKey())) {
+            String resolved = NodeRuntimeProbe.resolve(installed.nodeExecutable(), getLogger()::info);
+            if (resolved == null) {
+                getLogger().severe("内嵌 node 与 PATH 上的 node 均不可用，插件保持加载但无 IPC（降级语义）");
+                return;
+            }
+            if (!resolved.equals(nodeExecutable)) {
+                nodeVersion = "system";
+            }
+            nodeExecutable = resolved;
+        }
+        startSupervised(installed.bundle(), nodeExecutable, stub, nodeVersion);
     }
 
     /**

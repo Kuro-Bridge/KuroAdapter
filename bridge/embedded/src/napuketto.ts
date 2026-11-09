@@ -83,12 +83,23 @@ export interface DecideNapukettoLaunchInput {
 }
 
 /**
+ * napuketto 运行时平台守卫——**全仓唯一判据**。
+ *
+ * 当前 QQ 宿主（napuketto self-host）仅支持 Windows；Linux 原生兼容在上游推进中。放开时
+ * 只改这一个函数：:core 的 EmbeddedRuntime 已与平台无关地展开 napuketto.zip（Linux 也照常
+ * 解包就绪），依赖升级 + 这里返回 true 即可接通，无需改 Java 解包链或 bootstrap 装配。
+ */
+export function isNapukettoRuntimeSupported(platform: NodeJS.Platform): boolean {
+    return platform === "win32";
+}
+
+/**
  * 前置：调用方须已判定 embedded.napuketto.enabled === true（否则走既有 stub 路径）。
  * 守卫序列（fatal 均为配置未就绪语义，bootstrap 以 exit 2 收敛）：平台豁免 → ws.port 固定
  * （连接 url 静态拼入）→ qq 非空且非占位 → CLI 入口存在 → 内联注入能力探测。
  */
 export function decideNapukettoLaunch(input: DecideNapukettoLaunchInput): NapukettoLaunchDecision {
-    if (input.platform !== "win32") {
+    if (!isNapukettoRuntimeSupported(input.platform)) {
         return {
             action: "skip",
             reason:

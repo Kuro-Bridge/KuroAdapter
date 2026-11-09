@@ -4,7 +4,9 @@ import com.kurobridge.core.EmbeddedRuntime;
 import com.kurobridge.core.IpcLogLevels;
 import com.kurobridge.core.KurobridgeVersions;
 import com.kurobridge.core.NodeIpc;
+import com.kurobridge.core.NodeRuntimeProbe;
 import com.kurobridge.core.NodeSupervisor;
+import com.kurobridge.core.PlatformKey;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Path;
@@ -51,7 +53,7 @@ import org.slf4j.LoggerFactory;
  * <ul>
  *   <li>{@code KUROBRIDGE_BUNDLE}：esbuild 单文件产物绝对路径——开发覆盖开关。</li>
  *   <li>{@code KUROBRIDGE_NODE}：node 可执行文件；开发覆盖缺省 "node"，JAR 模式缺省
- *       {@code plugins/kurobridge/bin/node.exe}。</li>
+ *       {@code plugins/kurobridge/bin/node-<平台键>}（如 node-win-x64.exe / node-linux-x64）。</li>
  *   <li>{@code KUROBRIDGE_STUB_PEER}：stub 协议端脚本路径（测试件，不进 JAR）；设置即注入。</li>
  * </ul>
  *
@@ -165,12 +167,24 @@ public final class KuroBridgeMod implements ModInitializer {
         if (stub == null || stub.isBlank()) {
             LOGGER.info("JAR 解压模式未设置 KUROBRIDGE_STUB_PEER，不拉起 stub（外部协议端形态）");
         }
-        startSupervised(
-                server,
-                installed.bundle(),
-                envOrDefault(ENV_NODE, installed.nodeExecutable().toString()),
-                stub,
-                installed.nodeVersion());
+        // 与 :paper 同源策略：Linux 预检 + PATH 回退；显式 KUROBRIDGE_NODE 时尊重用户选择。
+        String override = System.getenv(ENV_NODE);
+        String nodeExecutable = installed.nodeExecutable().toString();
+        String nodeVersion = installed.nodeVersion();
+        if (override != null && !override.isBlank()) {
+            nodeExecutable = override;
+        } else if (!PlatformKey.isWindows(installed.platformKey())) {
+            String resolved = NodeRuntimeProbe.resolve(installed.nodeExecutable(), LOGGER::info);
+            if (resolved == null) {
+                LOGGER.error("内嵌 node 与 PATH 上的 node 均不可用，mod 保持加载但无 IPC（降级语义）");
+                return;
+            }
+            if (!resolved.equals(nodeExecutable)) {
+                nodeVersion = "system";
+            }
+            nodeExecutable = resolved;
+        }
+        startSupervised(server, installed.bundle(), nodeExecutable, stub, nodeVersion);
     }
 
     /**
