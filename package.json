@@ -17,9 +17,10 @@
         "build": "pnpm -r build",
         "lint": "biome lint .",
         "format": "biome format --write .",
-        "check": "pnpm -r build && biome check . && tsc --noEmit && tsc --noEmit -p platforms/be/lse && pnpm check:docs && pnpm check:versions",
+        "check": "pnpm -r build && biome check . && tsc --noEmit && tsc --noEmit -p platforms/be/lse && pnpm check:docs && pnpm check:versions && pnpm check:runtime",
         "check:docs": "node toolings/gates/check-docs-scope.ts && node toolings/gates/check-docs-links.ts",
         "check:versions": "node toolings/gates/check-versions.ts",
+        "check:runtime": "node toolings/gates/check-runtime-versions.ts",
         "fix": "biome check --write . && tsc --noEmit",
         "test": "vitest run",
         "test:watch": "vitest",
@@ -29,6 +30,7 @@
         "build:all": "pnpm -r build && node toolings/build/platforms.ts all",
         "check:all": "pnpm check && pnpm test && node toolings/build/platforms.ts all",
         "build:jar": "node toolings/packaging/build-jar.ts",
+        "build:embed": "node toolings/packaging/embed.ts",
         "release:pack": "node toolings/packaging/release.ts"
     },
     "devEngines": {
@@ -39,7 +41,7 @@
         }
     },
     "engines": {
-        "node": ">=26",
+        "node": ">=26.13.0",
         "pnpm": ">=11"
     },
     "devDependencies": {

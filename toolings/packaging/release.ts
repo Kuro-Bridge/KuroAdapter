@@ -14,6 +14,12 @@
  *   kurobridge-endstone-<ver>.zip   Endstone 分发包（预览；解压到 BDS 根）
  *   SHA256SUMS.txt
  *
+ * 分片（发布工作流按 runner 能力拆分，见 .github/workflows/release.yml）：
+ *   --only jar | lse | endstone | all（缺省 all）
+ *   只产出选中的分片，SHA256SUMS.txt 也只覆盖本次产物——LSE 分片不需要 JAR / dll 存在，
+ *   Endstone 分片仍要求 win-x64 运行时在 embedded 清单里。jar / endstone 分片会先做
+ *   embedded 清单自校验；只跑 lse 时跳过（该分片与 embedded 无关）。
+ *
  * 校验（任一失败即 exit 1）：
  *   1) 产物齐全且非空；2) embedded/manifest.json 的 sha256 逐文件比对；
  *   3) JAR 必需条目存在；4) JAR 条目名不含三类腾讯闭源件；5) zip 回读条目与预期一致。
@@ -48,33 +54,83 @@ const FORBIDDEN_ENTRY_PATTERNS: readonly RegExp[] = [
     /(^|\/)QQ[^/]*\.(exe|apk|dmg|msi)$/i,
 ];
 
-const PAPER_REQUIRED_ENTRIES: readonly string[] = [
-    "plugin.yml",
-    "embedded/node.exe",
-    "embedded/index.mjs",
+/** 平台无关的 embedded 条目（每份 JAR 都该有） */
+const SHARED_EMBEDDED_ENTRIES: readonly string[] = [
     "embedded/manifest.json",
-    "embedded/napuketto.zip",
+    "embedded/index.mjs",
     "embedded/NODE_LICENSE",
     "embedded/NAPUKETTO_LICENSES",
+    "embedded/napuketto.zip",
 ];
 
-const FABRIC_REQUIRED_ENTRIES: readonly string[] = [
-    "fabric.mod.json",
-    "embedded/node.exe",
-    "embedded/index.mjs",
-    "embedded/manifest.json",
-];
+const PAPER_ENTRIES: readonly string[] = ["plugin.yml"];
+const FABRIC_ENTRIES: readonly string[] = ["fabric.mod.json"];
 
-/** embedded/manifest.json 的形状（toolings/packaging/embed.ts 产出） */
+/** 平台二进制条目由 manifest 的 runtimes 派生（Lean 构建自动收敛，不写死平台清单） */
+function runtimeEntries(manifest: EmbeddedManifest): string[] {
+    return Object.values(manifest.runtimes).map((runtime) => `embedded/${runtime.file}`);
+}
+
+/** embedded/manifest.json 的形状（toolings/packaging/embed.ts 产出的 v2） */
 interface EmbeddedManifest {
+    readonly schemaVersion: number;
     readonly nodeVersion: string;
-    readonly files: Readonly<Record<string, string>>;
+    readonly shared: Readonly<Record<string, string>>;
+    readonly runtimes: Readonly<Record<string, { readonly file: string; readonly sha256: string }>>;
     readonly napukettoZip?: { readonly sha256: string };
 }
+
+/** 发布分片：JAR（Paper + Fabric）、LSE zip、Endstone zip。 */
+const STAGES = ["jar", "lse", "endstone"] as const;
+type Stage = (typeof STAGES)[number];
+
+const ONLY_FLAG = "--only";
+const ONLY_EQ = /^--only=(.+)$/;
 
 function fail(message: string): never {
     console.error(`[release] 失败：${message}`);
     process.exit(1);
+}
+
+/**
+ * 解析 `--only` 分片（支持 `--only jar` 与 `--only=jar`，逗号可并列）。
+ * 未知分片直接失败：静默忽略会让发布工作流漏产物而看不出问题。
+ */
+function parseStages(argv: readonly string[]): readonly Stage[] {
+    const raw = readOnlyArg(argv);
+    if (raw === undefined || raw.trim() === "" || raw.trim() === "all") {
+        return STAGES;
+    }
+    const requested = raw
+        .split(",")
+        .map((stage) => stage.trim())
+        .filter((stage) => stage.length > 0);
+    const unknown = requested.filter((stage) => !isStage(stage));
+    if (unknown.length > 0) {
+        fail(`--only 含未知分片：${unknown.join(", ")}（已知：${STAGES.join(" / ")} / all）`);
+    }
+    return requested.filter((stage): stage is Stage => isStage(stage));
+}
+
+function readOnlyArg(argv: readonly string[]): string | undefined {
+    for (let index = 0; index < argv.length; index += 1) {
+        const arg = argv[index];
+        if (arg === undefined) {
+            continue;
+        }
+        const match = ONLY_EQ.exec(arg);
+        if (match !== null) {
+            return match[1];
+        }
+        if (arg === ONLY_FLAG) {
+            return argv[index + 1];
+        }
+    }
+    return undefined;
+}
+
+function isStage(value: string): value is Stage {
+    return (STAGES as readonly string[]).includes(value);
 }
 
 function readJson<T>(path: string): T {
@@ -129,12 +185,23 @@ function readZipEntries(path: string): string[] {
     return names;
 }
 
-/** embedded 清单自校验：文件 sha256 与 napuketto 指针必须与磁盘一致 */
-function verifyEmbeddedManifest(): void {
+/** embedded 清单自校验：shared + runtimes 的 sha256 与磁盘一致，napuketto 指针也一致 */
+function verifyEmbeddedManifest(): EmbeddedManifest {
     const manifestPath = join(EMBEDDED_DIR, "manifest.json");
     mustExist(manifestPath, "embedded 清单");
     const manifest = readJson<EmbeddedManifest>(manifestPath);
-    for (const [name, expected] of Object.entries(manifest.files)) {
+    if (manifest.schemaVersion !== 2) {
+        fail(
+            `embedded 清单 schemaVersion 非 2（实际 ${String(manifest.schemaVersion)}）：先重跑 embed`,
+        );
+    }
+    const entries: Array<readonly [string, string]> = [
+        ...Object.entries(manifest.shared),
+        ...Object.values(manifest.runtimes).map(
+            (runtime) => [runtime.file, runtime.sha256] as const,
+        ),
+    ];
+    for (const [name, expected] of entries) {
         const file = join(EMBEDDED_DIR, name);
         mustExist(file, `embedded/${name}`);
         const actual = sha256(file);
@@ -150,8 +217,10 @@ function verifyEmbeddedManifest(): void {
         }
     }
     console.log(
-        `[release] embedded 清单通过：${Object.keys(manifest.files).length} 个文件 + napuketto 指针 sha256 一致`,
+        `[release] embedded 清单通过：${Object.keys(manifest.shared).length} 个共享文件 + ` +
+            `${Object.keys(manifest.runtimes).length} 个平台二进制（${Object.keys(manifest.runtimes).join(", ")}）`,
     );
+    return manifest;
 }
 
 /** JAR 结构、体积与闭源件红线 */
@@ -216,24 +285,34 @@ function packLse(version: string): string {
 }
 
 /** Endstone 分发包：解压到 BDS 根；manifest 只列实际随包的三个文件（不含 napuketto） */
-function packEndstone(version: string): string {
+function packEndstone(version: string, manifest: EmbeddedManifest): string {
     const stage = join(OUT_DIR, ".stage", "endstone");
     const binDir = join(stage, "plugins/kurobridge/bin");
     copyInto(
         join(ROOT, "platforms/be/endstone/build/windows-clang-cl/endstone_kurobridge.dll"),
         join(stage, "plugins/endstone_kurobridge.dll"),
     );
-    const manifest = readJson<EmbeddedManifest>(join(EMBEDDED_DIR, "manifest.json"));
-    const files: Record<string, string> = {};
-    for (const name of ["node.exe", "index.mjs", "NODE_LICENSE"] as const) {
-        const hash = manifest.files[name];
+    const winRuntime = manifest.runtimes["win-x64"];
+    if (winRuntime === undefined) {
+        fail("embedded 清单缺少 win-x64 运行时（Endstone 分发包依赖它）");
+    }
+    const shared: Record<string, string> = {};
+    for (const name of ["index.mjs", "NODE_LICENSE"] as const) {
+        const hash = manifest.shared[name];
         if (hash === undefined) {
             fail(`embedded 清单缺少 ${name}`);
         }
         copyInto(join(EMBEDDED_DIR, name), join(binDir, name));
-        files[name] = hash;
+        shared[name] = hash;
     }
-    const generated = { nodeVersion: manifest.nodeVersion, files };
+    // 分发包内沿用 endstone 既有契约名 node.exe（C++ node_runtime.cpp 硬编码）
+    copyInto(join(EMBEDDED_DIR, winRuntime.file), join(binDir, "node.exe"));
+    const generated = {
+        schemaVersion: 2,
+        nodeVersion: manifest.nodeVersion,
+        shared,
+        runtimes: { "win-x64": { file: "node.exe", sha256: winRuntime.sha256 } },
+    };
     writeFileSync(join(binDir, "manifest.json"), `${JSON.stringify(generated, null, 4)}\n`);
     const entries = [
         "plugins/endstone_kurobridge.dll",
@@ -248,12 +327,8 @@ function packEndstone(version: string): string {
     return out;
 }
 
-function main(): void {
-    const { version } = readJson<{ version: string }>(join(ROOT, "package.json"));
-    rmSync(OUT_DIR, { recursive: true, force: true });
-    mkdirSync(OUT_DIR, { recursive: true });
-    verifyEmbeddedManifest();
-
+/** JAR 分片：Paper shadowJar + Fabric remapJar 拷入 dist-release 并逐条校验。 */
+function packJars(version: string, manifest: EmbeddedManifest): string[] {
     const paperSource = join(ROOT, `platforms/je/paper/build/libs/kurobridge-${version}.jar`);
     const fabricSource = join(
         ROOT,
@@ -266,13 +341,40 @@ function main(): void {
     const fabricOut = join(OUT_DIR, `kurobridge-fabric-${version}.jar`);
     copyFileSync(paperSource, paperOut);
     copyFileSync(fabricSource, fabricOut);
-    assertJar(paperOut, PAPER_REQUIRED_ENTRIES, "Paper JAR");
-    assertJar(fabricOut, FABRIC_REQUIRED_ENTRIES, "Fabric JAR");
+    const embeddedEntries = [...SHARED_EMBEDDED_ENTRIES, ...runtimeEntries(manifest)];
+    assertJar(paperOut, [...PAPER_ENTRIES, ...embeddedEntries], "Paper JAR");
+    assertJar(fabricOut, [...FABRIC_ENTRIES, ...embeddedEntries], "Fabric JAR");
+    return [paperOut, fabricOut];
+}
 
-    const lseOut = packLse(version);
-    const endstoneOut = packEndstone(version);
+/** 本次分片的产物清单。embedded 清单只在 jar / endstone 分片校验（lse 与它无关）。 */
+function collectFiles(stages: readonly Stage[], version: string): string[] {
+    let cached: EmbeddedManifest | null = null;
+    const manifest = (): EmbeddedManifest => {
+        cached ??= verifyEmbeddedManifest();
+        return cached;
+    };
+    const files: string[] = [];
+    if (stages.includes("jar")) {
+        files.push(...packJars(version, manifest()));
+    }
+    if (stages.includes("lse")) {
+        files.push(packLse(version));
+    }
+    if (stages.includes("endstone")) {
+        files.push(packEndstone(version, manifest()));
+    }
+    return files;
+}
 
-    const files = [paperOut, fabricOut, lseOut, endstoneOut];
+function main(): void {
+    const stages = parseStages(process.argv.slice(2));
+    const { version } = readJson<{ version: string }>(join(ROOT, "package.json"));
+    rmSync(OUT_DIR, { recursive: true, force: true });
+    mkdirSync(OUT_DIR, { recursive: true });
+    console.log(`[release] 分片：${stages.join(" + ")}（版本 ${version}）`);
+
+    const files = collectFiles(stages, version);
     const lines = files
         .sort((left, right) => basename(left).localeCompare(basename(right)))
         .map((file) => `${sha256(file)}  ${basename(file)}`);

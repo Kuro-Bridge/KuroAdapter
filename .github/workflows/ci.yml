@@ -37,10 +37,12 @@ jobs:
         with:
           version: 11.6.0
 
-      - name: 安装 Node 26（启用 pnpm store 缓存）
+      - name: 安装 Node（版本读 .nvmrc，启用 pnpm store 缓存）
         uses: actions/setup-node@v7
         with:
-          node-version: 26
+          # 版本 SSOT 链条：toolings/runtime-manifest.json → .nvmrc → 此处；
+          # 门禁 check-runtime-versions 保证三者与 mise/engines/@types 一致。
+          node-version-file: KuroAdapter/.nvmrc
           cache: pnpm
           cache-dependency-path: KuroAdapter/pnpm-lock.yaml
 
@@ -67,7 +69,7 @@ jobs:
         uses: gradle/actions/setup-gradle@v6
 
       # 只装 mise 本体（install: false），工具安装交给下一步 mise x：
-      # mise 从工作目录向上发现 KuroAdapter/mise.toml（java 25 / node 26），
+      # mise 从工作目录向上发现 KuroAdapter/mise.toml（java 25 / node 26.13.0），
       # 未装的工具先装再带环境执行——对「仓检出到子目录」的布局最不依赖 action 内部行为。
       # （mise 配置发现：cwd 起逐级向上；mise x 语义：缺工具先安装再执行）
       - name: 安装 mise（不预装工具）
@@ -77,7 +79,7 @@ jobs:
 
       # gradlew 在 git 里是 100644（无执行位），ubuntu 下直接 ./gradlew 会 Permission denied，
       # 用 sh 显式解释执行（与本地验证命令一致）。
-      - name: Gradle build（mise x 携带 java 25 / node 26 环境）
+      - name: Gradle build（mise x 携带 java 25 / node 26.13.0 环境）
         run: mise x -- sh ./gradlew build
         working-directory: KuroAdapter/platforms/je
 

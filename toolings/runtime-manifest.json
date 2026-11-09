@@ -1,0 +1,5 @@
+{
+    "$comment": "内嵌 Node 运行时 SSOT：版本与默认目标清单只在此处改。门禁 toolings/gates/check-runtime-versions.ts 对齐全仓（mise.toml / .nvmrc / engines / @types/node / CI）。",
+    "nodeVersion": "26.13.0",
+    "targets": ["win-x64", "linux-x64", "linux-arm64"]
+}

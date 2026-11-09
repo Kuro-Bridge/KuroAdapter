@@ -3,5 +3,7 @@
 # 注：gradle 仅用于一次性生成 wrapper（gradle wrapper 命令），日常构建用 platforms/je 的 gradlew.bat
 
 [tools]
-node = "26"
+# Node 精确钉到内嵌运行时的同一补丁版本（SSOT = toolings/runtime-manifest.json，
+# 门禁 check-runtime-versions 对齐）；不写浮动线 "26"，避免 mise 与嵌包静默分叉。
+node = "26.13.0"
 java = "25"
