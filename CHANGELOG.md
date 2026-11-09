@@ -5,6 +5,12 @@
 ## 未发布
 
 - Paper 适配模块收敛（ADR-043）：撤销 `:paper-legacy` 隔离层，`PlainText` 收敛为 `PlainTextComponentSerializer` 单路径（adventure 4.8.0+ 至 5.x 全覆盖，原回退分支在支持矩阵上无可触发版本）。产物形态与运行行为不变。
+- 内嵌 Node 升 **26.13.0**（Active LTS），版本 SSOT 收敛到 `toolings/runtime-manifest.json`，新增 `check-runtime-versions` 七点门禁（ADR-044）。原「回退 Node 24 LTS」方案作废。
+- **单 JAR 内嵌三平台运行时**（`win-x64` / `linux-x64` / `linux-arm64`）：embedded 清单升 `schemaVersion: 2`，运行期只解当前平台那一个二进制；`KUROBRIDGE_EMBED_TARGETS` 支持 Lean 构建（ADR-045）。
+- **Linux 原生部署（JE）**：平台检测、POSIX 幂等 `+x`、`node --version` 预检 + glibc/`GLIBCXX` 识别 + PATH 回退（不崩服）；CI 增三平台原生冒烟矩阵（ADR-046）。
+- 发布流程：`release.ts` 支持 `--only jar|lse|endstone` 分片；新增 `release.yml`（tag 触发，分片构建 + 对上传字节重算 `SHA256SUMS.txt`）。
+- 产物体积：Universal JAR 约 **147 MB**（原 ~48 MB，三平台运行时合计）；`KUROBRIDGE_EMBED_TARGETS=<平台>` 的 Lean 构建可回到单平台体积。
+- 已知限制更新：Linux 真机起服未验收；Endstone 仍仅 Windows（POSIX 移植另开迭代）；Alpine / musl 不在支持面。
 
 ## 1.0.0 — 2026-10-26
 

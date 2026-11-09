@@ -18,7 +18,7 @@
 
 ## 构建
 
-- 工具链：JDK 25，`options.release = 21`，`-Xlint:all -Werror`，Spotless Palantir 2.71.0。
+- 工具链：JDK 25，`:core` / `:paper` `options.release = 8`、`:fabric` `release = 21`（ADR-038），`-Xlint:all -Werror`，Spotless Palantir 2.71.0。
 - `:paper`：shadowJar 合并 `:core` + Jackson + `embedded/` 资源，产物 `kurobridge-1.0.0.jar`。
 - `:fabric`：shadow 白名单合并 `:core` + Jackson → loom `remapJar`，产物 `kurobridge-fabric-1.0.0.jar`。
 - 根命令：`pnpm build:je`（gradlew build）、`pnpm build:jar`（TS → embed → shadowJar → remapJar）。
@@ -28,7 +28,9 @@
 | 场景 | node | bundle | stub |
 | --- | --- | --- | --- |
 | `KUROBRIDGE_BUNDLE` 已设 | `KUROBRIDGE_NODE` 或 `node` | 环境变量值 | env 或从 bundle 推导 `../stub/peer.ts` |
-| 未设（JAR 模式） | `KUROBRIDGE_NODE` 或 `bin/node.exe` | `bin/index.mjs` | env 或空（external 形态） |
+| 未设（JAR 模式） | `KUROBRIDGE_NODE` 或 `bin/node-<平台键>`（`node-win-x64.exe` / `node-linux-x64` / `node-linux-arm64`） | `bin/index.mjs` | env 或空（external 形态） |
+
+JAR 模式下非 Windows 且未设 `KUROBRIDGE_NODE` 时先跑 `NodeRuntimeProbe`（`node --version` 5s）：失败回退 PATH 上的 node（版本记 `system`），仍无则 SEVERE + 无 IPC，不崩服（ADR-046）。
 
 ## 运行期目录
 

@@ -69,7 +69,7 @@ plugins/kurobridge/
 | --- | --- |
 | R1 | dll 构建/CI 已可本机构建；CI 只跑 portable 层（`core` preset） |
 | R2 | status `tps=0.0`（`server.h` 已有 TPS API，接管时再核实采样口径） |
-| R3 | dll 不内嵌 node.exe；`bin/` 靠真机 SOP 手动预置（embed 链未接 endstone） |
+| R3 | dll 不内嵌 node；`bin/` 在开发期靠真机 SOP 手动预置，发布期由 `pnpm release:pack -- --only endstone` 从 embedded 的 `win-x64` 取件并改名为契约名 `node.exe` |
 | R4 | 最小 JSON 实现，不引通用库 |
 | R5 | 无自定义命令面（无 `/kurobridge` 等价物） |
 | R6 | Win32 管道用 `PROC_THREAD_ATTRIBUTE_HANDLE_LIST` 精确限定继承 |
@@ -78,7 +78,8 @@ plugins/kurobridge/
 
 - 无 chat relay 权限门（与 fabric 同根因）。
 - 无自定义命令（R5）；无法在游戏内 reload / qr。
-- `bin/` 未接入自动打包；升级需手动替换。
+- `bin/` 升级需手动替换（发布 zip 已可自动收拢，但 dll 仍手工构建）。
+- **仅 Windows**：C++ 进程管理是 Win32 源（无平台宏），POSIX 移植是独立迭代（ADR-046），不在 JE 的 Linux 支持面内。
 - 真机联调未做：事件线程语义、ABI 构建后的命令回执、停服时序仍需实机背书。
 
 测试：ctest 5 目标（json / ipc_frame / supervisor / node_ipc / node_runtime），含真实 node.exe 集成（PATH 无 node 时该测试面自跳过）。

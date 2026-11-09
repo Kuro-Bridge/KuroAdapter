@@ -40,10 +40,18 @@ Gradle 多模块，一个服务端 = 一个模块。Java 只做平台桥接；�
 
 ### EmbeddedRuntime
 
-- 逐文件比对 `manifest.json` 的 sha256：一致即复用；缺失/不符才从 JAR 解压（临时文件 + 原子 move，拷贝中校验）。
+- 读 `manifest.json`（v2）：`shared`（`index.mjs` / 许可 / `napuketto.zip`）逐文件比对 sha256，一致即复用、缺失/不符才从 JAR 解压（临时文件 + 原子 move，拷贝中校验）；`runtimes` 按 `PlatformKey.detect()` 只解当前平台命中的那一个二进制（ADR-045）。
+- 当前平台不在 `runtimes` 内（macOS / 陌生架构 / Lean JAR 缺平台）→ `UnsupportedPlatformException`：SEVERE 列出 JAR 内可用平台键，插件保持加载但无 IPC。
 - manifest 文件名必须匹配 `[A-Za-z0-9][A-Za-z0-9._-]*`，且 normalize 后必须仍在 bin 目录内（防 zip slip，双保险）。
-- `manifest.napukettoZip` 存在时，把 `napuketto.zip` 展开到 `bin/napuketto/`；用哨兵 `.kurobridge-install.json` 记录 zip sha256，一致复用，否则删目录重建。
+- POSIX 文件系统上每次启动幂等补 `+x`（0755）；补失败只 WARN，交给预检判断能否真的执行（ADR-046）。
+- `manifest.napukettoZip` 存在时，把 `napuketto.zip` 展开到 `bin/napuketto/`；用哨兵 `.kurobridge-install.json` 记录 zip sha256，一致复用，否则删目录重建。**这一步与平台无关**，Linux 也照常展开。
 - 失败 → SEVERE，插件保持加载但无 IPC（降级），不崩服。
+
+### NodeRuntimeProbe
+
+- 纯函数 + 可注入执行器：`probe(nodePath)` 跑 `node --version`（5s 上限、输出截断），`classify()` 把结果归为 `OK` / `UNSATISFIED_LIBC` / `NON_ZERO` / `TIMEOUT` / `SPAWN_FAILED`，`resolve()` 决定用内嵌二进制还是回退 PATH。
+- 只在 `:paper` / `:fabric` 的 `startFromJar` 路径、**非 Windows** 且未设 `KUROBRIDGE_NODE` 时调用；Windows 上跳过（不存在 glibc 面）。
+- 语义是「绝不因此崩服」：内嵌不可用 → WARN + PATH 回退（就绪汇总里版本记 `system`）；PATH 也无 → SEVERE + 无 IPC。
 
 ## :paper
 
@@ -93,11 +101,11 @@ Gradle 多模块，一个服务端 = 一个模块。Java 只做平台桥接；�
 plugins/kurobridge/
 ├── config.jsonc         # Node 读写；缺失生成注释模板（随机 token）
 ├── bin/                 # 从 JAR 解压/复用
-│   ├── node.exe
+│   ├── node-win-x64.exe      # 按平台只落当前命中那一个（Linux 为 node-linux-x64 / -arm64）
 │   ├── index.mjs
 │   ├── NODE_LICENSE
 │   ├── manifest.json
-│   ├── napuketto.zip    # 仅 JE 嵌包
+│   ├── napuketto.zip    # 平台无关 shared 资产，所有平台都解
 │   └── napuketto/
 ├── napuketto.toml       # 仅旧版 CLI 回退形态使用（ADR-041 内联注入后服主无需维护）
 ├── napuketto-data/
@@ -112,7 +120,7 @@ plugins/kurobridge/
 | 变量 | 开发覆盖 | JAR 模式 |
 | --- | --- | --- |
 | `KUROBRIDGE_BUNDLE` | 已设置即完全跳过 JAR 解压 | 不设置 |
-| `KUROBRIDGE_NODE` | 缺省 `node`（PATH） | 缺省 `plugins/kurobridge/bin/node.exe` |
+| `KUROBRIDGE_NODE` | 缺省 `node`（PATH） | 缺省 `plugins/kurobridge/bin/node-<平台键>`（`node-win-x64.exe` / `node-linux-x64` / `node-linux-arm64`）；设置即不做预检、不被替换 |
 | `KUROBRIDGE_STUB_PEER` | 缺省从 bundle 推导 `../stub/peer.ts` | 不设置 = 无 stub（external 形态） |
 
 ## 已知缺口
@@ -121,6 +129,7 @@ plugins/kurobridge/
 - universal 面（ADR-038）：26.3（embedded 深验）/ 26.2 / 1.21.11 / 1.16.5（`Debug/Paper-1.16.5`，Java 16）四线真机冒烟通过；1.12.2 未上机（`api-version` 下限 1.13，1.12.2 忽略该键可加载，需 Java 8 运行时实测）。
 - fabric 多 MC 版本矩阵未做（首版钉 1.21.4）。
 - fabric 缺 relay 权限门与 `/kurobridge` 细粒度权限。
+- Linux（x64 / arm64）构建与原生冒烟已绿，但**真机起服与长跑未验收**；glibc 2.28 底线只在预检与文档里承诺。
 - neoforge / velocity 未实现。
 
-测试：`:core` 的 JUnit 覆盖 codec、进程生命周期、看护器、EmbeddedRuntime，以及真实 node + stub 的管道集成（缺 node 时相关用例自跳过）。
+测试：`:core` 的 JUnit 覆盖 codec、进程生命周期、看护器、EmbeddedRuntime（v2 清单 / 平台选择 / 只解命中平台 / 旧 schema 拒绝 / 无可用平台 / POSIX 补执行位）、`PlatformKey`、`NodeRuntimeProbe`，以及真实 node + stub 的管道集成（缺 node 时相关用例自跳过）。

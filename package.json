@@ -31,6 +31,7 @@
         "check:all": "pnpm check && pnpm test && node toolings/build/platforms.ts all",
         "build:jar": "node toolings/packaging/build-jar.ts",
         "build:embed": "node toolings/packaging/embed.ts",
+        "smoke:handshake": "node toolings/smoke/node-handshake.ts",
         "release:pack": "node toolings/packaging/release.ts"
     },
     "devEngines": {

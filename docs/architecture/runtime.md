@@ -7,11 +7,16 @@
 ### 1.1 JE（Paper / Fabric）
 
 1. 服务端加载薄壳。`onEnable` / `SERVER_STARTING` 同步执行内嵌运行时安装：
-   - `KUROBRIDGE_BUNDLE` 已设置 → 开发覆盖，直接用环境变量指定的 bundle 与 node；
-   - 未设置 → `EmbeddedRuntime.install()` 把 JAR 内 `embedded/` 资源解压或复用到 `plugins/kurobridge/bin/`（逐文件 sha256 对比 manifest，缺失/不符才重写）。
-2. 组装 `NodeSupervisor`，首次 `start()` 拉起 `node bin/index.mjs`，等待 `ready` 帧（上限 30s）。
-3. Node 引导层装配 `bridge/core`，绑定 WS 服务端，向 stdout 发 `ready { wsPort, autoRestart }`。
-4. 薄壳打印就绪汇总，事件监听与 `/kurobridge` 命令开始工作（两者都容忍 `ipc == null`）。
+   - `KUROBRIDGE_BUNDLE` 已设置 → 开发覆盖，直接用环境变量指定的 bundle 与 node（跳过 JAR 解压，不做平台预检）；
+   - 未设置 → `EmbeddedRuntime.install()` 读 `embedded/manifest.json`（v2）：`shared`（index.mjs / 许可 / napuketto.zip）逐文件 sha256 对比、缺失或不符才解压；`runtimes` 按 `PlatformKey.detect()` 只解**当前平台命中的一个**二进制（`win-x64` / `linux-x64` / `linux-arm64`）——三平台 Universal JAR 不会把三份 node 全铺到磁盘。POSIX 文件系统上每次启动都幂等补 `+x`（升级自旧包、备份还原、`rsync` 不带 `-p`、快照回滚都会让 sha256 一致但执行位丢失）。
+   - 当前平台在 `runtimes` 里没有条目（macOS / 陌生架构 / Lean JAR 缺平台）→ `UnsupportedPlatformException`：SEVERE 日志列出 JAR 内可用平台键，插件保持加载但无 IPC。
+2. 非 Windows 且未设 `KUROBRIDGE_NODE` 时先跑 `NodeRuntimeProbe`（`node --version`，5s 上限，ADR-046）：
+   - 通过 → 用内嵌二进制继续；
+   - 失败（动态链接器缺失 / `GLIBC_` `GLIBCXX_` 版本未找到 / 超时 / 非零退出）→ WARN + 回退 PATH 上的 `node`，就绪汇总里 node 版本记 `system`；
+   - PATH 上也没有可用 node → SEVERE（含平台键与补救建议），插件保持加载但无 IPC，**不崩服**。显式设置的 `KUROBRIDGE_NODE` 永远不被静默替换。
+3. 组装 `NodeSupervisor`，首次 `start()` 拉起 `node bin/index.mjs`，等待 `ready` 帧（上限 30s）。
+4. Node 引导层装配 `bridge/core`，绑定 WS 服务端，向 stdout 发 `ready { wsPort, autoRestart }`。
+5. 薄壳打印就绪汇总，事件监听与 `/kurobridge` 命令开始工作（两者都容忍 `ipc == null`）。
 
 ### 1.2 Endstone
 
@@ -140,6 +145,7 @@ JE / Endstone 的 `node.pid` 在 spawn 时写入、优雅关停时删除；异�
 | `/kurobridge` 命令 | send / reload / qr | send / reload / qr | 仅 `kurobridgeretry` | 无（R5） |
 | 权限门 | `kurobridge.relay` + `kurobridge.admin` | op level ≥2；无 relay 门 | 无 | 无 |
 | embedded napuketto | ✅ | ✅ | ❌ | ❌（bin 不随包 napuketto） |
+| 内嵌 node 运行时（JAR 自带） | win-x64 / linux-x64 / linux-arm64 | 同左（loom 产物内置） | ❌ 服主自备（PATH，≥20） | 仅 win-x64（zip 内 `node.exe`） |
 | 看护器 | Java | Java | JS 壳 | C++ |
 | PID 文件 | ✅ | ✅ | ❌ | ✅ |
 

@@ -66,7 +66,7 @@ plugins/kurobridge/
 ├── manifest.json        # LeviLamina 插件清单（扁平格式），与 index.js 同目录
 ├── index.js             # 壳（dist/index.js）
 ├── bin/index.mjs        # Node shim（dist/bin/index.mjs）
-├── bin/node.exe         # Windows 随包；其它平台用 PATH 上的 node（≥20，建议 26）
+├── bin/node.exe         # 服主自备（发布 zip 不含 node）；Windows 用 node.exe，其它平台用 PATH 上的 node（≥20，建议 26）
 └── config.jsonc         # 首次运行生成注释模板（随机 token），服主编辑
 ```
 

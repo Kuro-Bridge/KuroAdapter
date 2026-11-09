@@ -1,0 +1,178 @@
+# KuroBridge 发布工作流（ADR-042 发布形态 + ADR-045 分片打包）
+#
+# 触发：推 `v*` tag（正式发布），或手动 dispatch（补发 / 重跑，需给出已存在的 tag）。
+#
+# 分片（`pnpm release:pack -- --only <stage>`）：
+# - jar  = Paper shadowJar + Fabric remapJar，Universal 三平台内嵌（win-x64 / linux-x64 /
+#          linux-arm64），需要 JDK 25 + 三份 node 归档，跑在 ubuntu；
+# - lse  = LSE 分发包 zip（`pnpm -r build` 产物 + manifest），不需要 embedded，跑在 ubuntu；
+# - endstone = 不在本工作流内：它依赖 windows-clang-cl 手工产出的 dll（dll 轨道是手动 SOP，
+#          见 platforms/be/endstone/readme.md），本地 `pnpm release:pack --only endstone`
+#          收拢后手工挂到 Release（LSE / Endstone 仍是预览产物，ADR-042）。
+#
+# 门禁：tag 与根 package.json 的 version 必须一致；SHA256SUMS.txt 由发布 job 对**下载回来的
+# 字节**重算——不信任任何构建期写下的校验文件（上传的字节就是被校验的字节）。
+
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 已存在的 tag（形如 v1.0.0）
+        required: true
+        type: string
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+# gh release create / upload 需要写权限
+permissions:
+  contents: write
+
+env:
+  TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+
+jobs:
+  verify:
+    name: tag 与版本对齐
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出本仓（到 KuroAdapter/ 子目录）
+        uses: actions/checkout@v7
+        with:
+          path: KuroAdapter
+
+      - name: 校验 tag 与 package.json version
+        working-directory: KuroAdapter
+        run: |
+          version=$(node -p "require('./package.json').version")
+          if [ "v$version" != "$TAG" ]; then
+            echo "::error::tag $TAG 与 package.json version $version 不一致（先改版本再打 tag）"
+            exit 1
+          fi
+          echo "版本 $version 与 tag $TAG 对齐"
+
+  jar:
+    name: JAR（Universal 三平台）
+    needs: verify
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: KuroAdapter
+    steps:
+      - name: 检出本仓（到 KuroAdapter/ 子目录）
+        uses: actions/checkout@v7
+        with:
+          path: KuroAdapter
+
+      - name: 安装 pnpm 11.6.0（版本 = 根 package.json devEngines 钉版）
+        uses: pnpm/action-setup@v6
+        with:
+          version: 11.6.0
+
+      - name: 安装 Node（版本读 .nvmrc）
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: KuroAdapter/.nvmrc
+          cache: pnpm
+          cache-dependency-path: KuroAdapter/pnpm-lock.yaml
+
+      # gradle toolchain 要 JDK 25：与 java CI job 同一套 mise 供给（mise.toml 一份 SSOT），
+      # 只装 mise 本体，工具由 mise x 按需安装后带环境执行。
+      - name: 安装 mise（不预装工具）
+        uses: jdx/mise-action@v4
+        with:
+          install: false
+
+      - name: 安装依赖（frozen lockfile）
+        run: pnpm install --frozen-lockfile
+
+      - name: 构建 JAR（TS → 三平台 embed → shadowJar / remapJar）
+        run: mise x -- pnpm build:jar
+
+      # 发布件里真正会分发给 Linux 服主的那份二进制，在这个 runner 上先跑一遍
+      # （等价 ci.yml 的 embed 矩阵在 linux-x64 那一格；矩阵全量跑在每次 push 的 CI 里）
+      - name: 原生冒烟（本 runner = linux-x64）
+        run: mise x -- pnpm smoke:handshake
+
+      - name: 收拢并校验 JAR 分片
+        run: pnpm release:pack -- --only jar
+
+      - name: 上传 JAR 产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: jar
+          path: KuroAdapter/dist-release/*.jar
+          if-no-files-found: error
+
+  lse:
+    name: LSE 分发包
+    needs: verify
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: KuroAdapter
+    steps:
+      - name: 检出本仓（到 KuroAdapter/ 子目录）
+        uses: actions/checkout@v7
+        with:
+          path: KuroAdapter
+
+      - name: 安装 pnpm 11.6.0（版本 = 根 package.json devEngines 钉版）
+        uses: pnpm/action-setup@v6
+        with:
+          version: 11.6.0
+
+      - name: 安装 Node（版本读 .nvmrc）
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: KuroAdapter/.nvmrc
+          cache: pnpm
+          cache-dependency-path: KuroAdapter/pnpm-lock.yaml
+
+      - name: 安装依赖（frozen lockfile）
+        run: pnpm install --frozen-lockfile
+
+      - name: LSE 构建（产出 platforms/be/lse/dist）
+        run: pnpm -r build
+
+      - name: 收拢 LSE 分片（zip 由 POSIX 的 zip 写，条目分隔符回读校验）
+        run: pnpm release:pack -- --only lse
+
+      - name: 上传 LSE 产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: lse
+          path: KuroAdapter/dist-release/*.zip
+          if-no-files-found: error
+
+  publish:
+    name: 汇总校验与发布
+    needs: [verify, jar, lse]
+    runs-on: ubuntu-latest
+    steps:
+      - name: 取回两个分片的产物
+        uses: actions/download-artifact@v4
+        with:
+          path: dist-release
+          merge-multiple: true
+
+      - name: 对上传字节重算 SHA256SUMS
+        working-directory: dist-release
+        run: |
+          sha256sum ./* > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: 创建或更新 GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist-release/* --clobber
+          else
+            gh release create "$TAG" dist-release/* --verify-tag --title "$TAG" --generate-notes
+          fi

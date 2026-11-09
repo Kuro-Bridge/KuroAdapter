@@ -172,6 +172,8 @@ flowchart TB
 
 * **Fabric**（已实现）：首版 Mod 薄壳，四事件 + status 对齐 Paper（chat / status 存在微小注册差异）
 
+* **操作系统**：Windows x64 与 **Linux x64 / arm64**（JAR 自带运行时，服主无需安装 Node；Linux 真机起服待验收，见 [status](docs/status.md)）
+
 * **NeoForge / Velocity**（预留）：模块工程骨架已就位（ADR-021）
 
 **BE 家族（基岩版）**

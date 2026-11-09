@@ -41,24 +41,28 @@ KuroBridge：MC 服务器 ↔ 社交平台群服互通插件。Paper JAR + 内�
 pnpm install            # 安装依赖
 pnpm check              # 一条入口（pre-commit 同款）：pnpm -r build 首环（ADR-035）+ biome
                         #   + 根 tsc（bridge/*）+ lse typecheck + docs 门禁（旧 scope 口径清零
-                        #   + md 死链）+ 版本对齐门禁
+                        #   + md 死链）+ 版本对齐门禁 + 内嵌 Node 版本门禁
 pnpm check:docs         # docs 两道门禁单跑（已含在 pnpm check，列出便于定位）
 pnpm check:versions     # 版本对齐门禁：bridge 六点 1.0.0 + 协议两份（锚 = 已安装 npm 包
                         #   @kuro-bridge/protocol 清单 version，ADR-034/035，已含在 pnpm check）
+pnpm check:runtime      # 内嵌 Node 版本七点对齐（manifest / mise / .nvmrc / engines / @types /
+                        #   全部 setup-node 工作流 / embed.ts 不写字面量，ADR-044，已含在 pnpm check）
 pnpm fix                # biome 自动修复 + tsc
 pnpm test               # vitest run（TS 侧）
 pnpm -r build           # TS 全量构建（tsdown / esbuild）
 pnpm build:je           # Java 薄壳门禁（platforms/je gradlew build，= CI java job；跨壳经 toolings/build/platforms.ts）
 pnpm build:endstone     # endstone portable 构建回归（cmake+build+ctest 五目标，= CI endstone job；dll 轨道仍走手动 SOP）
 pnpm build:all          # 三侧全量构建：pnpm -r build + build:je + build:endstone
-pnpm check:all          # 全量门禁（CI 三 job 本地合体）：pnpm check + pnpm test + 平台两侧
+pnpm check:all          # 全量门禁（CI 四 job 本地合体）：pnpm check + pnpm test + 平台两侧
 pnpm build:jar          # 全链路：TS 构建 → 嵌入式打包 → gradle :paper:shadowJar → :fabric:remapJar（toolings/packaging/build-jar.ts 链式）
-pnpm release:pack       # 发布产物收拢：Paper/Fabric JAR + LSE/Endstone zip + SHA256SUMS（toolings/packaging/release.ts）
+pnpm build:embed        # 只跑嵌入式打包（三平台 node + napuketto 嵌包 → paper/fabric resources）
+pnpm smoke:handshake    # 原生冒烟：宿主平台二进制 --version → IPC ready → WS 握手 → 优雅关停（CI embed 矩阵同款）
+pnpm release:pack       # 发布产物收拢：Paper/Fabric JAR + LSE/Endstone zip + SHA256SUMS（toolings/packaging/release.ts；--only jar|lse|endstone 分片）
 ```
 
 **构建顺序（硬约束）**：`pnpm -r build`（bridge/embedded 产物）→ `toolings/packaging/embed.ts` 嵌入式打包（node 官方 dist 下载校验 + napuketto 嵌包，产出进 `platforms/je/paper/src/main/resources/embedded/`）→ `gradle :paper:shadowJar`。本地 `pnpm build:jar` 经 `toolings/packaging/build-jar.ts` 链式执行四步（TS 构建 → embed 嵌包 → shadowJar → fabric remapJar）。
 
-**CI（ADR-032，结构经 ADR-035 结论 4 简化）**：`.github/workflows/ci.yml` 三 job——ts job 只检出本仓，跑 `pnpm check && pnpm test`（check 链自含 build 首环，与本地 pre-commit 同构；lefthook 串行 check → test，ADR-035）；java job 经 mise 提供 JDK 25 跑 `gradlew build`；endstone job 于 windows runner 跑 portable 层 `cmake --preset core && cmake --build --preset core && ctest --preset core`（本地等价 = `pnpm build:endstone`）。push main / PR 触发。
+**CI（ADR-032，结构经 ADR-035 结论 4 简化，ADR-046 增 embed 冒烟）**：`.github/workflows/ci.yml` 四 job——ts job 只检出本仓，跑 `pnpm check && pnpm test`（check 链自含 build 首环，与本地 pre-commit 同构；lefthook 串行 check → test，ADR-035）；java job 经 mise 提供 JDK 25 跑 `gradlew build`；endstone job 于 windows runner 跑 portable 层 `cmake --preset core && cmake --build --preset core && ctest --preset core`（本地等价 = `pnpm build:endstone`）；embed job 三平台矩阵（ubuntu / ubuntu-24.04-arm / windows）各嵌本平台目标后跑 `pnpm smoke:handshake`（本地等价 = `KUROBRIDGE_EMBED_TARGETS=<平台> pnpm build:embed && pnpm smoke:handshake`）。push main / PR 触发。发布走 `.github/workflows/release.yml`（tag `v*` 触发，分片构建 + 重算 SHA256SUMS）。
 
 **多版本策略（ADR-021）**：`:core` 版本无关（零 MC API）；Paper 单 jar 通吃；Fabric/NeoForge 按版本矩阵构建（每 MC 版本一个 jar）；Velocity 单 jar。改版本只重编适配层，不动 `:core` 与 `bridge/core`。
 
@@ -82,6 +86,6 @@ pnpm release:pack       # 发布产物收拢：Paper/Fabric JAR + LSE/Endstone z
 
 ## 环境
 
-- Node.js 26（ESM，`"type": "module"`）；TypeScript `NodeNext` 解析；包名统一 `@kuro-bridge/*`（`platforms/be/lse` 根包 `kurobridge` 无 scope）。
+- Node.js 26.13.0（Active LTS；版本 SSOT = `toolings/runtime-manifest.json`，`.nvmrc` / `mise.toml` / `engines` / CI 由 `check-runtime-versions` 门禁对齐，ADR-044）；ESM，`"type": "module"`；TypeScript `NodeNext` 解析；包名统一 `@kuro-bridge/*`（`platforms/be/lse` 根包 `kurobridge` 无 scope）。
 - Java 25 工具链 + Gradle 9.7（`platforms/je`，mise 统一版本；**gradlew.bat 日常构建**，mise 的 gradle 仅一次性生成 wrapper）；**`:core`/`:paper` 字节码 `--release 8`（ADR-038 universal：1.12.2 ~ 26.3 单 jar）**，`:fabric` 保持 release 21（MC 1.21.4 运行时基线，ADR-015）。
 - LSE（`platforms/be`）使用官方 TS 声明（原 npm 包 `@levimc-lse/types` 已从 registry 下架，改用仓内 vendor 副本 `platforms/be/lse/vendor/lse-types/`），编译为 JS 后由 LeviLamina 加载。

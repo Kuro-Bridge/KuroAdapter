@@ -37,7 +37,7 @@
 
 | 条件 | 结果 |
 | --- | --- |
-| 非 Windows | `skip`：记 error，继续做纯 WS 服务端（external 对端不受影响） |
+| 平台不在 `isNapukettoRuntimeSupported()` 支持面（当前仅 `win32`） | `skip`：记 error，继续做纯 WS 服务端（external 对端不受影响）。**解包不因此跳过**——`napuketto.zip` 是平台无关 shared 资产，Linux 也照常展开（ADR-046） |
 | `ws.port` 未配置 | `fatal`：连接 url 静态拼入，动态端口无法告知；配置未就绪语义，进程 `exit(2)`（ADR-041） |
 | CLI 入口 `<bin>/napuketto/node_modules/@napuketto/cli/dist/index.mjs` 不存在 | `fatal`：配置要求嵌入形态而产物缺失，`exit(2)`（ADR-041） |
 | 其余 | `spawn`：解析 configPath / dataDir 后拉起 |
@@ -75,29 +75,35 @@ napuketto 的登录二维码以文件形式交接，零协议变更：
 
 ## 产物与打包契约
 
-`pnpm -r build` 产出 `bridge/embedded/dist/index.mjs`。`toolings/packaging/embed.ts` 把它与 node.exe、许可、napuketto 嵌包一起写入 `platforms/je/{paper,fabric}/src/main/resources/embedded/`：
+`pnpm -r build` 产出 `bridge/embedded/dist/index.mjs`。`toolings/packaging/embed.ts` 把它与三平台 node、许可、napuketto 嵌包一起写入 `platforms/je/{paper,fabric}/src/main/resources/embedded/`（清单 v2，ADR-045）：
 
 | 文件 | 说明 |
 | --- | --- |
-| `node.exe` | Node 26.7.0 win-x64，sha256 对官方 `SHASUMS256.txt` |
-| `index.mjs` | esbuild 单文件 bundle |
-| `NODE_LICENSE` | Node 许可 |
-| `manifest.json` | `{ nodeVersion, files: {name: sha256}, napukettoZip?: {name, sha256, cliVersion} }` |
-| `napuketto.zip` | `@napuketto/cli` 及其依赖树（仅 npm 发布物） |
+| `node-win-x64.exe` / `node-linux-x64` / `node-linux-arm64` | 三平台 Node 26.13.0 运行时（`runtimes` 段），sha256 对官方 `SHASUMS256.txt` |
+| `index.mjs` | esbuild 单文件 bundle（`shared` 段） |
+| `NODE_LICENSE` | Node 许可（`shared` 段） |
+| `manifest.json` | `{ schemaVersion: 2, nodeVersion, shared: {name: sha256}, runtimes: {key: {file, sha256}}, napukettoZip?: {name, sha256, cliVersion} }` |
+| `napuketto.zip` | `@napuketto/cli` 及其依赖树（仅 npm 发布物）；平台无关，所有平台都解压 |
 | `NAPUKETTO_LICENSES` | 嵌包许可聚合 |
 
-Endstone 平台不自动接入该链路：Endstone 的 `bin/` 由真机 SOP 手动预置四件（node.exe / index.mjs / NODE_LICENSE / manifest.json），不含 napuketto。
+运行期只解当前平台命中的那一个 `runtimes` 条目；`KUROBRIDGE_EMBED_TARGETS` 可在构建期缩减目标（Lean JAR）。
+
+Endstone 平台不自动接入该链路：Endstone 的 `bin/` 由真机 SOP 手动预置四件（`node.exe` / `index.mjs` / `NODE_LICENSE` / `manifest.json`），不含 napuketto；`pnpm release:pack -- --only endstone` 会从 embedded 的 `win-x64` 取件并改名为契约名 `node.exe`。
 
 ## 环境变量
 
 | 变量 | 消费方 | 作用 |
 | --- | --- | --- |
 | `KUROBRIDGE_BUNDLE` | 平台薄壳 | 开发覆盖：直接使用指定 bundle，跳过 JAR 解压 |
-| `KUROBRIDGE_NODE` | 平台薄壳 | 开发覆盖 node 路径；JAR 模式缺省 `plugins/kurobridge/bin/node.exe` |
+| `KUROBRIDGE_NODE` | 平台薄壳 | 开发覆盖 node 路径；JAR 模式缺省 `plugins/kurobridge/bin/node-<平台键>`（如 `node-linux-x64`）；显式设置时不做预检、不被替换 |
 | `KUROBRIDGE_STUB_PEER` | 薄壳 + 本包 | stub 协议端脚本路径；设置即注入。JAR 模式不设置 = external 形态 |
-| `NAPKETTO_CONFIG` / `NAPKETTO_DATA` | napuketto CLI | 由本包注入，指向 TOML 与数据目录 |
+| `NAPKETTO_CONFIG` / `NAPKETTO_DATA` | napuketto CLI | 由本包注入，指向 TOML 与数据目录（0.3.0+ 改走 `NAPKETTO_CONFIG_JSON` 内联，ADR-041） |
+| `KUROBRIDGE_EMBED_TARGETS` | `toolings/packaging/embed.ts`（构建期） | 覆盖内嵌目标（逗号分隔）；缺省读 `toolings/runtime-manifest.json`，未知目标抛错 |
 | `KUROBRIDGE_NODE_DIST_BASE` / `KUROBRIDGE_NODE_CACHE_DIR` / `KUROBRIDGE_NPM_REGISTRY` / `KUROBRIDGE_NODE_DIST_STRICT` | `toolings/packaging/embed.ts` | 下载镜像、缓存目录、napuketto 安装镜像、SHASUMS 严格模式 |
+| `KUROBRIDGE_SMOKE_KEEP` | `toolings/smoke/node-handshake.ts` | `=1` 保留冒烟临时目录（失败复盘） |
 
 ## 测试
 
 vitest 覆盖 `logger`（行格式/级别）、`napuketto`（守卫决策、spawn/env 契约/哨兵关停与树杀兜底/QR URL/记录重组/异常退出）、`qr-watcher`（PNG 轮询、原子写、多账号取最新）、`ws-server`（动态/固定端口、绑定失败、子协议）。
+
+真机闭环不在 vitest 里：`toolings/smoke/node-handshake.ts` 由 CI 的 `embed` 矩阵在三个平台上跑（`--version` → IPC ready → WS 握手 → 优雅关停），详见 [构建指南](../guides/build.md)。

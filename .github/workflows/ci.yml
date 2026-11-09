@@ -8,6 +8,8 @@
 #              Spotless、-Xlint:all -Werror）。此前 Java 回归不在任何自动化链，CI 起补位。
 # - endstone job = C++ portable 层回归（KP-BE-005；2026-09-19-modernize 批次接线，
 #              本地等价演练冷启 5/5 绿后加入；命令与 readme.md「构建双轨」逐条同款）。
+# - embed job = 内嵌运行时三平台「原生冒烟」（ADR-045）：前面三个 job 证明的是构建与
+#              哈希，证明不了「这份 node 二进制在这个内核上真能跑」。详见该 job 注释。
 
 name: CI
 
@@ -103,3 +105,67 @@ jobs:
       - name: CMake configure + build + ctest（portable 层）
         run: cmake --preset core && cmake --build --preset core && ctest --preset core
         working-directory: KuroAdapter/platforms/be/endstone
+
+  # 内嵌运行时「原生冒烟」（ADR-045）：ts / java / endstone 三个 job 证明的是「构建成功、
+  # sha256 对得上」，证明不了「这份 node 二进制在这个内核上真能跑」——Linux 二进制在 Windows
+  # 开发机上更无从验证。这里把验收放到同架构 runner 上，每个 runner 只嵌自己命中的目标
+  # （KUROBRIDGE_EMBED_TARGETS，省两次 ~150MB 下载），跑 toolings/smoke/node-handshake.ts
+  # 的最小闭环：`--version` → IPC ready → WS hello/query 往返 → 关 stdin 得 exit 0。
+  # 注意：runner 是 Ubuntu 24.04（glibc 2.39），验的是「能不能跑」而非「glibc 2.28 底线」；
+  # 底线靠 Debian 12 / Ubuntu 22.04 真机验收（docs/guides/build.md「Linux 部署」）。
+  embed:
+    name: Embed 冒烟（${{ matrix.target }}）
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # 公开仓自带 ARM64 runner；若本仓为私有且无 ARM runner，删掉该条即可（x64 两项仍覆盖）
+          - runner: ubuntu-latest
+            target: linux-x64
+          - runner: ubuntu-24.04-arm
+            target: linux-arm64
+          - runner: windows-latest
+            target: win-x64
+    defaults:
+      run:
+        working-directory: KuroAdapter
+    steps:
+      - name: 检出本仓（到 KuroAdapter/ 子目录）
+        uses: actions/checkout@v7
+        with:
+          path: KuroAdapter
+
+      - name: 安装 pnpm 11.6.0（版本 = 根 package.json devEngines 钉版）
+        uses: pnpm/action-setup@v6
+        with:
+          version: 11.6.0
+
+      - name: 安装 Node（版本读 .nvmrc）
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: KuroAdapter/.nvmrc
+          cache: pnpm
+          cache-dependency-path: KuroAdapter/pnpm-lock.yaml
+
+      - name: 安装依赖（frozen lockfile）
+        run: pnpm install --frozen-lockfile
+
+      - name: TS 构建（产出 bridge/embedded/dist/index.mjs）
+        run: pnpm -r build
+
+      # 缓存下载物：node dist 归档 + napuketto 依赖树都在 .cache/node-dist。键含目标与两份
+      # 版本 SSOT（内嵌 Node 版本 / napuketto CLI 版本），任一动即失效——不缓存过期二进制。
+      - name: 缓存 node dist 与 napuketto 依赖树
+        uses: actions/cache@v4
+        with:
+          path: KuroAdapter/.cache/node-dist
+          key: node-dist-${{ matrix.target }}-${{ hashFiles('KuroAdapter/toolings/runtime-manifest.json', 'KuroAdapter/bridge/embedded/package.json') }}
+
+      - name: 只嵌本平台运行时
+        run: pnpm build:embed
+        env:
+          KUROBRIDGE_EMBED_TARGETS: ${{ matrix.target }}
+
+      - name: 原生冒烟（二进制 / 引导层 / WS 握手 / 优雅关停）
+        run: pnpm smoke:handshake

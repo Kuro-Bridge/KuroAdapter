@@ -21,19 +21,22 @@ pnpm test         # vitest
 
 | 命令 | 作用 |
 | --- | --- |
-| `pnpm check` | `pnpm -r build` → `biome check .` → 根 `tsc --noEmit` → LSE `tsc --noEmit` → docs 两门禁 → 版本对齐 |
+| `pnpm check` | `pnpm -r build` → `biome check .` → 根 `tsc --noEmit` → LSE `tsc --noEmit` → docs 两门禁 → 版本对齐 → 内嵌 Node 版本七点 |
 | `pnpm test` | vitest（bridge/*、platforms/be/*、toolings/**） |
 | `pnpm fix` | biome 自动修复 + 根 tsc |
 | `pnpm build` | `pnpm -r build`（core / embedded / lse） |
 | `pnpm build:je` | `gradlew build`（编译 + Spotless + JUnit） |
 | `pnpm build:endstone` | portable 层 configure + build + ctest |
 | `pnpm build:all` | TS 全量 + JE + Endstone |
-| `pnpm check:all` | `pnpm check` + `pnpm test` + 平台两侧（CI 三 job 本地合体） |
+| `pnpm check:all` | `pnpm check` + `pnpm test` + 平台两侧（CI 四 job 本地合体；`embed` 冒烟矩阵需三平台 runner，本地用 `KUROBRIDGE_EMBED_TARGETS=<本平台> pnpm build:embed && pnpm smoke:handshake` 等价） |
 | `pnpm build:jar` | TS 构建 → embed 打包 → paper shadowJar → fabric remapJar |
+| `pnpm build:embed` | 只跑嵌入式打包（三平台 node + napuketto → paper/fabric resources） |
+| `pnpm smoke:handshake` | 原生冒烟：宿主平台二进制 `--version` → IPC ready → WS 握手 → 优雅关停 |
 | `pnpm check:docs` | 文档口径 + 死链两道门禁 |
 | `pnpm check:versions` | bridge 六点 + 协议两份版本对齐 |
+| `pnpm check:runtime` | 内嵌 Node 版本七点对齐（manifest / mise / .nvmrc / engines / @types / 工作流 / embed.ts） |
 
-pre-commit（lefthook）串行跑 `pnpm check` → `pnpm test`（`parallel: false`，避免 build 清空 `dist` 与 vitest 解析竞态）。CI 的 ts job 复跑同一命令链；java job 跑 `gradlew build`；endstone job 跑 `core` 三连。
+pre-commit（lefthook）串行跑 `pnpm check` → `pnpm test`（`parallel: false`，避免 build 清空 `dist` 与 vitest 解析竞态）。CI 的 ts job 复跑同一命令链；java job 跑 `gradlew build`；endstone job 跑 `core` 三连；embed job 三平台矩阵各嵌本平台目标后跑 `smoke:handshake`。
 
 ## 版本对齐
 
@@ -52,6 +55,20 @@ bridge 版本族（当前 `1.0.0`）共六点，改版本必须同改：
 2. `platforms/je/core/.../KurobridgeVersions.java` 的 `PROTOCOL_VERSION`
 
 LSE 的 `manifest.json`（`version` 为字符串）/ `BRIDGE_VERSION` 与 Endstone 的插件版本当前**不在**门禁内，改动需手动同步。
+
+### 内嵌 Node 版本（七点）
+
+SSOT = `toolings/runtime-manifest.json` 的 `nodeVersion`（当前 `26.13.0`，ADR-044）。升级只改这一处，`pnpm check:runtime` 会逐条指出其余各点：
+
+1. `toolings/runtime-manifest.json`（唯一来源；必须精确 semver）
+2. `mise.toml` 的 `node`（精确版本，不接受 `"26"` 浮动）
+3. `.nvmrc`（CI 的 `node-version-file` 读数）
+4. 根 `package.json` 的 `engines.node`（`>=<version>`）
+5. 根 `@types/node` 与 `platforms/be/lse` 的 `@types/node` 主版本
+6. `.github/workflows/*.yml` 中凡用 `setup-node` 的都必须读 `.nvmrc`（禁止硬编码 `node-version:`）
+7. `toolings/packaging/embed.ts` 必须经 `readRuntimeManifest` 取版本（不许回写字面量）
+
+换 Node 版本后还要重跑 `pnpm build:jar`（三平台二进制与 sha256 全变），并至少在一个非 Windows 平台跑 `pnpm smoke:handshake`。
 
 ## 代码规范
 

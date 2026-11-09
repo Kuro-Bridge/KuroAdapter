@@ -123,7 +123,7 @@ KuroAdapter/
 | `platforms/be/lse` | TS → QuickJS IIFE + Node ESM shim | `ws`、LSE 官方类型 | esbuild 双产物 | vitest（含回环 e2e） |
 | `platforms/be/endstone` | C++20 | Endstone API（header-only）+ expected-lite | CMake presets | ctest（5 目标） |
 
-工程基准：Node 26、pnpm 11.6、TypeScript 7、Java 25（universal 模块 release 8，ADR-038）、Gradle 9.7、CMake ≥ 3.29。Node 运行时分发版本钉 26.7.0（`toolings/packaging/embed.ts`）。
+工程基准：Node 26、pnpm 11.6、TypeScript 7、Java 25（universal 模块 release 8，ADR-038）、Gradle 9.7、CMake ≥ 3.29。内嵌 Node 运行时分发版本钉 **26.13.0**（Active LTS），SSOT = `toolings/runtime-manifest.json`（ADR-044），单 JAR 内嵌 win-x64 / linux-x64 / linux-arm64 三份、运行期只解当前平台一份（ADR-045）。
 
 ## 8. 红线
 
